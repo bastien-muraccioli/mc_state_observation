@@ -126,13 +126,13 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   contactSensorCovariance_.block<3, 3>(3, 3) =
       static_cast<so::Vector3>(config("torqueSensorVariance")).matrix().asDiagonal();
 
-  observer_.setAllCovariances(statePositionInitCovariance_, stateOriInitCovariance_,
-        stateLinVelInitCovariance_, stateAngVelInitCovariance_, gyroBiasInitCovariance_, 
-        unmodeledWrenchInitCovariance_, contactInitCovariance_, statePositionProcessCovariance_,
-        stateOriProcessCovariance_, stateLinVelProcessCovariance_, stateAngVelProcessCovariance_,
-        gyroBiasProcessCovariance_, unmodeledWrenchProcessCovariance_,contactProcessCovariance_, 
-        positionSensorCovariance_, orientationSensorCoVariance_, acceleroSensorCovariance_,
-        gyroSensorCovariance_, contactSensorCovariance_);
+  observer_.setAllCovariances(statePositionInitCovariance_, stateOriInitCovariance_, stateLinVelInitCovariance_,
+                              stateAngVelInitCovariance_, gyroBiasInitCovariance_, unmodeledWrenchInitCovariance_,
+                              contactInitCovarianceFirstContacts_, statePositionProcessCovariance_,
+                              stateOriProcessCovariance_, stateLinVelProcessCovariance_, stateAngVelProcessCovariance_,
+                              gyroBiasProcessCovariance_, unmodeledWrenchProcessCovariance_, contactProcessCovariance_,
+                              positionSensorCovariance_, orientationSensorCoVariance_, acceleroSensorCovariance_,
+                              gyroSensorCovariance_, contactSensorCovariance_);
 }
 
 void MCKineticsObserver::reset(const mc_control::MCController & ctl)
