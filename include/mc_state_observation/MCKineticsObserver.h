@@ -264,6 +264,8 @@ public:
     }
 
   private:
+    so::kine::Kinematics K_0_fb_; // floating base in the user frame (world of the controller)
+
     std::string category_ = "Observer_LIPMStabilizerObserverPipeline";
     /* custom list of robots to display */
     std::shared_ptr<mc_rbdyn::Robots> my_robots_;
@@ -282,8 +284,6 @@ public:
     std::vector<so::Vector> predictedAccelerometersGravityComponent_;
     std::vector<so::Vector> predictedWorldIMUsLinAcc_;
     std::vector<so::Vector> predictedAccelerometers_;
-    std::vector<so::kine::Kinematics> contactKinematics_;
-    std::vector<so::kine::Kinematics> controlRobotContactKinematics_;
 
     double maxContactForceZ = 0; // allows to adapt the covariance on the contact based on how much set it is
 
@@ -304,6 +304,8 @@ public:
     // sva::MotionVecd flexStiffness_{{727, 727, 727}, {4e4, 4e4, 4e4}}; // HRP-4, {620, 3e5} for HRP-2
     sva::MotionVecd v_fb_0_ = sva::MotionVecd::Zero();
     sva::PTransformd X_0_fb_ = sva::PTransformd::Identity();
+    sva::MotionVecd a_fb_0_ = sva::MotionVecd::Zero();
+
     sva::PTransformd accPos_; /**< currently hanled accelerometer pos in body */
     sva::PTransformd accContact_; /**< currently hanled contact pos in body */
     sva::RBInertiad inertiaWaist_; /**< grouped inertia */
@@ -326,6 +328,25 @@ public:
 
     int maxContacts_ = 2;
     int maxIMUs_ = 2;
+
+    so::Quaternion robotImuOri_0;
+    so::Quaternion realRobotImuOri_0;
+    so::Quaternion robotImuOri_1;
+    so::Quaternion realRobotImuOri_1;
+    so::Quaternion robotFbOri_;
+    so::Quaternion realRobotFbOri_;
+    so::Vector3 robotPosImuInFB_0;
+    so::Vector3 robotPosImuInFB_1;
+    so::Vector3 realRobotPosImuInFB_0;
+    so::Vector3 realRobotPosImuInFB_1;
+    so::Vector3 robotTilt_0;
+    so::Vector3 realRobotTilt_0;
+    so::Vector3 MCKOrobotTilt_0;
+    so::Vector3 robotTilt_1;
+    so::Vector3 realRobotTilt_1;
+    so::Vector3 MCKOrobotTilt_1;
+    so::Quaternion realRobot_centroidImuOri_0;
+    so::Quaternion realRobot_centroidImuOri_1;
 
     so::Matrix3 statePositionInitCovariance_;
     so::Matrix3 stateOriInitCovariance_;
