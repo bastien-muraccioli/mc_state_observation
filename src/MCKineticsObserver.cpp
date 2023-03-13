@@ -43,7 +43,6 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   dx.setConstant(static_cast<double>(config("finiteDifferenceStep")));
   observer_.setFiniteDifferenceStep(dx);
   observer_.setWithAccelerationEstimation(config("withAccelerationEstimation"));
-  observer_.setWithInnovation(config("withInnovation"));
   observer_.useRungeKutta(config("withRungeKutta"));
 
   config("flexStiffness", flexStiffness_);
