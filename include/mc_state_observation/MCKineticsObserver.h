@@ -327,7 +327,8 @@ public:
     so::Matrix3 stateAngVelInitCovariance_;
     so::Matrix3 gyroBiasInitCovariance_;
     so::Matrix6 unmodeledWrenchInitCovariance_;
-    so::Matrix12 contactInitCovariance_;
+    so::Matrix12 contactInitCovarianceFirstContacts_;
+    so::Matrix12 contactInitCovarianceNewContacts_;
 
     so::Matrix3 statePositionProcessCovariance_;
     so::Matrix3 stateOriProcessCovariance_;
