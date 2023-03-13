@@ -79,6 +79,8 @@ protected:
 
   void initObserverStateVector(const mc_rbdyn::Robot & robot);
 
+  void inputAdditionalWrench(const mc_rbdyn::Robot & robot);
+
   void updateIMUs(const mc_rbdyn::Robot & robot);
 
   /*! \brief Add observer from logger
@@ -305,6 +307,10 @@ public:
     sva::PTransformd accPos_; /**< currently hanled accelerometer pos in body */
     sva::PTransformd accContact_; /**< currently hanled contact pos in body */
     sva::RBInertiad inertiaWaist_; /**< grouped inertia */
+
+    so::Vector3 additionalUserResultingForce_ = so::Vector3::Zero();
+    so::Vector3 additionalUserResultingMoment_ = so::Vector3::Zero();
+    std::unordered_map<std::__cxx11::string, bool> isExternalWrench_;
 
     bool simStarted_ = false; // this variable is set to true when the robot touches the ground at the beginning of the simulation, 
                               // allowing to start the estimaion at that time and not when the robot is still in the air, 

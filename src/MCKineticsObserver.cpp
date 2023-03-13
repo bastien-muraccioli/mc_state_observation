@@ -174,6 +174,12 @@ void MCKineticsObserver::reset(const mc_control::MCController & ctl)
   mass(ctl.robot(robot_).mass());
   flexStiffness(flexStiffness_);
   flexDamping(flexDamping_);
+
+  for(auto forceSensor : robot.forceSensors())
+  {
+    isExternalWrench_[forceSensor.name()] = true;
+  }
+
   if(debug_)
   {
     mc_rtc::log::info("inertiaWaist = {}", inertiaWaist_);
@@ -334,6 +340,27 @@ void MCKineticsObserver::update(mc_rbdyn::Robot & robot)
   robot.velW(v_fb_0_.vector());
 }
 
+void MCKineticsObserver::inputAdditionalWrench(const mc_rbdyn::Robot & robot)
+{
+  additionalUserResultingForce_.setZero();
+  additionalUserResultingMoment_.setZero();
+
+  for(auto wrenchSensor : robot.forceSensors()) // if a force sensor is not associated to a contact, its measurement is
+                                                // given as an input external wrench
+  {
+    if(isExternalWrench_.at(wrenchSensor.name()) == true)
+    {
+      additionalUserResultingForce_ += wrenchSensor.worldWrenchWithoutGravity(robot).force();
+      additionalUserResultingMoment_ += wrenchSensor.worldWrenchWithoutGravity(robot).moment();
+    }
+    else
+    {
+      isExternalWrench_.at(wrenchSensor.name()) = true;
+    }
+  }
+  observer_.setAdditionalWrench(additionalUserResultingForce_, additionalUserResultingMoment_);
+}
+
 void MCKineticsObserver::updateIMUs(const mc_rbdyn::Robot & robot)
 {
   unsigned i = 0;
@@ -384,22 +411,37 @@ std::set<std::string> MCKineticsObserver::findContacts(const mc_control::MCContr
     {
       if(ctl.robots().robot(contact.r2Index()).mb().joint(0).type() == rbd::Joint::Fixed)
       {
-        contactsFound_.insert(contact.r1Surface()->name());
+        const auto & ifs = robot.indirectSurfaceForceSensor(contact.r1Surface()->name());
+
+        if(ifs.wrenchWithoutGravity(robot).force().z() > ctl.robot(robot_).mass() * so::cst::gravityConstant * 0.05)
+        {
+          contactsFound_.insert(contact.r1Surface()->name());
+          isExternalWrench_.at(ifs.name()) =
+              false; // the measurement of the sensor is not passed as an input external wrench
+        }
       }
     }
     else if(ctl.robots().robot(contact.r2Index()).name() == robot.name())
     {
       if(ctl.robots().robot(contact.r1Index()).mb().joint(0).type() == rbd::Joint::Fixed)
       {
-        contactsFound_.insert(contact.r2Surface()->name());
+        const auto & ifs = robot.indirectSurfaceForceSensor(contact.r2Surface()->name());
+        if(ifs.wrenchWithoutGravity(robot).force().z() > ctl.robot(robot_).mass() * so::cst::gravityConstant * 0.05)
+        {
+          contactsFound_.insert(contact.r2Surface()->name());
+          isExternalWrench_.at(ifs.name()) =
+              false; // the measurement of the sensor is not passed as an input external wrench
+        }
       }
     }
   }
+  inputAdditionalWrench(robot);
   if(!contactsFound_.empty() && !simStarted_) // we start the observation once a contact has been detected.
   {
     simStarted_ = true;
     initObserverStateVector(robot);
   }
+
   return contactsFound_;
 }
 
@@ -415,15 +457,9 @@ void MCKineticsObserver::updateContacts(const mc_rbdyn::Robot & robot,
   for(const auto & updatedContact : updatedContacts)
   {
     const auto & ifs = robot.indirectSurfaceForceSensor(updatedContact);
-    contactWrenchVector_.segment<3>(0) =
-        ifs.wrenchWithoutGravity(robot).vector().segment<3>(3); // retrieving the torque
-    contactWrenchVector_.segment<3>(3) = ifs.wrenchWithoutGravity(robot).vector().segment<3>(0); // retrieving the force
 
-    if(contactWrenchVector_.coeff(5) > maxContactForceZ)
-    {
-      maxContactForceZ = contactWrenchVector_.coeff(5);
-    }
-
+    contactWrenchVector_.segment<3>(0) = ifs.wrenchWithoutGravity(robot).force(); // retrieving the force
+    contactWrenchVector_.segment<3>(3) = ifs.wrenchWithoutGravity(robot).moment(); // retrieving the moment
     /** Position of the contact **/
     sva::PTransformd contactPos_ = ifs.X_p_f();
     sva::PTransformd X_0_p = robot.bodyPosW(ifs.parentBody());
@@ -456,11 +492,18 @@ void MCKineticsObserver::updateContacts(const mc_rbdyn::Robot & robot,
     {
       mapContacts_.insertPair(updatedContact);
       int numContact = mapContacts_.getNumFromName(updatedContact);
-      observer_.addContact(userContactKine,
-                           contactInitCovariance_, //  * (maxContactForceZ / contactWrenchVector_.coeff(5)),
-                           contactProcessCovariance_, numContact, flexStiffness_.linear().asDiagonal(),
-                           flexDamping_.linear().asDiagonal(), flexStiffness_.angular().asDiagonal(),
-                           flexDamping_.angular().asDiagonal());
+      if(observer_.getNumberOfContacts() > 0)
+      {
+        observer_.addContact(userContactKine, contactInitCovarianceNewContacts_, contactProcessCovariance_, numContact,
+                             flexStiffness_.linear().asDiagonal(), flexDamping_.linear().asDiagonal(),
+                             flexStiffness_.angular().asDiagonal(), flexDamping_.angular().asDiagonal());
+      }
+      else
+      {
+        observer_.addContact(userContactKine, contactInitCovarianceFirstContacts_, contactProcessCovariance_,
+                             numContact, flexStiffness_.linear().asDiagonal(), flexDamping_.linear().asDiagonal(),
+                             flexStiffness_.angular().asDiagonal(), flexDamping_.angular().asDiagonal());
+      }
       observer_.updateContactWithWrenchSensor(contactWrenchVector_,
                                               contactSensorCovariance_, // contactInitCovariance_.block<6,6>(6,6)
                                               userContactKine, numContact);
@@ -578,6 +621,15 @@ void MCKineticsObserver::plotVariablesBeforeUpdate(mc_rtc::Logger & logger)
                      [this]() -> Eigen::Vector3d {
                        return observer_.getCurrentStateVector().segment<int(observer_.sizeTorque)>(
                            observer_.unmodeledTorqueIndex());
+                     });
+
+  /* Inputs */
+  logger.addLogEntry(category_ + "_inputs_additionalWrench_Force",
+                     [this]() -> Eigen::Vector3d
+                     { return observer_.getAdditionalWrench().segment<int(observer_.sizeForce)>(0); });
+  logger.addLogEntry(category_ + "_inputs_additionalWrench_Torque",
+                     [this]() -> Eigen::Vector3d {
+                       return observer_.getAdditionalWrench().segment<int(observer_.sizeTorque)>(observer_.sizeForce);
                      });
 
   /* State covariances */
