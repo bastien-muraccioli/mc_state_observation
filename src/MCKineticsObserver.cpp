@@ -618,10 +618,11 @@ void MCKineticsObserver::addToGUI(const mc_control::MCController &,
   using namespace mc_rtc::gui;
   // clang-format off
   gui.addElement(category,
-    make_input_element("Accel Covariance", acceleroSensorCovariance_(0,0)),
-    make_input_element("Force Covariance", contactSensorCovariance_(0,0)),
-    make_input_element("Gyro Covariance", gyroSensorCovariance_(0,0)),
-    make_input_element("Flex Stiffness", flexStiffness_), make_input_element("Flex Damping", flexDamping_),
+    mc_state_observation::gui::make_input_element("Accel Covariance", acceleroSensorCovariance_(0,0)),
+    mc_state_observation::gui::make_input_element("Force Covariance", contactSensorCovariance_(0,0)),
+    mc_state_observation::gui::make_input_element("Gyro Covariance", gyroSensorCovariance_(0,0)),
+    mc_state_observation::gui::make_input_element("Flex Stiffness", flexStiffness_), 
+    mc_state_observation::gui::make_input_element("Flex Damping", flexDamping_),
     Label("contacts", [this]() { return mc_rtc::io::to_string(oldContacts_); }));
   // clang-format on
 }
