@@ -330,6 +330,7 @@ public:
     sva::MotionVecd flexStiffness_;
     sva::MotionVecd flexDamping_;
 
+    bool withOdometry_ = false;
     bool withUnmodeledWrench_ = true;
     bool withGyroBias_ = true;
 

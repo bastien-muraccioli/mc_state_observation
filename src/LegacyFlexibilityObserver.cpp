@@ -239,10 +239,10 @@ void LegacyFlexibilityObserver::addToGUI(const mc_control::MCController &,
   using namespace mc_rtc::gui;
   // clang-format off
   gui.addElement(category,
-    make_input_element("Accel Covariance", accelNoiseCovariance_),
-    make_input_element("Force Covariance", forceSensorNoiseCovariance_),
-    make_input_element("Gyro Covariance", gyroNoiseCovariance_),
-    make_input_element("Flex Stiffness", flexStiffness_), make_input_element("Flex Damping", flexDamping_),
+    mc_state_observation::gui::make_input_element("Accel Covariance", accelNoiseCovariance_),
+    mc_state_observation::gui::make_input_element("Force Covariance", forceSensorNoiseCovariance_),
+    mc_state_observation::gui::make_input_element("Gyro Covariance", gyroNoiseCovariance_),
+    mc_state_observation::gui::make_input_element("Flex Stiffness", flexStiffness_), mc_state_observation::gui::make_input_element("Flex Damping", flexDamping_),
     Label("contacts", [this]() { return mc_rtc::io::to_string(contacts_); }));
   // clang-format on
 }
