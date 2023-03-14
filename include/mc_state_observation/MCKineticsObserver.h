@@ -77,6 +77,8 @@ namespace mc_state_observation
 protected:
   void update(mc_rbdyn::Robot & robot);
 
+  void updateWorldFbKineAndViceVersa(const mc_rbdyn::Robot & robot);
+
   void initObserverStateVector(const mc_rbdyn::Robot & robot);
 
   void inputAdditionalWrench(const mc_rbdyn::Robot & robot);
@@ -121,7 +123,10 @@ protected:
    */
   std::set<std::string> findContacts(const mc_control::MCController & solver);
 
-  void updateContacts(const mc_rbdyn::Robot & robot, std::set<std::string> contacts, mc_rtc::Logger & logger);
+  void updateContacts(const mc_rbdyn::Robot & robot,
+                      const mc_rbdyn::Robot & realRobot,
+                      std::set<std::string> contacts,
+                      mc_rtc::Logger & logger);
 
 protected:
   std::string robot_ = "";
@@ -264,7 +269,9 @@ public:
     }
 
   private:
-    so::kine::Kinematics K_0_fb_; // floating base in the user frame (world of the controller)
+    so::kine::Kinematics worldFbKine_; // floating base in the user frame (world of the controller)
+    so::kine::Kinematics fbWorldKine_;
+    so::kine::Kinematics worldCoMKine_;
 
     std::string category_ = "Observer_LIPMStabilizerObserverPipeline";
     /* custom list of robots to display */
