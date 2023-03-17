@@ -17,7 +17,7 @@
 namespace mc_state_observation
 {
 MCKineticsObserver::MCKineticsObserver(const std::string & type, double dt)
-: mc_observers::Observer(type, dt), observer_(2, 2)
+: mc_observers::Observer(type, dt), observer_(4, 2)
 {
   observer_.setSamplingTime(dt);
 }
@@ -34,6 +34,7 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   config("verbose", verbose_);
 
   config("withOdometry", withOdometry_);
+  config("withContactsDetection", withContactsDetection_);
   config("withUnmodeledWrench", withUnmodeledWrench_);
   config("withGyroBias", withGyroBias_);
 
@@ -49,46 +50,52 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   config("flexStiffness", flexStiffness_);
   config("flexDamping", flexDamping_);
 
+  zeroPose_.translation().setZero();
+  zeroPose_.rotation().setIdentity();
+  zeroMotion_.linear().setZero();
+  zeroMotion_.angular().setZero();
+
   // Initial State
   statePositionInitCovariance_ = static_cast<so::Vector3>(config("statePositionInitVariance")).matrix().asDiagonal();
-  stateOriInitCovariance_ = Eigen::Matrix3d::Identity() * static_cast<double>(config("stateOriInitVariance"));
-  stateLinVelInitCovariance_ = Eigen::Matrix3d::Identity() * static_cast<double>(config("stateLinVelInitVariance"));
-  stateAngVelInitCovariance_ = Eigen::Matrix3d::Identity() * static_cast<double>(config("stateAngVelInitVariance"));
+  stateOriInitCovariance_ = static_cast<so::Vector3>(config("stateOriInitVariance")).matrix().asDiagonal();
+  stateLinVelInitCovariance_ = static_cast<so::Vector3>(config("stateLinVelInitVariance")).matrix().asDiagonal();
+  stateAngVelInitCovariance_ = static_cast<so::Vector3>(config("stateAngVelInitVariance")).matrix().asDiagonal();
   gyroBiasInitCovariance_.setZero();
   unmodeledWrenchInitCovariance_.setZero();
   contactInitCovarianceFirstContacts_.setZero();
   contactInitCovarianceFirstContacts_.block<3, 3>(0, 0) =
       static_cast<so::Vector3>(config("contactPositionInitVarianceFirstContacts")).matrix().asDiagonal();
   contactInitCovarianceFirstContacts_.block<3, 3>(3, 3) =
-      Eigen::Matrix3d::Identity() * static_cast<double>(config("contactOriInitVarianceFirstContacts"));
+      static_cast<so::Vector3>(config("contactOriInitVarianceFirstContacts")).matrix().asDiagonal();
   contactInitCovarianceFirstContacts_.block<3, 3>(6, 6) =
-      Eigen::Matrix3d::Identity() * static_cast<double>(config("contactForceInitVarianceFirstContacts"));
+      static_cast<so::Vector3>(config("contactForceInitVarianceFirstContacts")).matrix().asDiagonal();
   contactInitCovarianceFirstContacts_.block<3, 3>(9, 9) =
-      Eigen::Matrix3d::Identity() * static_cast<double>(config("contactTorqueInitVarianceFirstContacts"));
+      static_cast<so::Vector3>(config("contactTorqueInitVarianceFirstContacts")).matrix().asDiagonal();
 
   contactInitCovarianceNewContacts_.setZero();
   contactInitCovarianceNewContacts_.block<3, 3>(0, 0) =
       static_cast<so::Vector3>(config("contactPositionInitVarianceNewContacts")).matrix().asDiagonal();
   contactInitCovarianceNewContacts_.block<3, 3>(3, 3) =
-      Eigen::Matrix3d::Identity() * static_cast<double>(config("contactOriInitVarianceNewContacts"));
+      static_cast<so::Vector3>(config("contactOriInitVarianceNewContacts")).matrix().asDiagonal();
   contactInitCovarianceNewContacts_.block<3, 3>(6, 6) =
-      Eigen::Matrix3d::Identity() * static_cast<double>(config("contactForceInitVarianceNewContacts"));
+      static_cast<so::Vector3>(config("contactForceInitVarianceNewContacts")).matrix().asDiagonal();
   contactInitCovarianceNewContacts_.block<3, 3>(9, 9) =
-      Eigen::Matrix3d::Identity() * static_cast<double>(config("contactTorqueInitVarianceNewContacts"));
+      static_cast<so::Vector3>(config("contactTorqueInitVarianceNewContacts")).matrix().asDiagonal();
 
   // Process //
   statePositionProcessCovariance_ =
       static_cast<so::Vector3>(config("statePositionProcessVariance")).matrix().asDiagonal();
-  stateOriProcessCovariance_ = Eigen::Matrix3d::Identity() * static_cast<double>(config("stateOriProcessVariance"));
-  stateLinVelProcessCovariance_ = Eigen::Matrix3d::Identity() * static_cast<double>(config("stateLinVelProcessVariance"));
-  stateAngVelProcessCovariance_ = Eigen::Matrix3d::Identity() * static_cast<double>(config("stateAngVelProcessVariance"));
+  stateOriProcessCovariance_ = static_cast<so::Vector3>(config("stateOriProcessVariance")).matrix().asDiagonal();
+  stateLinVelProcessCovariance_ = static_cast<so::Vector3>(config("stateLinVelProcessVariance")).matrix().asDiagonal();
+  stateAngVelProcessCovariance_ = static_cast<so::Vector3>(config("stateAngVelProcessVariance")).matrix().asDiagonal();
   gyroBiasProcessCovariance_.setZero();
   unmodeledWrenchProcessCovariance_.setZero();
 
   contactProcessCovariance_.setZero();
   contactProcessCovariance_.block<3, 3>(0, 0) =
       static_cast<so::Vector3>(config("contactPositionProcessVariance")).matrix().asDiagonal();
-  contactProcessCovariance_.block<3, 3>(3, 3) = Eigen::Matrix3d::Identity() * static_cast<double>(config("contactOrientationProcessVariance"));
+  contactProcessCovariance_.block<3, 3>(3, 3) =
+      static_cast<so::Vector3>(config("contactOrientationProcessVariance")).matrix().asDiagonal();
   contactProcessCovariance_.block<3, 3>(6, 6) =
       static_cast<so::Vector3>(config("contactForceProcessVariance")).matrix().asDiagonal();
   contactProcessCovariance_.block<3, 3>(9, 9) =
@@ -113,12 +120,12 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   if(withGyroBias_)
   {
     gyroBiasInitCovariance_ = static_cast<so::Vector3>(config("gyroBiasInitVariance")).matrix().asDiagonal();
-    gyroBiasProcessCovariance_ = Eigen::Matrix3d::Identity() * static_cast<double>(config("gyroBiasProcessVariance"));
+    gyroBiasProcessCovariance_ = static_cast<so::Vector3>(config("gyroBiasProcessVariance")).matrix().asDiagonal();
   }
 
   // Sensor //
-  positionSensorCovariance_ = Eigen::Matrix3d::Identity() * static_cast<double>(config("positionSensorVariance"));
-  orientationSensorCoVariance_ = Eigen::Matrix3d::Identity() * static_cast<double>(config("orientationSensorVariance"));
+  positionSensorCovariance_ = static_cast<so::Vector3>(config("positionSensorVariance")).matrix().asDiagonal();
+  orientationSensorCoVariance_ = static_cast<so::Vector3>(config("orientationSensorVariance")).matrix().asDiagonal();
   acceleroSensorCovariance_ = static_cast<so::Vector3>(config("acceleroSensorVariance")).matrix().asDiagonal();
   gyroSensorCovariance_ = static_cast<so::Vector3>(config("gyroSensorVariance")).matrix().asDiagonal();
   contactSensorCovariance_.setZero();
@@ -140,6 +147,9 @@ void MCKineticsObserver::reset(const mc_control::MCController & ctl)
 {
   simStarted_ = false;
   ekfIsSet_ = false;
+
+  // mapIMUs_.setMaxElements(2);
+  // mapContacts_.setMaxElements(4);
 
   const auto & robot = ctl.robot(robot_);
   const auto & realRobot = ctl.realRobot(robot_);
@@ -191,8 +201,12 @@ void MCKineticsObserver::reset(const mc_control::MCController & ctl)
 
   my_robots_ = mc_rbdyn::Robots::make();
   my_robots_->robotCopy(robot, robot.name());
-  ctl.gui()->addElement({"Robots"}, mc_rtc::gui::Robot("MCKineticsobserver", [this]() -> const mc_rbdyn::Robot & { return my_robots_->robot(); }));
-  ctl.gui()->addElement({"Robots"}, mc_rtc::gui::Robot("Real", [&ctl]() -> const mc_rbdyn::Robot & { return ctl.realRobot(); }));
+  my_robots_->robotCopy(realRobot, "inputRobot");
+  ctl.gui()->addElement(
+      {"Robots"},
+      mc_rtc::gui::Robot("MCKineticsobserver", [this]() -> const mc_rbdyn::Robot & { return my_robots_->robot(); }));
+  ctl.gui()->addElement({"Robots"},
+                        mc_rtc::gui::Robot("Real", [&ctl]() -> const mc_rbdyn::Robot & { return ctl.realRobot(); }));
 }
 
 bool MCKineticsObserver::run(const mc_control::MCController & ctl)
@@ -201,7 +215,15 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
 
   const auto & robot = ctl.robot(robot_);
   const auto & realRobot = ctl.realRobot(robot_);
+  auto & inputRobot = my_robots_->robot("inputRobot");
   auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
+
+  inputRobot.mbc() = realRobot.mbc();
+  inputRobot.mb() = realRobot.mb();
+
+  inputRobot.posW(zeroPose_);
+  inputRobot.velW(zeroMotion_);
+  inputRobot.accW(zeroMotion_);
 
   findContacts(ctl); // retrieves the list of contacts and set simStarted to true once a contact is detected
 
@@ -211,61 +233,57 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
     return true;
   }
 
-  updateWorldFbKineAndViceVersa(realRobot);
-
   /** Center of mass (assumes FK, FV and FA are already done) **/
 
-  worldCoMKine_.position = realRobot.com();
-  worldCoMKine_.linVel = realRobot.comVelocity();
-  worldCoMKine_.linAcc = realRobot.comAcceleration();
+  worldCoMKine_.position = inputRobot.com();
+  worldCoMKine_.linVel = inputRobot.comVelocity();
+  worldCoMKine_.linAcc = inputRobot.comAcceleration();
 
-  so::kine::Kinematics fbCoMKinematics = fbWorldKine_ * worldCoMKine_;
+  std::cout << std::endl << "worldCoMKine_ : " << std::endl << worldCoMKine_ << std::endl;
 
-  std::cout << std::endl << "fbCoMKinematics : " << std::endl << fbCoMKinematics << std::endl;
-
-  observer_.setCenterOfMass(fbCoMKinematics.position(), fbCoMKinematics.linVel(), fbCoMKinematics.linAcc());
+  observer_.setCenterOfMass(worldCoMKine_.position(), worldCoMKine_.linVel(), worldCoMKine_.linAcc());
 
   /** Contacts
    * Note that when we use force sensors, this should be the position of the force sensor!
    */
-  updateContacts(robot, realRobot, contactsFound_, logger);
+  updateContacts(robot, inputRobot, contactsFound_, logger);
 
   // std::cout << std::endl << "Time: " << std::endl << observer_.getEKF().getCurrentTime() << std::endl;
 
   /** Accelerometers **/
-  updateIMUs(realRobot);
+  updateIMUs(robot, inputRobot);
 
   /** Inertias **/
   /** TODO : Merge inertias into CoM inertia and/or get it from fd() **/
   // Eigen::Vector6d inertia;
   // Eigen::Matrix3d inertiaAtOrigin =
-  //     sva::inertiaToOrigin(inertiaWaist_.inertia(), mass_, realRobot.com(), Eigen::Matrix3d::Identity().eval());
+  //     sva::inertiaToOrigin(inertiaWaist_.inertia(), mass_, inputRobot.com(), Eigen::Matrix3d::Identity().eval());
   // inertia << inertiaAtOrigin(0, 0), inertiaAtOrigin(1, 1), inertiaAtOrigin(2, 2), inertiaAtOrigin(0, 1),
   //     inertiaAtOrigin(0, 2), inertiaAtOrigin(1, 2);
-  so::Vector3 sigmaWorld = rbd::computeCentroidalMomentum(realRobot.mb(), realRobot.mbc(), realRobot.com()).moment();
   /*
   observer_.setCoMAngularMomentum(
       fbWorldKine.orientation.toMatrix3() * sigmaWorld,
       fbWorldKine.orientation.toMatrix3()
           * ((fbWorldKine_.orientation.toMatrix3() * fbWorldKine.angVel()).cross(sigmaWorld)
-             + rbd::computeCentroidalMomentumDot(realRobot.mb(), realRobot.mbc(), realRobot.com(),
-  realRobot.comVelocity()).moment()));
+             + rbd::computeCentroidalMomentumDot(inputRobot.mb(), inputRobot.mbc(), inputRobot.com(),
+  inputRobot.comVelocity()).moment()));
              */
-  observer_.setCoMAngularMomentum(fbWorldKine_.orientation.toMatrix3() * sigmaWorld);
-  std::cout << std::endl
-            << "diff momentum: " << observer_.getAngularMomentum()() - inertiaWaist_.momentum() << std::endl;
+  observer_.setCoMAngularMomentum(
+      rbd::computeCentroidalMomentum(inputRobot.mb(), inputRobot.mbc(), inputRobot.com()).moment());
+  /*
+  std::cout << std::endl << "diff momentum: " << observer_.getAngularMomentum()() << std::endl;
   std::cout << std::endl
             << "diff momentum_d: "
             << observer_.getAngularMomentumDot()()
                    - (fbWorldKine_.orientation.toMatrix3()
                       * ((worldFbKine_.orientation.toMatrix3() * fbWorldKine_.angVel()).cross(sigmaWorld)
-                         + rbd::computeCentroidalMomentumDot(realRobot.mb(), realRobot.mbc(), realRobot.com(),
-                                                             realRobot.comVelocity())
+                         + rbd::computeCentroidalMomentumDot(inputRobot.mb(), inputRobot.mbc(), inputRobot.com(),
+                                                             inputRobot.comVelocity())
                                .moment()))
             << std::endl;
-
-  observer_.setInertiaMatrix(inertiaWaist_.inertia());
-
+  */
+  observer_.setCoMInertiaMatrix(so::Matrix3(
+      inertiaWaist_.inertia() + observer_.getMass() * so::kine::skewSymmetric2(observer_.getCenterOfMass()())));
   /* Step once, and return result */
 
   if(!ekfIsSet_) // the ekf is not updated, which means that it still has the initial values
@@ -274,7 +292,7 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
   }
 
   res_ = observer_.update();
-
+  std::cout << std::endl << "state : " << std::endl << observer_.getCurrentStateVector() << std::endl;
   if(!ekfIsSet_)
   {
     plotVariablesAfterUpdate(logger);
@@ -286,28 +304,33 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
   robotImuOri_0 =
       so::KineticsObserver::Orientation(
           so::Matrix3(robot.bodyPosW(robot.bodySensor(mapIMUs_.getNameFromNum(0)).parentBody()).rotation().transpose()))
+          .inverse()
           .toQuaternion();
 
   robotImuOri_1 =
       so::KineticsObserver::Orientation(
           so::Matrix3(robot.bodyPosW(robot.bodySensor(mapIMUs_.getNameFromNum(1)).parentBody()).rotation().transpose()))
+          .inverse()
           .toQuaternion();
   realRobotImuOri_0 =
       so::KineticsObserver::Orientation(
           so::Matrix3(
               realRobot.bodyPosW(realRobot.bodySensor(mapIMUs_.getNameFromNum(0)).parentBody()).rotation().transpose()))
+          .inverse()
           .toQuaternion();
 
   realRobotImuOri_1 =
       so::KineticsObserver::Orientation(
           so::Matrix3(
               realRobot.bodyPosW(realRobot.bodySensor(mapIMUs_.getNameFromNum(1)).parentBody()).rotation().transpose()))
+          .inverse()
           .toQuaternion();
 
-  robotFbOri_ = so::KineticsObserver::Orientation(so::Matrix3(robot.posW().rotation().transpose())).toQuaternion();
+  robotFbOri_ =
+      so::KineticsObserver::Orientation(so::Matrix3(robot.posW().rotation().transpose())).inverse().toQuaternion();
 
   realRobotFbOri_ =
-      so::KineticsObserver::Orientation(so::Matrix3(realRobot.posW().rotation().transpose())).toQuaternion();
+      so::KineticsObserver::Orientation(so::Matrix3(realRobot.posW().rotation().transpose())).inverse().toQuaternion();
 
   robotPosImuInFB_0 = robot.bodySensor(mapIMUs_.getNameFromNum(0)).X_b_s().rotation().transpose()
                       * robot.bodySensor(mapIMUs_.getNameFromNum(0)).X_b_s().translation();
@@ -357,13 +380,11 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
   /* Bring velocity of the IMU to the origin of the joint : we want the
    * velocity of joint 0, so stop one before the first joint */
 
-  v_fb_0_.angular() = X_0_fb_.rotation()
-                      * mcko_K_0_fb.angVel(); //  X_0_fb_.rotation() = mcko_K_0_fb.orientation.toMatrix3().transpose()
-  v_fb_0_.linear() = X_0_fb_.rotation() * mcko_K_0_fb.linVel();
+  v_fb_0_.angular() = mcko_K_0_fb.angVel(); //  X_0_fb_.rotation() = mcko_K_0_fb.orientation.toMatrix3().transpose()
+  v_fb_0_.linear() = mcko_K_0_fb.linVel();
 
-  a_fb_0_.angular() = X_0_fb_.rotation()
-                      * mcko_K_0_fb.angAcc(); //  X_0_fb_.rotation() = mcko_K_0_fb.orientation.toMatrix3().transpose()
-  a_fb_0_.linear() = X_0_fb_.rotation() * mcko_K_0_fb.linAcc();
+  a_fb_0_.angular() = mcko_K_0_fb.angAcc(); //  X_0_fb_.rotation() = mcko_K_0_fb.orientation.toMatrix3().transpose()
+  a_fb_0_.linear() = mcko_K_0_fb.linAcc();
 
   /* Updates of the logged variables */
   std::cout << std::endl << "simulating measurements: " << std::endl;
@@ -392,11 +413,12 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
 /// -------------------------Called functions--------------------------
 ///////////////////////////////////////////////////////////////////////
 
-void MCKineticsObserver::updateWorldFbKineAndViceVersa(const mc_rbdyn::Robot & realRobot)
+/*
+void MCKineticsObserver::updateWorldFbKineAndViceVersa(const mc_rbdyn::Robot & inputRobot)
 {
-  const sva::PTransformd & worldFbPose = realRobot.posW();
-  const sva::MotionVecd & worldFbVel = realRobot.velW();
-  const sva::MotionVecd & worldFbAcc = realRobot.accW();
+  const sva::PTransformd & worldFbPose = inputRobot.posW();
+  const sva::MotionVecd & worldFbVel = inputRobot.velW();
+  const sva::MotionVecd & worldFbAcc = inputRobot.accW();
 
   worldFbKine_.position = worldFbPose.translation();
   worldFbKine_.orientation = so::Matrix3(worldFbPose.rotation().transpose());
@@ -407,8 +429,9 @@ void MCKineticsObserver::updateWorldFbKineAndViceVersa(const mc_rbdyn::Robot & r
 
   fbWorldKine_ = worldFbKine_.getInverse();
 }
+*/
 
-void MCKineticsObserver::initObserverStateVector(const mc_rbdyn::Robot & realRobot)
+void MCKineticsObserver::initObserverStateVector(const mc_rbdyn::Robot & robot)
 {
   so::kine::Orientation initOrientation;
   initOrientation.setZeroRotation<so::Quaternion>();
@@ -416,12 +439,12 @@ void MCKineticsObserver::initObserverStateVector(const mc_rbdyn::Robot & realRob
   initStateVector = Eigen::VectorXd::Zero(observer_.getStateSize());
 
   initStateVector.segment<int(observer_.sizePos)>(observer_.posIndex()) =
-      realRobot.com(); // position of the centroid in fb = pos com in world - pos
-                       // fb in world expressed in the frame of fb
+      robot.com(); // position of the centroid in fb = pos com in world - pos
+                   // fb in world expressed in the frame of fb
   initStateVector.segment<int(observer_.sizeOri)>(observer_.oriIndex()) = initOrientation.toVector4();
   initStateVector.segment<int(observer_.sizeLinVel)>(observer_.linVelIndex()) =
-      realRobot.comVelocity(); // position of the centroid in fb = pos com in world -
-                               // pos fb in world expressed in the frame of fb
+      robot.comVelocity(); // position of the centroid in fb = pos com in world -
+                           // pos fb in world expressed in the frame of fb
 
   observer_.setInitWorldCentroidStateVector(initStateVector);
 }
@@ -439,22 +462,18 @@ void MCKineticsObserver::update(mc_rbdyn::Robot & robot)
   robot.velW(v_fb_0_.vector());
 }
 
-void MCKineticsObserver::inputAdditionalWrench(const mc_rbdyn::Robot & realRobot)
+void MCKineticsObserver::inputAdditionalWrench(const mc_rbdyn::Robot & inputRobot, const mc_rbdyn::Robot & measRobot)
 {
   additionalUserResultingForce_.setZero();
   additionalUserResultingMoment_.setZero();
 
-  for(auto wrenchSensor : realRobot.forceSensors()) // if a force sensor is not associated to a contact, its measurement
-                                                    // is given as an input external wrench
+  for(auto wrenchSensor : measRobot.forceSensors()) // if a force sensor is not associated to a contact, its
+                                                    // measurement is given as an input external wrench
   {
     if(isExternalWrench_.at(wrenchSensor.name()) == true)
     {
-      additionalUserResultingForce_ +=
-          fbWorldKine_.orientation.toMatrix3() * wrenchSensor.worldWrenchWithoutGravity(realRobot).force();
-      additionalUserResultingMoment_ +=
-          fbWorldKine_.orientation.toMatrix3()
-          * (wrenchSensor.worldWrenchWithoutGravity(realRobot).moment()
-             + fbWorldKine_.position().cross(wrenchSensor.worldWrenchWithoutGravity(realRobot).force()));
+      additionalUserResultingForce_ += wrenchSensor.worldWrenchWithoutGravity(inputRobot).force();
+      additionalUserResultingMoment_ += wrenchSensor.worldWrenchWithoutGravity(inputRobot).moment();
     }
     else
     {
@@ -464,7 +483,7 @@ void MCKineticsObserver::inputAdditionalWrench(const mc_rbdyn::Robot & realRobot
   observer_.setAdditionalWrench(additionalUserResultingForce_, additionalUserResultingMoment_);
 }
 
-void MCKineticsObserver::updateIMUs(const mc_rbdyn::Robot & realRobot)
+void MCKineticsObserver::updateIMUs(const mc_rbdyn::Robot & measRobot, const mc_rbdyn::Robot & inputRobot)
 {
   unsigned i = 0;
   for(const auto & imu : IMUs_)
@@ -472,7 +491,7 @@ void MCKineticsObserver::updateIMUs(const mc_rbdyn::Robot & realRobot)
     mapIMUs_.insertPair(imu.name());
     /** Position of accelerometer **/
 
-    const sva::PTransformd & bodyImuPose = realRobot.bodySensor(imu.name()).X_b_s();
+    const sva::PTransformd & bodyImuPose = inputRobot.bodySensor(imu.name()).X_b_s();
     so::kine::Kinematics bodyImuKine;
     bodyImuKine.setZero(so::kine::Kinematics::Flags::all);
     bodyImuKine.position = bodyImuPose.translation();
@@ -480,19 +499,19 @@ void MCKineticsObserver::updateIMUs(const mc_rbdyn::Robot & realRobot)
 
     so::kine::Kinematics worldBodyKine;
 
-    worldBodyKine.position = realRobot.mbc().bodyPosW[realRobot.bodyIndexByName(imu.parentBody())].translation();
+    worldBodyKine.position = inputRobot.mbc().bodyPosW[inputRobot.bodyIndexByName(imu.parentBody())].translation();
     worldBodyKine.orientation =
-        so::Matrix3(realRobot.mbc().bodyPosW[realRobot.bodyIndexByName(imu.parentBody())].rotation().transpose());
-    worldBodyKine.linVel = realRobot.mbc().bodyVelW[realRobot.bodyIndexByName(imu.parentBody())].linear();
-    worldBodyKine.angVel = realRobot.mbc().bodyVelW[realRobot.bodyIndexByName(imu.parentBody())].angular();
+        so::Matrix3(inputRobot.mbc().bodyPosW[inputRobot.bodyIndexByName(imu.parentBody())].rotation().transpose());
+    worldBodyKine.linVel = inputRobot.mbc().bodyVelW[inputRobot.bodyIndexByName(imu.parentBody())].linear();
+    worldBodyKine.angVel = inputRobot.mbc().bodyVelW[inputRobot.bodyIndexByName(imu.parentBody())].angular();
     worldBodyKine.linAcc = worldBodyKine.orientation.toMatrix3()
-                           * realRobot.mbc().bodyAccB[realRobot.bodyIndexByName(imu.parentBody())].linear();
+                           * inputRobot.mbc().bodyAccB[inputRobot.bodyIndexByName(imu.parentBody())].linear();
     worldBodyKine.angAcc = worldBodyKine.orientation.toMatrix3()
-                           * realRobot.mbc().bodyAccB[realRobot.bodyIndexByName(imu.parentBody())].angular();
+                           * inputRobot.mbc().bodyAccB[inputRobot.bodyIndexByName(imu.parentBody())].angular();
 
-    so::kine::Kinematics fbImuKine = fbWorldKine_ * (worldBodyKine * bodyImuKine);
-
-    observer_.setIMU(realRobot.bodySensor().linearAcceleration(), realRobot.bodySensor().angularVelocity(),
+    so::kine::Kinematics worldImuKine = worldBodyKine * bodyImuKine;
+    const so::kine::Kinematics fbImuKine = worldImuKine;
+    observer_.setIMU(measRobot.bodySensor().linearAcceleration(), measRobot.bodySensor().angularVelocity(),
                      acceleroSensorCovariance_, gyroSensorCovariance_, fbImuKine, mapIMUs_.getNumFromName(imu.name()));
 
     ++i;
@@ -501,54 +520,180 @@ void MCKineticsObserver::updateIMUs(const mc_rbdyn::Robot & realRobot)
 
 std::set<std::string> MCKineticsObserver::findContacts(const mc_control::MCController & ctl)
 {
-  const auto & realRobot = ctl.realRobot(robot_);
+  const auto & measRobot = ctl.robot(robot_);
+  auto & inputRobot = my_robots_->robot("inputRobot");
+
   contactsFound_.clear();
 
-  for(const auto & contact : ctl.solver().contacts())
+  if(withContactsDetection_)
   {
-    // std::cout << std::endl << contact.toStr() << std::endl;
-    if(ctl.robots().robot(contact.r1Index()).name() == realRobot.name())
+    for(const auto & contact : ctl.solver().contacts())
     {
-      if(ctl.robots().robot(contact.r2Index()).mb().joint(0).type() == rbd::Joint::Fixed)
+      // std::cout << std::endl << contact.toStr() << std::endl;
+      if(ctl.robots().robot(contact.r1Index()).name() == measRobot.name())
       {
-        const auto & ifs = realRobot.indirectSurfaceForceSensor(contact.r1Surface()->name());
-
-        if(ifs.wrenchWithoutGravity(realRobot).force().z()
-           > ctl.realRobot(robot_).mass() * so::cst::gravityConstant * 0.05)
+        if(ctl.robots().robot(contact.r2Index()).mb().joint(0).type() == rbd::Joint::Fixed)
         {
-          contactsFound_.insert(contact.r1Surface()->name());
-          isExternalWrench_.at(ifs.name()) =
-              false; // the measurement of the sensor is not passed as an input external wrench
+          const auto & ifs = measRobot.indirectSurfaceForceSensor(contact.r1Surface()->name());
+
+          if(ifs.wrenchWithoutGravity(measRobot).force().z() > measRobot.mass() * so::cst::gravityConstant * 0.05)
+          {
+            contactsFound_.insert(ifs.name());
+            isExternalWrench_.at(ifs.name()) =
+                false; // the measurement of the sensor is not passed as an input external wrench
+          }
         }
       }
-    }
-    else if(ctl.robots().robot(contact.r2Index()).name() == realRobot.name())
-    {
-      if(ctl.robots().robot(contact.r1Index()).mb().joint(0).type() == rbd::Joint::Fixed)
+      else if(ctl.robots().robot(contact.r2Index()).name() == measRobot.name())
       {
-        const auto & ifs = realRobot.indirectSurfaceForceSensor(contact.r2Surface()->name());
-        if(ifs.wrenchWithoutGravity(realRobot).force().z()
-           > ctl.realRobot(robot_).mass() * so::cst::gravityConstant * 0.05)
+        if(ctl.robots().robot(contact.r1Index()).mb().joint(0).type() == rbd::Joint::Fixed)
         {
-          contactsFound_.insert(contact.r2Surface()->name());
-          isExternalWrench_.at(ifs.name()) =
-              false; // the measurement of the sensor is not passed as an input external wrench
+          const auto & ifs = measRobot.indirectSurfaceForceSensor(contact.r2Surface()->name());
+          if(ifs.wrenchWithoutGravity(measRobot).force().z() > measRobot.mass() * so::cst::gravityConstant * 0.05)
+          {
+            contactsFound_.insert(ifs.name());
+            isExternalWrench_.at(ifs.name()) =
+                false; // the measurement of the sensor is not passed as an input external wrench
+          }
         }
       }
     }
   }
-  inputAdditionalWrench(realRobot);
+  else
+  {
+    for(const auto & forceSensor : measRobot.forceSensors())
+    {
+      if(forceSensor.wrenchWithoutGravity(measRobot).force().z() > measRobot.mass() * so::cst::gravityConstant * 0.3)
+      {
+        contactsFound_.insert(forceSensor.name());
+        isExternalWrench_.at(forceSensor.name()) =
+            false; // the measurement of the sensor is not passed as an input external wrench
+      }
+    }
+  }
+
+  inputAdditionalWrench(inputRobot, measRobot);
   if(!contactsFound_.empty() && !simStarted_) // we start the observation once a contact has been detected.
   {
     simStarted_ = true;
-    initObserverStateVector(realRobot);
+    initObserverStateVector(measRobot);
   }
 
   return contactsFound_;
 }
 
+void MCKineticsObserver::updateContact(const mc_rbdyn::Robot & robot,
+                                       const mc_rbdyn::Robot & inputRobot,
+                                       const bool & alreadySet,
+                                       const mc_rbdyn::ForceSensor forceSensor,
+                                       mc_rtc::Logger & logger)
+{
+  contactWrenchVector_.segment<3>(0) = forceSensor.wrenchWithoutGravity(robot).force(); // retrieving the force
+  contactWrenchVector_.segment<3>(3) = forceSensor.wrenchWithoutGravity(robot).moment(); // retrieving the torque
+
+  const sva::PTransformd & bodyContactPoseRobot = forceSensor.X_p_f();
+  so::kine::Kinematics bodyContactKine;
+  bodyContactKine.setZero(so::kine::Kinematics::Flags::all);
+  bodyContactKine.position = bodyContactPoseRobot.translation();
+  bodyContactKine.orientation = so::Matrix3(bodyContactPoseRobot.rotation().transpose());
+  std::cout << std::endl << "bodyContactKine : " << std::endl << bodyContactKine << std::endl;
+
+  so::kine::Kinematics worldBodyKineInputRobot;
+
+  worldBodyKineInputRobot.position =
+      inputRobot.mbc().bodyPosW[inputRobot.bodyIndexByName(forceSensor.parentBody())].translation();
+  worldBodyKineInputRobot.orientation = so::Matrix3(
+      inputRobot.mbc().bodyPosW[inputRobot.bodyIndexByName(forceSensor.parentBody())].rotation().transpose());
+  worldBodyKineInputRobot.linVel =
+      inputRobot.mbc().bodyVelW[inputRobot.bodyIndexByName(forceSensor.parentBody())].linear();
+  worldBodyKineInputRobot.angVel =
+      inputRobot.mbc().bodyVelW[inputRobot.bodyIndexByName(forceSensor.parentBody())].angular();
+  worldBodyKineInputRobot.linAcc =
+      worldBodyKineInputRobot.orientation.toMatrix3()
+      * inputRobot.mbc().bodyAccB[inputRobot.bodyIndexByName(forceSensor.parentBody())].linear();
+  worldBodyKineInputRobot.angAcc =
+      worldBodyKineInputRobot.orientation.toMatrix3()
+      * inputRobot.mbc().bodyAccB[inputRobot.bodyIndexByName(forceSensor.parentBody())].angular();
+
+  so::kine::Kinematics worldContactKineInputRobot = worldBodyKineInputRobot * bodyContactKine;
+  const so::kine::Kinematics & fbContactKineInputRobot = worldContactKineInputRobot;
+
+  sva::PTransformd contactPos_ = forceSensor.X_p_f();
+  sva::PTransformd X_0_p = inputRobot.bodyPosW(forceSensor.parentBody());
+  sva::PTransformd contactPosW = contactPos_ * X_0_p;
+
+  std::cout << std::endl << "contactPosW : " << std::endl << contactPosW.translation() << std::endl;
+  std::cout << std::endl
+            << "worldContactKineInputRobot pos: " << std::endl
+            << worldContactKineInputRobot.position() << std::endl;
+
+  if(alreadySet) // checks if the contact already exists, if yes, it is updated
+  {
+    observer_.updateContactWithWrenchSensor(contactWrenchVector_, contactSensorCovariance_, fbContactKineInputRobot,
+                                            mapContacts_.getNumFromName(forceSensor.name()));
+  }
+  else // the contact still doesn't exist, it is added to the observer
+  {
+    so::kine::Kinematics
+        worldContactKineRef; // reference of the contact in the control world frame using the control robot
+
+    const int & numContact = mapContacts_.getNumFromName(forceSensor.name());
+    /* robot for the kinematics in the world frame */
+
+    if(withOdometry_)
+    {
+      const so::Vector3 & contactForceMeas = contactWrenchVector_.segment<3>(0);
+      const so::Vector3 & contactTorqueMeas = contactWrenchVector_.segment<3>(3);
+      const so::kine::Kinematics worldContactKine = observer_.getGlobalKinematicsOf(fbContactKineInputRobot);
+      worldContactKineRef.position = (worldContactKine.orientation.toMatrix3() * contactForceMeas
+                                      + flexStiffness_.linear().asDiagonal() * worldContactKine.position()
+                                      + flexStiffness_.angular().asDiagonal() * worldContactKine.linVel())
+                                         .cwiseQuotient(flexStiffness_.linear());
+
+      so::Vector3 vecS = (2 * worldContactKine.orientation.toMatrix3().transpose()
+                          * (contactTorqueMeas
+                             + worldContactKine.orientation.toMatrix3() * flexDamping_.angular().asDiagonal()
+                                   * worldContactKine.angVel()))
+                             .cwiseQuotient(flexStiffness_.angular());
+
+      worldContactKineRef.orientation =
+          so::Matrix3(so::kine::skewSymmetric(vecS) * worldContactKine.orientation.toMatrix3());
+      std::cout << std::endl << "worldContactKineRef : " << std::endl << worldContactKineRef << std::endl;
+    }
+    else
+    {
+      so::kine::Kinematics worldBodyKineRobot;
+      worldBodyKineRobot.position = robot.mbc().bodyPosW[robot.bodyIndexByName(forceSensor.parentBody())].translation();
+      worldBodyKineRobot.orientation =
+          so::Matrix3(robot.mbc().bodyPosW[robot.bodyIndexByName(forceSensor.parentBody())].rotation().transpose());
+
+      std::cout << std::endl << "forceSensor.name() : " << std::endl << forceSensor.name() << std::endl;
+      std::cout << std::endl << "forceSensor.parentBody() : " << std::endl << forceSensor.parentBody() << std::endl;
+      std::cout << std::endl << "worldBodyKineRobot : " << std::endl << worldBodyKineRobot << std::endl;
+      worldContactKineRef = worldBodyKineRobot * bodyContactKine;
+    }
+
+    if(observer_.getNumberOfContacts() > 0) // checks if another contact is already set
+    {
+      observer_.addContact(worldContactKineRef, contactInitCovarianceNewContacts_, contactProcessCovariance_,
+                           numContact, flexStiffness_.linear().asDiagonal(), flexDamping_.linear().asDiagonal(),
+                           flexStiffness_.angular().asDiagonal(), flexDamping_.angular().asDiagonal());
+    }
+    else
+    {
+      observer_.addContact(worldContactKineRef, contactInitCovarianceFirstContacts_, contactProcessCovariance_,
+                           numContact, flexStiffness_.linear().asDiagonal(), flexDamping_.linear().asDiagonal(),
+                           flexStiffness_.angular().asDiagonal(), flexDamping_.angular().asDiagonal());
+    }
+    observer_.updateContactWithWrenchSensor(contactWrenchVector_,
+                                            contactSensorCovariance_, // contactInitCovariance_.block<6,6>(6,6)
+                                            fbContactKineInputRobot, numContact);
+    addContactLogEntries(logger, numContact);
+  }
+}
+
 void MCKineticsObserver::updateContacts(const mc_rbdyn::Robot & robot,
-                                        const mc_rbdyn::Robot & realRobot,
+                                        const mc_rbdyn::Robot & inputRobot,
                                         std::set<std::string> updatedContacts,
                                         mc_rtc::Logger & logger)
 {
@@ -557,129 +702,21 @@ void MCKineticsObserver::updateContacts(const mc_rbdyn::Robot & robot,
     mc_rtc::log::info("[{}] Contacts changed: {}", name(), mc_rtc::io::to_string(updatedContacts));
   contactPositions_.clear();
 
+  bool contactAlreadySet;
   for(const auto & updatedContact : updatedContacts)
   {
-    /* realRobot for the kinematics in the floating base frame */
-    const auto & ifsRealRobot = realRobot.indirectSurfaceForceSensor(updatedContact);
-
-    contactWrenchVector_.segment<3>(0) = ifsRealRobot.wrenchWithoutGravity(realRobot).force(); // retrieving the force
-    contactWrenchVector_.segment<3>(3) = ifsRealRobot.wrenchWithoutGravity(realRobot).moment(); // retrieving the torque
-
-    const sva::PTransformd & bodyContactPoseRealRobot = ifsRealRobot.X_p_f();
-    so::kine::Kinematics bodyContactKineRealRobot;
-    bodyContactKineRealRobot.setZero(so::kine::Kinematics::Flags::all);
-    bodyContactKineRealRobot.position = bodyContactPoseRealRobot.translation();
-    bodyContactKineRealRobot.orientation = so::Matrix3(bodyContactPoseRealRobot.rotation().transpose());
-
-    so::kine::Kinematics worldBodyKineRealRobot;
-
-    worldBodyKineRealRobot.position =
-        realRobot.mbc().bodyPosW[realRobot.bodyIndexByName(ifsRealRobot.parentBody())].translation();
-    worldBodyKineRealRobot.orientation = so::Matrix3(
-        realRobot.mbc().bodyPosW[realRobot.bodyIndexByName(ifsRealRobot.parentBody())].rotation().transpose());
-    worldBodyKineRealRobot.linVel =
-        realRobot.mbc().bodyVelW[realRobot.bodyIndexByName(ifsRealRobot.parentBody())].linear();
-    worldBodyKineRealRobot.angVel =
-        realRobot.mbc().bodyVelW[realRobot.bodyIndexByName(ifsRealRobot.parentBody())].angular();
-    worldBodyKineRealRobot.linAcc =
-        worldBodyKineRealRobot.orientation.toMatrix3()
-        * realRobot.mbc().bodyAccB[realRobot.bodyIndexByName(ifsRealRobot.parentBody())].linear();
-    worldBodyKineRealRobot.angAcc =
-        worldBodyKineRealRobot.orientation.toMatrix3()
-        * realRobot.mbc().bodyAccB[realRobot.bodyIndexByName(ifsRealRobot.parentBody())].angular();
-
-    so::kine::Kinematics worldContactKineRealRobot = worldBodyKineRealRobot * bodyContactKineRealRobot;
-    so::kine::Kinematics fbContactKineRealRobot = fbWorldKine_ * worldContactKineRealRobot;
-
-    sva::PTransformd contactPos_ = ifsRealRobot.X_p_f();
-    sva::PTransformd X_0_p = realRobot.bodyPosW(ifsRealRobot.parentBody());
-    sva::PTransformd contactPosW = contactPos_ * X_0_p;
-
-    std::cout << std::endl << "contactPosW : " << std::endl << contactPosW.translation() << std::endl;
-    std::cout << std::endl
-              << "worldContactKineRealRobot pos: " << std::endl
-              << worldContactKineRealRobot.position() << std::endl;
-
+    contactAlreadySet = false;
     if(oldContacts_.find(updatedContact)
        != oldContacts_.end()) // checks if the contact already exists, if yes, it is updated
     {
-      observer_.updateContactWithWrenchSensor(contactWrenchVector_, contactSensorCovariance_, fbContactKineRealRobot,
-                                              mapContacts_.getNumFromName(updatedContact));
+      contactAlreadySet = true;
     }
-    else // the contact still doesn't exist, it is added to the observer
+    else
     {
-      so::kine::Kinematics
-          worldContactKineRef; // reference of the contact in the control world frame using the control robot
-      mapContacts_.insertPair(updatedContact);
-      int numContact = mapContacts_.getNumFromName(updatedContact);
-      /* robot for the kinematics in the world frame */
-
-      const auto & ifsRobot = robot.indirectSurfaceForceSensor(updatedContact);
-      if(withOdometry_)
-      {
-        const so::Vector3 & contactForceMeas = contactWrenchVector_.segment<3>(0);
-        const so::Vector3 & contactTorqueMeas = contactWrenchVector_.segment<3>(3);
-        const so::kine::Kinematics worldContactKine = observer_.getGlobalKinematicsOf(fbContactKineRealRobot);
-        worldContactKineRef.position = (worldContactKine.orientation.toMatrix3() * contactForceMeas
-                                        + flexStiffness_.linear().asDiagonal() * worldContactKine.position()
-                                        + flexStiffness_.angular().asDiagonal() * worldContactKine.linVel())
-                                           .cwiseQuotient(flexStiffness_.linear());
-        /*
-        worldContactKineRef.position =
-            (contactForceMeas + flexStiffness_.linear().asDiagonal() * worldContactKine.position()
-             + flexDamping_.linear().asDiagonal() * worldContactKine.linVel())
-                .cwiseQuotient(flexDamping_.linear());
-        */
-        so::Vector3 vecS = (2 * worldContactKine.orientation.toMatrix3().transpose()
-                            * (contactTorqueMeas
-                               + worldContactKine.orientation.toMatrix3() * flexDamping_.angular().asDiagonal()
-                                     * worldContactKine.angVel()))
-                               .cwiseQuotient(flexStiffness_.angular());
-
-        worldContactKineRef.orientation =
-            so::Matrix3(so::kine::skewSymmetric(vecS) * worldContactKine.orientation.toMatrix3());
-      }
-      else
-      {
-        const sva::PTransformd & bodyContactPoseRobot = ifsRobot.X_p_f();
-        so::kine::Kinematics bodyContactKineRobot;
-        bodyContactKineRobot.setZero(so::kine::Kinematics::Flags::all);
-        bodyContactKineRobot.position = bodyContactPoseRobot.translation();
-        bodyContactKineRobot.orientation = so::Matrix3(bodyContactPoseRobot.rotation().transpose());
-
-        so::kine::Kinematics worldBodyKineRobot;
-        worldBodyKineRobot.position = robot.mbc().bodyPosW[robot.bodyIndexByName(ifsRobot.parentBody())].translation();
-        worldBodyKineRobot.orientation =
-            so::Matrix3(robot.mbc().bodyPosW[robot.bodyIndexByName(ifsRobot.parentBody())].rotation().transpose());
-        /*
-        worldBodyKineRobot.linVel = robot.mbc().bodyVelW[robot.bodyIndexByName(ifsRobot.parentBody())].linear();
-        worldBodyKineRobot.angVel = robot.mbc().bodyVelW[robot.bodyIndexByName(ifsRobot.parentBody())].angular();
-        worldBodyKineRobot.linAcc = worldBodyKineRobot.orientation.toMatrix3()
-                                    * robot.mbc().bodyAccB[robot.bodyIndexByName(ifsRobot.parentBody())].linear();
-        worldBodyKineRobot.angAcc = worldBodyKineRobot.orientation.toMatrix3()
-                                    * robot.mbc().bodyAccB[robot.bodyIndexByName(ifsRobot.parentBody())].angular();
-        */
-
-        worldContactKineRef = worldBodyKineRobot * bodyContactKineRobot;
-      }
-
-      if(observer_.getNumberOfContacts() > 0) // checks if another contact is already set
-      {
-        observer_.addContact(worldContactKineRef, contactInitCovarianceNewContacts_, contactProcessCovariance_,
-                             numContact, flexStiffness_.linear().asDiagonal(), flexDamping_.linear().asDiagonal(),
-                             flexStiffness_.angular().asDiagonal(), flexDamping_.angular().asDiagonal());
-      }
-      else
-      {
-            observer_.addContact(worldContactKineRef, contactInitCovarianceFirstContacts_, contactProcessCovariance_,
-                                 numContact, flexStiffness_.linear().asDiagonal(), flexDamping_.linear().asDiagonal(),
-                                 flexStiffness_.angular().asDiagonal(), flexDamping_.angular().asDiagonal());
-      }
-      observer_.updateContactWithWrenchSensor(contactWrenchVector_,
-                                              contactSensorCovariance_, // contactInitCovariance_.block<6,6>(6,6)
-                                              fbContactKineRealRobot, numContact);
-      addContactLogEntries(logger, numContact);
+      mapContacts_.insertPair(robot.forceSensor(updatedContact).name());
     }
+
+    updateContact(robot, inputRobot, contactAlreadySet, robot.forceSensor(updatedContact), logger);
   }
   std::set<std::string>
       diffs; // List of the contact that were available on last iteration but are not set anymore on the current one
@@ -716,11 +753,9 @@ void MCKineticsObserver::flexDamping(const sva::MotionVecd & damping)
   flexDamping_ = damping;
 }
 
-
 ///////////////////////////////////////////////////////////////////////
 /// -------------------------------Logs--------------------------------
 ///////////////////////////////////////////////////////////////////////
-
 
 void MCKineticsObserver::addToLogger(const mc_control::MCController &,
                                      mc_rtc::Logger & logger,
@@ -771,7 +806,8 @@ void MCKineticsObserver::plotVariablesBeforeUpdate(mc_rtc::Logger & logger)
   logger.addLogEntry(category_ + "_globalWorldCentroidState_linAccW",
                      [this]() -> Eigen::Vector3d { return globalCentroidKinematics_.linAcc(); });
   logger.addLogEntry(category_ + "_globalWorldCentroidState_oriW",
-                     [this]() -> Eigen::Vector3d { return globalCentroidKinematics_.orientation.toRotationVector(); });
+                     [this]() -> Eigen::Quaternion<double>
+                     { return globalCentroidKinematics_.orientation.inverse().toQuaternion(); });
   logger.addLogEntry(category_ + "_globalWorldCentroidState_angVelW",
                      [this]() -> Eigen::Vector3d { return globalCentroidKinematics_.angVel(); });
   logger.addLogEntry(category_ + "_globalWorldCentroidState_angAccW",
@@ -947,6 +983,37 @@ void MCKineticsObserver::plotVariablesAfterUpdate(mc_rtc::Logger & logger)
                        });
   }
 
+  /* Plots of the inputs */
+
+  logger.addLogEntry(category_ + "_inputs_angularMomentum",
+                     [this]() -> Eigen::Vector3d { return observer_.getAngularMomentum()(); });
+  logger.addLogEntry(category_ + "_inputs_angularMomentumDot",
+                     [this]() -> Eigen::Vector3d { return observer_.getAngularMomentumDot()(); });
+  logger.addLogEntry(category_ + "_inputs_com", [this]() -> Eigen::Vector3d { return observer_.getCenterOfMass()(); });
+  logger.addLogEntry(category_ + "_inputs_comDot",
+                     [this]() -> Eigen::Vector3d { return observer_.getCenterOfMassDot()(); });
+  logger.addLogEntry(category_ + "_inputs_comDotDot",
+                     [this]() -> Eigen::Vector3d { return observer_.getCenterOfMassDotDot()(); });
+  logger.addLogEntry(category_ + "_inputs_inertiaMatrix",
+                     [this]() -> Eigen::Vector6d
+                     {
+                       so::Vector6 inertia;
+                       inertia.segment<3>(0) = observer_.getInertiaMatrix()().diagonal();
+                       inertia.segment<2>(3) = observer_.getInertiaMatrix()().block<1, 2>(0, 1);
+                       inertia(5) = observer_.getInertiaMatrix()()(1, 2);
+                       return inertia;
+                     });
+
+  logger.addLogEntry(category_ + "_inputs_inertiaMatrixDot",
+                     [this]() -> Eigen::Vector6d
+                     {
+                       so::Vector6 inertiaDot;
+                       inertiaDot.segment<3>(0) = observer_.getInertiaMatrixDot()().diagonal();
+                       inertiaDot.segment<2>(3) = observer_.getInertiaMatrixDot()().block<1, 2>(0, 1);
+                       inertiaDot(5) = observer_.getInertiaMatrixDot()()(1, 2);
+                       return inertiaDot;
+                     });
+
   /* Plots of the measurements */
   {
     for(const auto & imu : IMUs_)
@@ -1000,10 +1067,6 @@ void MCKineticsObserver::plotVariablesAfterUpdate(mc_rtc::Logger & logger)
       logger.addLogEntry(category_ + "_debug_IMU_linearIMUAcc" + imu.name(),
                          [this, imu]() -> Eigen::Vector3d
                          { return predictedWorldIMUsLinAcc_.at(mapIMUs_.getNumFromName(imu.name())); });
-
-      logger.addLogEntry(category_ + "_debug_IMU_linearIMUAcc" + imu.name(),
-                         [this, imu]() -> Eigen::Vector3d
-                         { return predictedWorldIMUsLinAcc_.at(mapIMUs_.getNumFromName(imu.name())); });
     }
   }
 
@@ -1030,6 +1093,23 @@ void MCKineticsObserver::plotVariablesAfterUpdate(mc_rtc::Logger & logger)
                        return observer_.getEKF().getInnovation().segment<int(observer_.sizeAngVelTangent)>(
                            observer_.angVelIndexTangent());
                      });
+  logger.addLogEntry(category_ + "_debug_worldInputRobotKine_position",
+                     [this]() -> Eigen::Vector3d { return my_robots_->robot("inputRobot").posW().translation(); });
+  logger.addLogEntry(category_ + "_debug_worldInputRobotKine_orientation",
+                     [this]() -> Eigen::Quaternion<double>
+                     {
+                       return so::kine::Orientation(so::Matrix3(my_robots_->robot("inputRobot").posW().rotation()))
+                           .inverse()
+                           .toQuaternion();
+                     });
+  logger.addLogEntry(category_ + "_debug_worldInputRobotKine_linVel",
+                     [this]() -> Eigen::Vector3d { return my_robots_->robot("inputRobot").velW().linear(); });
+  logger.addLogEntry(category_ + "_debug_worldInputRobotKine_angVel",
+                     [this]() -> Eigen::Vector3d { return my_robots_->robot("inputRobot").velW().angular(); });
+  logger.addLogEntry(category_ + "_debug_worldInputRobotKine_linAcc",
+                     [this]() -> Eigen::Vector3d { return my_robots_->robot("inputRobot").accW().linear(); });
+  logger.addLogEntry(category_ + "_debug_worldInputRobotKine_angAcc",
+                     [this]() -> Eigen::Vector3d { return my_robots_->robot("inputRobot").accW().angular(); });
 }
 
 void MCKineticsObserver::addContactLogEntries(mc_rtc::Logger & logger, const int & numContact)
@@ -1044,13 +1124,14 @@ void MCKineticsObserver::addContactLogEntries(mc_rtc::Logger & logger, const int
                        });
     logger.addLogEntry(category_ + "_globalWorldCentroidState_contact_" + mapContacts_.getNameFromNum(numContact)
                            + "_orientation",
-                       [this, numContact]() -> Eigen::Vector3d
+                       [this, numContact]() -> Eigen::Quaternion<double>
                        {
                          so::kine::Orientation ori;
                          return ori
                              .fromVector4(observer_.getCurrentStateVector().segment<int(observer_.sizeOri)>(
                                  observer_.contactOriIndex(numContact)))
-                             .toRotationVector();
+                             .inverse()
+                             .toQuaternion();
                        });
     logger.addLogEntry(category_ + "_globalWorldCentroidState_contact_" + mapContacts_.getNameFromNum(numContact)
                            + "_forces",
@@ -1116,13 +1197,14 @@ void MCKineticsObserver::addContactLogEntries(mc_rtc::Logger & logger, const int
                        });
     logger.addLogEntry(category_ + "_predictedGlobalCentroidKinematics_contact_"
                            + mapContacts_.getNameFromNum(numContact) + "_orientation",
-                       [this, numContact]() -> Eigen::Vector3d
+                       [this, numContact]() -> Eigen::Quaternion<double>
                        {
                          so::kine::Orientation ori;
                          return ori
                              .fromVector4(predictedGlobalCentroidState_.segment<int(observer_.sizeOri)>(
                                  observer_.contactOriIndex(numContact)))
-                             .toRotationVector();
+                             .inverse()
+                             .toQuaternion();
                        });
     logger.addLogEntry(category_ + "_predictedGlobalCentroidKinematics_contact_"
                            + mapContacts_.getNameFromNum(numContact) + "_forces",
@@ -1144,13 +1226,14 @@ void MCKineticsObserver::addContactLogEntries(mc_rtc::Logger & logger, const int
                              observer_.contactPosIndexTangent(numContact));
                        });
     logger.addLogEntry(category_ + "_innovation_contact_" + mapContacts_.getNameFromNum(numContact) + "_orientation",
-                       [this, numContact]() -> Eigen::Vector3d
+                       [this, numContact]() -> Eigen::Quaternion<double>
                        {
                          so::kine::Orientation ori;
                          return ori
                              .fromVector4(observer_.getEKF().getInnovation().segment<int(observer_.sizeOri)>(
                                  observer_.contactOriIndexTangent(numContact)))
-                             .toRotationVector();
+                             .inverse()
+                             .toQuaternion();
                        });
     logger.addLogEntry(category_ + "_innovation_contact_" + mapContacts_.getNameFromNum(numContact) + "_forces",
                        [this, numContact]() -> Eigen::Vector3d
@@ -1231,10 +1314,10 @@ void MCKineticsObserver::addContactLogEntries(mc_rtc::Logger & logger, const int
                        [this, numContact]() -> Eigen::Vector3d
                        { return observer_.getWorldContactInputRefPose(numContact).position(); });
 
-    logger.addLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
-                           + "_inputWorldRef_orientation",
-                       [this, numContact]() -> Eigen::Quaternion<double>
-                       { return observer_.getWorldContactInputRefPose(numContact).orientation.toQuaternion(); });
+    logger.addLogEntry(
+        category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact) + "_inputWorldRef_orientation",
+        [this, numContact]() -> Eigen::Quaternion<double>
+        { return observer_.getWorldContactInputRefPose(numContact).orientation.inverse().toQuaternion(); });
 
     logger.addLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
                            + "_inputCentroidContactKine_position",
@@ -1243,8 +1326,9 @@ void MCKineticsObserver::addContactLogEntries(mc_rtc::Logger & logger, const int
 
     logger.addLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
                            + "_inputCentroidContactKine_orientation",
-                       [this, numContact]() -> Eigen::Quaternion<double>
-                       { return observer_.getCentroidContactInputPose(numContact).orientation.toQuaternion(); });
+                       [this, numContact]() -> Eigen::Quaternion<double> {
+                         return observer_.getCentroidContactInputPose(numContact).orientation.inverse().toQuaternion();
+                       });
 
     logger.addLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
                            + "_worldContactPoseFromCentroid_position",
@@ -1254,7 +1338,7 @@ void MCKineticsObserver::addContactLogEntries(mc_rtc::Logger & logger, const int
     logger.addLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
                            + "_worldContactPoseFromCentroid_orientation",
                        [this, numContact]() -> Eigen::Quaternion<double>
-                       { return observer_.getWorldContactPose(numContact).orientation.toQuaternion(); });
+                       { return observer_.getWorldContactPose(numContact).orientation.inverse().toQuaternion(); });
 
     logger.addLogEntry(
         category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact) + "_inputUserContactKine_position",
@@ -1263,7 +1347,7 @@ void MCKineticsObserver::addContactLogEntries(mc_rtc::Logger & logger, const int
     logger.addLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
                            + "_inputUserContactKine_orientation",
                        [this, numContact]() -> Eigen::Quaternion<double>
-                       { return observer_.getUserContactInputPose(numContact).orientation.toQuaternion(); });
+                       { return observer_.getUserContactInputPose(numContact).orientation.inverse().toQuaternion(); });
   }
 }
 

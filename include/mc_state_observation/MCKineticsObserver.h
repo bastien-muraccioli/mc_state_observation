@@ -29,36 +29,40 @@ namespace mc_state_observation
     */
 
   public:
-    
-    inline int getNumFromName(std::string name)
+    inline const int & getNumFromName(std::string name)
     {
-      BOOST_ASSERT(mapNameNum.find(name) != mapNameNum.end() && "This id isn't attributed");
-      return mapNameNum.find(name)->second;
+      BOOST_ASSERT(false && "This id isn't attributed");
+      return map_.find(name)->second;
     }
 
-    inline std::string getNameFromNum(int num)
+    inline const std::string & getNameFromNum(int num)
     {
-      for(auto &it : mapNameNum) 
-      { 
-        if(it.second == num) 
-        { 
-          return it.first;
-        } 
-      }
       BOOST_ASSERT(false && "This id isn't attributed");
+      return insertOrder.at(num);
+    }
+
+    inline const std::vector<std::string> & getList()
+    {
+      return insertOrder;
     }
 
     inline void insertPair(std::string name) {
-      if (mapNameNum.find(name) != mapNameNum.end()) return;
-      
-      mapNameNum.insert(std::pair<std::string,int>(name, num));
+      if(map_.find(name) != map_.end()) return;
+      insertOrder.push_back(name);
+      map_.insert(std::make_pair(name, num));
       num++;
     }
-    
-  private: 
-    std::map<std::string,int> mapNameNum;
-    int num = 0;
 
+    inline void setMaxElements(int maxElements)
+    {
+      // maxElements_ = maxElements_;
+    }
+
+  private:
+    std::vector<std::string> insertOrder;
+    std::map<std::string, int> map_;
+    // int maxElements_ = 4;
+    int num = 0;
   };
 
   struct MCKineticsObserver : public mc_observers::Observer
@@ -77,13 +81,13 @@ namespace mc_state_observation
 protected:
   void update(mc_rbdyn::Robot & robot);
 
-  void updateWorldFbKineAndViceVersa(const mc_rbdyn::Robot & robot);
+  // void updateWorldFbKineAndViceVersa(const mc_rbdyn::Robot & robot);
 
   void initObserverStateVector(const mc_rbdyn::Robot & robot);
 
-  void inputAdditionalWrench(const mc_rbdyn::Robot & robot);
+  void inputAdditionalWrench(const mc_rbdyn::Robot & inputRobot, const mc_rbdyn::Robot & measRobot);
 
-  void updateIMUs(const mc_rbdyn::Robot & robot);
+  void updateIMUs(const mc_rbdyn::Robot & measRobot, const mc_rbdyn::Robot & inputRobot);
 
   /*! \brief Add observer from logger
    *
@@ -127,6 +131,11 @@ protected:
                       const mc_rbdyn::Robot & realRobot,
                       std::set<std::string> contacts,
                       mc_rtc::Logger & logger);
+  void updateContact(const mc_rbdyn::Robot & robot,
+                     const mc_rbdyn::Robot & inputRobot,
+                     const bool & alreadySet,
+                     const mc_rbdyn::ForceSensor forceSensor,
+                     mc_rtc::Logger & logger);
 
 protected:
   std::string robot_ = "";
@@ -269,8 +278,11 @@ public:
     }
 
   private:
-    so::kine::Kinematics worldFbKine_; // floating base in the user frame (world of the controller)
-    so::kine::Kinematics fbWorldKine_;
+    sva::PTransformd zeroPose_;
+    sva::MotionVecd zeroMotion_;
+
+    // so::kine::Kinematics worldFbKine_; // floating base in the user frame (world of the controller)
+    // so::kine::Kinematics fbWorldKine_;
     so::kine::Kinematics worldCoMKine_;
 
     std::string category_ = "Observer_LIPMStabilizerObserverPipeline";
@@ -331,10 +343,11 @@ public:
     sva::MotionVecd flexDamping_;
 
     bool withOdometry_ = false;
+    bool withContactsDetection_ = true;
     bool withUnmodeledWrench_ = true;
     bool withGyroBias_ = true;
 
-    int maxContacts_ = 2;
+    int maxContacts_ = 4;
     int maxIMUs_ = 2;
 
     so::Quaternion robotImuOri_0;
