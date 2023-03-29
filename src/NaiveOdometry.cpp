@@ -29,6 +29,7 @@ void NaiveOdometry::configure(const mc_control::MCController & ctl, const mc_rtc
   config("verbose", verbose_);
 
   config("withContactsDetection", withContactsDetection_);
+  config("contactDetectionPropThreshold", contactDetectionPropThreshold_);
   config("withFilteredForcesContactDetection", withFilteredForcesContactDetection_);
 
   std::string odometryType = static_cast<std::string>(config("odometryType"));
@@ -170,7 +171,7 @@ std::set<std::string> NaiveOdometry::findContacts(const mc_control::MCController
         if(ctl.robots().robot(contact.r2Index()).mb().joint(0).type() == rbd::Joint::Fixed)
         {
           const auto & ifs = measRobot.indirectSurfaceForceSensor(contact.r1Surface()->name());
-          if(ifs.wrenchWithoutGravity(measRobot).force().z() > measRobot.mass() * so::cst::gravityConstant * 0.05)
+          if(ifs.wrenchWithoutGravity(measRobot).force().norm() > measRobot.mass() * so::cst::gravityConstant * 0.05)
           {
             contactsFound_.insert(ifs.name());
           }
@@ -181,7 +182,7 @@ std::set<std::string> NaiveOdometry::findContacts(const mc_control::MCController
         if(ctl.robots().robot(contact.r1Index()).mb().joint(0).type() == rbd::Joint::Fixed)
         {
           const auto & ifs = measRobot.indirectSurfaceForceSensor(contact.r2Surface()->name());
-          if(ifs.wrenchWithoutGravity(measRobot).force().z() > measRobot.mass() * so::cst::gravityConstant * 0.05)
+          if(ifs.wrenchWithoutGravity(measRobot).force().norm() > measRobot.mass() * so::cst::gravityConstant * 0.05)
           {
             contactsFound_.insert(ifs.name());
           }
@@ -199,16 +200,17 @@ std::set<std::string> NaiveOdometry::findContacts(const mc_control::MCController
       {
         forceSignal.filteredForceZ_ =
             (1 - ctl.timeStep * forceSignal.lambda_) * forceSignal.filteredForceZ_
-            + forceSignal.lambda_ * ctl.timeStep * forceSensor.wrenchWithoutGravity(measRobot).force().z();
+            + forceSignal.lambda_ * ctl.timeStep * forceSensor.wrenchWithoutGravity(measRobot).force().norm();
 
-        if(forceSignal.filteredForceZ_ > measRobot.mass() * so::cst::gravityConstant * 0.3)
+        if(forceSignal.filteredForceZ_ > measRobot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_)
         {
           contactsFound_.insert(forceSensor.name());
         }
       }
       else
       {
-        if(forceSensor.wrenchWithoutGravity(measRobot).force().z() > measRobot.mass() * so::cst::gravityConstant * 0.3)
+        if(forceSensor.wrenchWithoutGravity(measRobot).force().norm()
+           > measRobot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_)
         {
           contactsFound_.insert(forceSensor.name());
         }
@@ -345,6 +347,8 @@ void NaiveOdometry::addToLogger(const mc_control::MCController &, mc_rtc::Logger
   logger.addLogEntry(category + "_mcko_fb_posW", [this]() -> const sva::PTransformd & { return X_0_fb_; });
   logger.addLogEntry(category + "_mcko_fb_velW", [this]() -> const sva::MotionVecd & { return v_fb_0_; });
   logger.addLogEntry(category + "_mcko_fb_accW", [this]() -> const sva::MotionVecd & { return a_fb_0_; });
+  logger.addLogEntry(category + "_constants_forceThreshold",
+                     [this]() -> double { return mass_ * so::cst::gravityConstant * contactDetectionPropThreshold_; });
 }
 
 void NaiveOdometry::removeFromLogger(mc_rtc::Logger & logger, const std::string & category)

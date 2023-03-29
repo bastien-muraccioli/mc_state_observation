@@ -196,6 +196,8 @@ private:
   bool debug_ = false;
   bool verbose_ = true;
 
+  double contactDetectionPropThreshold_ = 0.0;
+
   double mass_ = 42; // [kg]
   // std::set<std::string> contacts_; ///< Sorted list of contacts
   std::set<std::string> oldContacts_;
