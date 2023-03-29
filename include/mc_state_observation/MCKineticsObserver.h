@@ -94,9 +94,9 @@ protected:
    * @param category Category in which to log this observer
    */
 
-  void plotVariablesBeforeUpdate(mc_rtc::Logger & logger);
+  void plotVariablesBeforeUpdate(const mc_control::MCController & ctl, mc_rtc::Logger & logger);
 
-  void plotVariablesAfterUpdate(mc_rtc::Logger & logger);
+  void plotVariablesAfterUpdate(const mc_control::MCController & ctl, mc_rtc::Logger & logger);
 
   void addContactLogEntries(mc_rtc::Logger & logger, const int & numContact);
 
@@ -296,7 +296,6 @@ public:
     stateObservation::Vector6 contactWrenchVector_; // vector shared by all the contacts that allows to build a (force+torque) wrench vector 
                                                   // from the ForceSensor.wrench() function which returns a (torque+force) wrench vector
 
-    unsigned noContact_ = 0;
     so::Vector correctedMeasurements_;
     so::kine::Kinematics globalCentroidKinematics_;
     Eigen::VectorXd predictedGlobalCentroidState_;
@@ -304,7 +303,7 @@ public:
     std::vector<so::Vector> predictedWorldIMUsLinAcc_;
     std::vector<so::Vector> predictedAccelerometers_;
 
-    double maxContactForceZ = 0; // allows to adapt the covariance on the contact based on how much set it is
+    double contactDetectionPropThreshold_ = 0.0;
 
     so::Vector innovation_;
 
@@ -315,7 +314,9 @@ public:
     stateObservation::KineticsObserver observer_;
     //std::set<std::string> contacts_; ///< Sorted list of contacts
     std::set<std::string> oldContacts_;
-    MapContactsIMU mapContacts_;
+    MapContactsIMU mapContacts_; // contacts are detected in findContacts() function. They are detected from force
+                                 // sensors so their names corresponds to the name of the associated force sensors. Has
+                                 // to be changed if one wants to works with contacts without force sensors.
     MapContactsIMU mapIMUs_;
     std::vector<sva::PTransformd> contactPositions_; ///< Position of the contact frames (force sensor frame when using force sensors)
     //sva::MotionVecd flexDamping_{{17, 17, 17}, {250, 250, 250}}; // HRP-4, {25.0, 200} for HRP-2

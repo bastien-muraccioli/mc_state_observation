@@ -54,6 +54,7 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   }
 
   config("withContactsDetection", withContactsDetection_);
+  config("contactDetectionPropThreshold", contactDetectionPropThreshold_);
   config("withUnmodeledWrench", withUnmodeledWrench_);
   config("withGyroBias", withGyroBias_);
 
@@ -308,14 +309,13 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
 
   if(!ekfIsSet_) // the ekf is not updated, which means that it still has the initial values
   {
-    plotVariablesBeforeUpdate(logger);
+    plotVariablesBeforeUpdate(ctl, logger);
   }
 
   res_ = observer_.update();
-  std::cout << std::endl << "state : " << std::endl << observer_.getCurrentStateVector() << std::endl;
   if(!ekfIsSet_)
   {
-    plotVariablesAfterUpdate(logger);
+    plotVariablesAfterUpdate(ctl, logger);
   }
 
   ekfIsSet_ = true;
@@ -800,9 +800,9 @@ void MCKineticsObserver::addToLogger(const mc_control::MCController &,
   logger.addLogEntry(category + "_mcko_fb_accW", [this]() -> const sva::MotionVecd & { return a_fb_0_; });
 
   logger.addLogEntry(category + "_constants_mass", [this]() -> const double & { return observer_.getMass(); });
-  logger.addLogEntry(category + "_constants_flexStiffness",
-                     [this]() -> const sva::MotionVecd & { return flexStiffness_; });
-  logger.addLogEntry(category + "_constants_flexDamping", [this]() -> const sva::MotionVecd & { return flexDamping_; });
+
+  logger.addLogEntry(category + "_constants_forceThreshold",
+                     [this]() -> double { return mass_ * so::cst::gravityConstant * contactDetectionPropThreshold_; });
 }
 
 void MCKineticsObserver::removeFromLogger(mc_rtc::Logger & logger, const std::string & category)
@@ -824,13 +824,11 @@ void MCKineticsObserver::addToGUI(const mc_control::MCController &,
     mc_state_observation::gui::make_input_element("Accel Covariance", acceleroSensorCovariance_(0,0)),
     mc_state_observation::gui::make_input_element("Force Covariance", contactSensorCovariance_(0,0)),
     mc_state_observation::gui::make_input_element("Gyro Covariance", gyroSensorCovariance_(0,0)),
-    mc_state_observation::gui::make_input_element("Flex Stiffness", flexStiffness_), 
-    mc_state_observation::gui::make_input_element("Flex Damping", flexDamping_),
     Label("contacts", [this]() { return mc_rtc::io::to_string(oldContacts_); }));
   // clang-format on
 }
 
-void MCKineticsObserver::plotVariablesBeforeUpdate(mc_rtc::Logger & logger)
+void MCKineticsObserver::plotVariablesBeforeUpdate(const mc_control::MCController & ctl, mc_rtc::Logger & logger)
 {
   /* Plots of the updated state */
   logger.addLogEntry(category_ + "_globalWorldCentroidState_positionW_",
@@ -945,9 +943,43 @@ void MCKineticsObserver::plotVariablesBeforeUpdate(mc_rtc::Logger & logger)
                                observer_.unmodeledTorqueIndexTangent(), observer_.unmodeledTorqueIndexTangent())
                            .diagonal();
                      });
+
+  logger.addLogEntry(category_ + "_realRobot_LeftFoot",
+                     [&ctl]()
+                     {
+                       if(ctl.realRobot().hasBody("LeftFoot"))
+                       {
+                         return ctl.realRobot().frame("LeftFoot").position();
+                       }
+                     });
+
+  logger.addLogEntry(category_ + "_realRobot_RightFoot",
+                     [&ctl]()
+                     {
+                       if(ctl.realRobot().hasBody("RightFoot"))
+                       {
+                         return ctl.realRobot().frame("RightFoot").position();
+                       }
+                     });
+  logger.addLogEntry(category_ + "_realRobot_LeftHand",
+                     [&ctl]()
+                     {
+                       if(ctl.realRobot().hasBody("LeftHand"))
+                       {
+                         return ctl.realRobot().frame("LeftHand").position();
+                       }
+                     });
+  logger.addLogEntry(category_ + "_realRobot_RightHand",
+                     [&ctl]()
+                     {
+                       if(ctl.realRobot().hasBody("RightHand"))
+                       {
+                         return ctl.realRobot().frame("RightHand").position();
+                       }
+                     });
 }
 
-void MCKineticsObserver::plotVariablesAfterUpdate(mc_rtc::Logger & logger)
+void MCKineticsObserver::plotVariablesAfterUpdate(const mc_control::MCController & ctl, mc_rtc::Logger & logger)
 {
   /* Plots of the predicted state */
   logger.addLogEntry(category_ + "_robotsFbIMU_robot_worldImu_Ori_" + mapIMUs_.getNameFromNum(0),
@@ -1390,12 +1422,13 @@ void MCKineticsObserver::removeContactLogEntries(mc_rtc::Logger & logger, const 
   logger.removeLogEntry(category_ + "_globalWorldCentroidState_contact_" + mapContacts_.getNameFromNum(numContact)
                         + "_position");
   logger.removeLogEntry(category_ + "_globalWorldCentroidState_contact_" + mapContacts_.getNameFromNum(numContact)
+                        + "_position");
+  logger.removeLogEntry(category_ + "_globalWorldCentroidState_contact_" + mapContacts_.getNameFromNum(numContact)
                         + "_orientation");
   logger.removeLogEntry(category_ + "_globalWorldCentroidState_contact_" + mapContacts_.getNameFromNum(numContact)
                         + "_forces");
   logger.removeLogEntry(category_ + "_globalWorldCentroidState_contact_" + mapContacts_.getNameFromNum(numContact)
                         + "_torques");
-
   logger.removeLogEntry(category_ + "_stateCovariances_contact_" + mapContacts_.getNameFromNum(numContact)
                         + "_position_");
   logger.removeLogEntry(category_ + "_stateCovariances_contact_" + mapContacts_.getNameFromNum(numContact)
@@ -1424,6 +1457,7 @@ void MCKineticsObserver::removeContactLogEntries(mc_rtc::Logger & logger, const 
                         + "_predicted");
   logger.removeLogEntry(category_ + "_measurements_contacts_force_" + mapContacts_.getNameFromNum(numContact)
                         + "_corrected");
+
   logger.removeLogEntry(category_ + "_measurements_contacts_torque_" + mapContacts_.getNameFromNum(numContact)
                         + "_measured");
   logger.removeLogEntry(category_ + "_measurements_contacts_torque_" + mapContacts_.getNameFromNum(numContact)
@@ -1431,11 +1465,40 @@ void MCKineticsObserver::removeContactLogEntries(mc_rtc::Logger & logger, const 
   logger.removeLogEntry(category_ + "_measurements_contacts_torque_" + mapContacts_.getNameFromNum(numContact)
                         + "_corrected");
 
-  logger.removeLogEntry(category_ + "_contactWrench_World_" + mapContacts_.getNameFromNum(numContact) + "_force");
-  logger.removeLogEntry(category_ + "_contactWrench_World_" + mapContacts_.getNameFromNum(numContact) + "_torque");
+  logger.removeLogEntry(category_ + "_debug_contactWrench_World_" + mapContacts_.getNameFromNum(numContact) + "_force");
 
-  logger.removeLogEntry(category_ + "_contactWrench_Centroid_" + mapContacts_.getNameFromNum(numContact) + "_force");
-  logger.removeLogEntry(category_ + "_contactWrench_Centroid_" + mapContacts_.getNameFromNum(numContact) + "_torque");
+  logger.removeLogEntry(category_ + "_debug_contactWrench_World_" + mapContacts_.getNameFromNum(numContact)
+                        + "_torque");
+
+  logger.removeLogEntry(category_ + "_debug_contactWrench_Centroid_" + mapContacts_.getNameFromNum(numContact)
+                        + "_force");
+
+  logger.removeLogEntry(category_ + "_debug_contactWrench_Centroid_" + mapContacts_.getNameFromNum(numContact)
+                        + "_torque");
+
+  logger.removeLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
+                        + "_inputWorldRef_position");
+
+  logger.removeLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
+                        + "_inputWorldRef_orientation");
+
+  logger.removeLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
+                        + "_inputCentroidContactKine_position");
+
+  logger.removeLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
+                        + "_inputCentroidContactKine_orientation");
+
+  logger.removeLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
+                        + "_worldContactPoseFromCentroid_position");
+
+  logger.removeLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
+                        + "_worldContactPoseFromCentroid_orientation");
+
+  logger.removeLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
+                        + "_inputUserContactKine_position");
+
+  logger.removeLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
+                        + "_inputUserContactKine_orientation");
 }
 
 } // namespace mc_state_observation
