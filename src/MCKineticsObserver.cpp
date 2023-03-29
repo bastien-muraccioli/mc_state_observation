@@ -217,8 +217,6 @@ void MCKineticsObserver::reset(const mc_control::MCController & ctl)
   if(debug_)
   {
     mc_rtc::log::info("inertiaWaist = {}", inertiaWaist_);
-    mc_rtc::log::info("flexStiffness_ = {}", flexStiffness_);
-    mc_rtc::log::info("flexDamping_ = {}", flexDamping_);
   }
 
   my_robots_ = mc_rbdyn::Robots::make();
@@ -229,6 +227,8 @@ void MCKineticsObserver::reset(const mc_control::MCController & ctl)
       mc_rtc::gui::Robot("MCKineticsobserver", [this]() -> const mc_rbdyn::Robot & { return my_robots_->robot(); }));
   ctl.gui()->addElement({"Robots"},
                         mc_rtc::gui::Robot("Real", [&ctl]() -> const mc_rbdyn::Robot & { return ctl.realRobot(); }));
+
+  X_0_fb_ = robot.posW().translation();
 }
 
 bool MCKineticsObserver::run(const mc_control::MCController & ctl)
