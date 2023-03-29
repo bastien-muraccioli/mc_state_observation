@@ -246,6 +246,15 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
   inputRobot.velW(zeroMotion_);
   inputRobot.accW(zeroMotion_);
 
+  /** Center of mass (assumes FK, FV and FA are already done)
+      Must be initialized now as used for the conversion from user to centroid frame !!! **/
+
+  worldCoMKine_.position = inputRobot.com();
+  worldCoMKine_.linVel = inputRobot.comVelocity();
+  worldCoMKine_.linAcc = inputRobot.comAcceleration();
+
+  observer_.setCenterOfMass(worldCoMKine_.position(), worldCoMKine_.linVel(), worldCoMKine_.linAcc());
+
   findContacts(ctl); // retrieves the list of contacts and set simStarted to true once a contact is detected
 
   if(!simStarted_) // this allows to ignore the first step on which the contacts are still not detected
@@ -253,16 +262,6 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
   {
     return true;
   }
-
-  /** Center of mass (assumes FK, FV and FA are already done) **/
-
-  worldCoMKine_.position = inputRobot.com();
-  worldCoMKine_.linVel = inputRobot.comVelocity();
-  worldCoMKine_.linAcc = inputRobot.comAcceleration();
-
-  std::cout << std::endl << "worldCoMKine_ : " << std::endl << worldCoMKine_ << std::endl;
-
-  observer_.setCenterOfMass(worldCoMKine_.position(), worldCoMKine_.linVel(), worldCoMKine_.linAcc());
 
   /** Contacts
    * Note that when we use force sensors, this should be the position of the force sensor!
