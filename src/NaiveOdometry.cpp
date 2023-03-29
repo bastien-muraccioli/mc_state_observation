@@ -40,7 +40,7 @@ void NaiveOdometry::configure(const mc_control::MCController & ctl, const mc_rtc
   else if(odometryType != "6dOdometry")
   {
     mc_rtc::log::error_and_throw<std::runtime_error>(
-        "Odometry type not allowed. Please pick among : [None, flatOdometry, 6dOdometry]");
+        "Odometry type not allowed. Please pick among : [flatOdometry, 6dOdometry]");
   }
 
   zeroPose_.translation().setZero();
