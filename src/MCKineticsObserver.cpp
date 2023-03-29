@@ -33,7 +33,26 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   config("debug", debug_);
   config("verbose", verbose_);
 
-  config("withOdometry", withOdometry_);
+  std::string odometryType = static_cast<std::string>(config("odometryType"));
+
+  if(odometryType != "None")
+  {
+    if(odometryType == "flatOdometry")
+    {
+      withOdometry_ = true;
+      withFlatOdometry_ = true;
+    }
+    else if(odometryType == "6dOdometry")
+    {
+      withOdometry_ = true;
+    }
+    else
+    {
+      mc_rtc::log::error_and_throw<std::runtime_error>(
+          "Odometry type not allowed. Please pick among : [None, flatOdometry, 6dOdometry]");
+    }
+  }
+
   config("withContactsDetection", withContactsDetection_);
   config("withUnmodeledWrench", withUnmodeledWrench_);
   config("withGyroBias", withGyroBias_);
@@ -645,20 +664,49 @@ void MCKineticsObserver::updateContact(const mc_rbdyn::Robot & robot,
       const so::Vector3 & contactForceMeas = contactWrenchVector_.segment<3>(0);
       const so::Vector3 & contactTorqueMeas = contactWrenchVector_.segment<3>(3);
       const so::kine::Kinematics worldContactKine = observer_.getGlobalKinematicsOf(fbContactKineInputRobot);
-      worldContactKineRef.position = (worldContactKine.orientation.toMatrix3() * contactForceMeas
-                                      + flexStiffness_.linear().asDiagonal() * worldContactKine.position()
-                                      + flexStiffness_.angular().asDiagonal() * worldContactKine.linVel())
-                                         .cwiseQuotient(flexStiffness_.linear());
+      worldContactKineRef.position =
+          worldContactKine.orientation.toMatrix3() * linStiffness_.inverse()
+              * (contactForceMeas
+                 + worldContactKine.orientation.toMatrix3().transpose() * linDamping_ * worldContactKine.linVel())
+          + worldContactKine.position();
 
-      so::Vector3 vecS = (2 * worldContactKine.orientation.toMatrix3().transpose()
-                          * (contactTorqueMeas
-                             + worldContactKine.orientation.toMatrix3() * flexDamping_.angular().asDiagonal()
-                                   * worldContactKine.angVel()))
-                             .cwiseQuotient(flexStiffness_.angular());
+      so::Vector3 flexRotDiff =
+          -2 * worldContactKine.orientation.toMatrix3() * angStiffness_.inverse()
+          * (contactTorqueMeas
+             + worldContactKine.orientation.toMatrix3().transpose() * angDamping_
+                   * worldContactKine.angVel()); // difference between the reference orientation and
+                                                 // the real one, obtained from the visco-elastic model
+      so::Vector3 flexRotAxis = flexRotDiff / flexRotDiff.norm();
+      double diffNorm = flexRotDiff.norm() / 2;
 
+      if(diffNorm > 1.0)
+      {
+        diffNorm = 1.0;
+      }
+      else if(diffNorm < -1.0)
+      {
+        diffNorm = -1.0;
+      }
+      double flexRotAngle = std::asin(diffNorm);
+      Eigen::AngleAxisd flexRotAngleAxis(flexRotAngle, flexRotAxis);
+      so::Matrix3 flexRotMatrix = so::kine::Orientation(flexRotAngleAxis).toMatrix3();
       worldContactKineRef.orientation =
-          so::Matrix3(so::kine::skewSymmetric(vecS) * worldContactKine.orientation.toMatrix3());
-      std::cout << std::endl << "worldContactKineRef : " << std::endl << worldContactKineRef << std::endl;
+          so::Matrix3(flexRotMatrix.transpose() * worldContactKine.orientation.toMatrix3());
+
+      if(withFlatOdometry_)
+      {
+        so::kine::Kinematics worldBodyKineRobot;
+        so::kine::Kinematics worldContactKineRobot;
+        worldBodyKineRobot.position =
+            robot.mbc().bodyPosW[robot.bodyIndexByName(forceSensor.parentBody())].translation();
+        worldBodyKineRobot.orientation =
+            so::Matrix3(robot.mbc().bodyPosW[robot.bodyIndexByName(forceSensor.parentBody())].rotation().transpose());
+
+        worldContactKineRobot = worldBodyKineRobot * bodyContactKine;
+
+        worldContactKineRef.position()(2) = worldContactKineRobot.position()(
+            2); // the reference altitude of the contact is the one in the control robot
+      }
     }
     else
     {
@@ -667,23 +715,18 @@ void MCKineticsObserver::updateContact(const mc_rbdyn::Robot & robot,
       worldBodyKineRobot.orientation =
           so::Matrix3(robot.mbc().bodyPosW[robot.bodyIndexByName(forceSensor.parentBody())].rotation().transpose());
 
-      std::cout << std::endl << "forceSensor.name() : " << std::endl << forceSensor.name() << std::endl;
-      std::cout << std::endl << "forceSensor.parentBody() : " << std::endl << forceSensor.parentBody() << std::endl;
-      std::cout << std::endl << "worldBodyKineRobot : " << std::endl << worldBodyKineRobot << std::endl;
       worldContactKineRef = worldBodyKineRobot * bodyContactKine;
     }
 
-    if(observer_.getNumberOfContacts() > 0) // checks if another contact is already set
+    if(observer_.getNumberOfSetContacts() > 0) // checks if another contact is already set
     {
       observer_.addContact(worldContactKineRef, contactInitCovarianceNewContacts_, contactProcessCovariance_,
-                           numContact, flexStiffness_.linear().asDiagonal(), flexDamping_.linear().asDiagonal(),
-                           flexStiffness_.angular().asDiagonal(), flexDamping_.angular().asDiagonal());
+                           numContact, linStiffness_, linDamping_, angStiffness_, angDamping_);
     }
     else
     {
       observer_.addContact(worldContactKineRef, contactInitCovarianceFirstContacts_, contactProcessCovariance_,
-                           numContact, flexStiffness_.linear().asDiagonal(), flexDamping_.linear().asDiagonal(),
-                           flexStiffness_.angular().asDiagonal(), flexDamping_.angular().asDiagonal());
+                           numContact, linStiffness_, linDamping_, angStiffness_, angDamping_);
     }
     observer_.updateContactWithWrenchSensor(contactWrenchVector_,
                                             contactSensorCovariance_, // contactInitCovariance_.block<6,6>(6,6)

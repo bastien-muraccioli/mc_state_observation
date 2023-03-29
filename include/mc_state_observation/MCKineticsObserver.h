@@ -343,6 +343,8 @@ public:
     sva::MotionVecd flexDamping_;
 
     bool withOdometry_ = false;
+    bool withFlatOdometry_ = false;
+
     bool withContactsDetection_ = true;
     bool withUnmodeledWrench_ = true;
     bool withGyroBias_ = true;
