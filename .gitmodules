@@ -1,3 +1,6 @@
 [submodule "cmake"]
 	path = cmake
 	url = https://github.com/jrl-umi3218/jrl-cmakemodules
+[submodule "state-observation"]
+	path = state-observation
+	url = git@github.com:ArnaudDmt/state-observation.git
