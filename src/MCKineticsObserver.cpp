@@ -66,8 +66,10 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   observer_.setWithAccelerationEstimation(config("withAccelerationEstimation"));
   observer_.useRungeKutta(config("withRungeKutta"));
 
-  config("flexStiffness", flexStiffness_);
-  config("flexDamping", flexDamping_);
+  linStiffness_ = static_cast<so::Vector3>(config("linStiffness")).matrix().asDiagonal();
+  angStiffness_ = static_cast<so::Vector3>(config("angStiffness")).matrix().asDiagonal();
+  linDamping_ = static_cast<so::Vector3>(config("linDamping")).matrix().asDiagonal();
+  angDamping_ = static_cast<so::Vector3>(config("angDamping")).matrix().asDiagonal();
 
   zeroPose_.translation().setZero();
   zeroPose_.rotation().setIdentity();
@@ -784,16 +786,6 @@ void MCKineticsObserver::mass(double mass)
 {
   mass_ = mass;
   observer_.setMass(mass);
-}
-
-void MCKineticsObserver::flexStiffness(const sva::MotionVecd & stiffness)
-{
-  flexStiffness_ = stiffness;
-}
-
-void MCKineticsObserver::flexDamping(const sva::MotionVecd & damping)
-{
-  flexDamping_ = damping;
 }
 
 ///////////////////////////////////////////////////////////////////////
