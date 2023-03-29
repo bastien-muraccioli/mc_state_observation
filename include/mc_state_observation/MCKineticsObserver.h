@@ -339,8 +339,11 @@ public:
 
 
     /* Config variables */
-    sva::MotionVecd flexStiffness_;
-    sva::MotionVecd flexDamping_;
+    so::Matrix3 linStiffness_;
+    so::Matrix3 linDamping_;
+
+    so::Matrix3 angStiffness_;
+    so::Matrix3 angDamping_;
 
     bool withOdometry_ = false;
     bool withFlatOdometry_ = false;
