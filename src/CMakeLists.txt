@@ -23,6 +23,7 @@ endmacro()
 if(NOT BUILD_MCKINETICS_ONLY)
   add_so_observer(AttitudeObserver)
   add_so_observer(LegacyFlexibilityObserver)
+  add_so_observer(NaiveOdometry)
 endif()
 add_so_observer(MCKineticsObserver)
 
