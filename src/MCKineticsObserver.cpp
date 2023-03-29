@@ -55,6 +55,7 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
 
   config("withContactsDetection", withContactsDetection_);
   config("contactDetectionPropThreshold", contactDetectionPropThreshold_);
+  config("withFilteredForcesContactDetection", withFilteredForcesContactDetection_);
   config("withUnmodeledWrench", withUnmodeledWrench_);
   config("withGyroBias", withGyroBias_);
 
@@ -206,12 +207,11 @@ void MCKineticsObserver::reset(const mc_control::MCController & ctl)
 
   inertiaWaist_ = mergeMbg.nodeByName(realRobotModule.mb.body(0).name())->body.inertia();
   mass(ctl.realRobot(robot_).mass());
-  flexStiffness(flexStiffness_);
-  flexDamping(flexDamping_);
 
   for(auto forceSensor : realRobot.forceSensors())
   {
-    isExternalWrench_[forceSensor.name()] = true;
+    forceSignals.insert(
+        std::make_pair(forceSensor.name(), ForceSignal(true, forceSensor.wrenchWithoutGravity(robot).force().z())));
   }
 
   if(debug_)
@@ -233,7 +233,7 @@ void MCKineticsObserver::reset(const mc_control::MCController & ctl)
 
 bool MCKineticsObserver::run(const mc_control::MCController & ctl)
 {
-  std::cout << "\033[1;31m" << std::endl << "New iteration: " << std::endl << "\033[0m\n";
+  // std::cout << "\033[1;31m" << std::endl << "New iteration: " << std::endl << "\033[0m\n";
 
   const auto & robot = ctl.robot(robot_);
   const auto & realRobot = ctl.realRobot(robot_);
@@ -386,12 +386,6 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
   X_0_fb_.rotation() = mcko_K_0_fb.orientation.toMatrix3().transpose();
   X_0_fb_.translation() = mcko_K_0_fb.position();
 
-  std::cout << std::endl << "fbFb : " << std::endl << fbFb << std::endl;
-  std::cout << std::endl << "mcko_K_0_fb : " << std::endl << mcko_K_0_fb << std::endl;
-  std::cout << std::endl
-            << "getGlobalCentroidKinematics : " << std::endl
-            << observer_.getGlobalCentroidKinematics() << std::endl;
-
   MCKOrobotTilt_0 =
       robot.bodySensor(mapIMUs_.getNameFromNum(0)).X_b_s().rotation() * X_0_fb_.rotation() * so::cst::gravity;
   MCKOrobotTilt_1 =
@@ -407,7 +401,6 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
   a_fb_0_.linear() = mcko_K_0_fb.linAcc();
 
   /* Updates of the logged variables */
-  std::cout << std::endl << "simulating measurements: " << std::endl;
   correctedMeasurements_ = observer_.getEKF().getSimulatedMeasurement(
       observer_.getEKF().getCurrentTime()); // Used only in the logger as debugging help
   globalCentroidKinematics_ = observer_.getGlobalCentroidKinematics(); // Used only in the logger as debugging help
@@ -490,14 +483,14 @@ void MCKineticsObserver::inputAdditionalWrench(const mc_rbdyn::Robot & inputRobo
   for(auto wrenchSensor : measRobot.forceSensors()) // if a force sensor is not associated to a contact, its
                                                     // measurement is given as an input external wrench
   {
-    if(isExternalWrench_.at(wrenchSensor.name()) == true)
+    if(forceSignals.at(wrenchSensor.name()).isExternalWrench_ == true)
     {
       additionalUserResultingForce_ += wrenchSensor.worldWrenchWithoutGravity(inputRobot).force();
       additionalUserResultingMoment_ += wrenchSensor.worldWrenchWithoutGravity(inputRobot).moment();
     }
     else
     {
-      isExternalWrench_.at(wrenchSensor.name()) = true;
+      forceSignals.at(wrenchSensor.name()).isExternalWrench_ = true;
     }
   }
   observer_.setAdditionalWrench(additionalUserResultingForce_, additionalUserResultingMoment_);
@@ -555,11 +548,10 @@ std::set<std::string> MCKineticsObserver::findContacts(const mc_control::MCContr
         if(ctl.robots().robot(contact.r2Index()).mb().joint(0).type() == rbd::Joint::Fixed)
         {
           const auto & ifs = measRobot.indirectSurfaceForceSensor(contact.r1Surface()->name());
-
           if(ifs.wrenchWithoutGravity(measRobot).force().z() > measRobot.mass() * so::cst::gravityConstant * 0.05)
           {
             contactsFound_.insert(ifs.name());
-            isExternalWrench_.at(ifs.name()) =
+            forceSignals.at(ifs.name()).isExternalWrench_ =
                 false; // the measurement of the sensor is not passed as an input external wrench
           }
         }
@@ -572,7 +564,7 @@ std::set<std::string> MCKineticsObserver::findContacts(const mc_control::MCContr
           if(ifs.wrenchWithoutGravity(measRobot).force().z() > measRobot.mass() * so::cst::gravityConstant * 0.05)
           {
             contactsFound_.insert(ifs.name());
-            isExternalWrench_.at(ifs.name()) =
+            forceSignals.at(ifs.name()).isExternalWrench_ =
                 false; // the measurement of the sensor is not passed as an input external wrench
           }
         }
@@ -581,13 +573,32 @@ std::set<std::string> MCKineticsObserver::findContacts(const mc_control::MCContr
   }
   else
   {
-    for(const auto & forceSensor : measRobot.forceSensors())
+    for(auto forceSensor : measRobot.forceSensors())
     {
-      if(forceSensor.wrenchWithoutGravity(measRobot).force().z() > measRobot.mass() * so::cst::gravityConstant * 0.3)
+      auto forceSignal = forceSignals.at(forceSensor.name());
+
+      if(withFilteredForcesContactDetection_)
       {
-        contactsFound_.insert(forceSensor.name());
-        isExternalWrench_.at(forceSensor.name()) =
-            false; // the measurement of the sensor is not passed as an input external wrench
+        forceSignal.filteredForceZ_ =
+            (1 - ctl.timeStep * forceSignal.lambda_) * forceSignal.filteredForceZ_
+            + forceSignal.lambda_ * ctl.timeStep * forceSensor.wrenchWithoutGravity(measRobot).force().norm();
+
+        if(forceSignal.filteredForceZ_ > measRobot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_)
+        {
+          contactsFound_.insert(forceSensor.name());
+          forceSignals.at(forceSensor.name()).isExternalWrench_ =
+              false; // the measurement of the sensor is not passed as an input external wrench
+        }
+      }
+      else
+      {
+        if(forceSensor.wrenchWithoutGravity(measRobot).force().z()
+           > measRobot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_)
+        {
+          contactsFound_.insert(forceSensor.name());
+          forceSignals.at(forceSensor.name()).isExternalWrench_ =
+              false; // the measurement of the sensor is not passed as an input external wrench
+        }
       }
     }
   }
@@ -616,7 +627,6 @@ void MCKineticsObserver::updateContact(const mc_rbdyn::Robot & robot,
   bodyContactKine.setZero(so::kine::Kinematics::Flags::all);
   bodyContactKine.position = bodyContactPoseRobot.translation();
   bodyContactKine.orientation = so::Matrix3(bodyContactPoseRobot.rotation().transpose());
-  std::cout << std::endl << "bodyContactKine : " << std::endl << bodyContactKine << std::endl;
 
   so::kine::Kinematics worldBodyKineInputRobot;
 
@@ -637,15 +647,6 @@ void MCKineticsObserver::updateContact(const mc_rbdyn::Robot & robot,
 
   so::kine::Kinematics worldContactKineInputRobot = worldBodyKineInputRobot * bodyContactKine;
   const so::kine::Kinematics & fbContactKineInputRobot = worldContactKineInputRobot;
-
-  sva::PTransformd contactPos_ = forceSensor.X_p_f();
-  sva::PTransformd X_0_p = inputRobot.bodyPosW(forceSensor.parentBody());
-  sva::PTransformd contactPosW = contactPos_ * X_0_p;
-
-  std::cout << std::endl << "contactPosW : " << std::endl << contactPosW.translation() << std::endl;
-  std::cout << std::endl
-            << "worldContactKineInputRobot pos: " << std::endl
-            << worldContactKineInputRobot.position() << std::endl;
 
   if(alreadySet) // checks if the contact already exists, if yes, it is updated
   {

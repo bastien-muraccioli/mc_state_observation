@@ -20,7 +20,17 @@ namespace mc_state_observation
    *
    */
 
+  struct ForceSignal
+  {
+    ForceSignal(bool isExternalWrench, double filteredForceZ)
+    : isExternalWrench_(isExternalWrench), filteredForceZ_(filteredForceZ)
+    {
+    }
 
+    bool isExternalWrench_;
+    double filteredForceZ_;
+    double lambda_ = 100;
+  };
   class MapContactsIMU {
     /*
     Care with the use of getNameFromNum() : the mapping remains the same but the list of contacts returned buy the controller might differ over time 
@@ -31,13 +41,11 @@ namespace mc_state_observation
   public:
     inline const int & getNumFromName(std::string name)
     {
-      BOOST_ASSERT(false && "This id isn't attributed");
       return map_.find(name)->second;
     }
 
     inline const std::string & getNameFromNum(int num)
     {
-      BOOST_ASSERT(false && "This id isn't attributed");
       return insertOrder.at(num);
     }
 
@@ -128,7 +136,7 @@ protected:
   std::set<std::string> findContacts(const mc_control::MCController & solver);
 
   void updateContacts(const mc_rbdyn::Robot & robot,
-                      const mc_rbdyn::Robot & realRobot,
+                      const mc_rbdyn::Robot & inputRobot,
                       std::set<std::string> contacts,
                       mc_rtc::Logger & logger);
   void updateContact(const mc_rbdyn::Robot & robot,
@@ -332,7 +340,8 @@ public:
 
     so::Vector3 additionalUserResultingForce_ = so::Vector3::Zero();
     so::Vector3 additionalUserResultingMoment_ = so::Vector3::Zero();
-    std::unordered_map<std::__cxx11::string, bool> isExternalWrench_;
+
+    std::unordered_map<std::string, ForceSignal> forceSignals;
 
     bool simStarted_ = false; // this variable is set to true when the robot touches the ground at the beginning of the simulation, 
                               // allowing to start the estimaion at that time and not when the robot is still in the air, 
@@ -350,6 +359,7 @@ public:
     bool withFlatOdometry_ = false;
 
     bool withContactsDetection_ = true;
+    bool withFilteredForcesContactDetection_ = false;
     bool withUnmodeledWrench_ = true;
     bool withGyroBias_ = true;
 
