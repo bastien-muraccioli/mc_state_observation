@@ -355,6 +355,7 @@ public:
     so::Matrix3 angStiffness_;
     so::Matrix3 angDamping_;
 
+    bool withDebugLogs_ = false;
     bool withOdometry_ = false;
     bool withFlatOdometry_ = false;
 

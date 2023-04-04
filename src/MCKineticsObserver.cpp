@@ -53,6 +53,7 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
     }
   }
 
+  config("withDebugLogs", withDebugLogs_);
   config("withContactsDetection", withContactsDetection_);
   config("contactDetectionPropThreshold", contactDetectionPropThreshold_);
   config("withFilteredForcesContactDetection", withFilteredForcesContactDetection_);
@@ -307,13 +308,14 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
       inertiaWaist_.inertia() + observer_.getMass() * so::kine::skewSymmetric2(observer_.getCenterOfMass()())));
   /* Step once, and return result */
 
-  if(!ekfIsSet_) // the ekf is not updated, which means that it still has the initial values
+  if(!ekfIsSet_ && withDebugLogs_) // the ekf is not updated, which means that it still has the initial values
   {
     plotVariablesBeforeUpdate(ctl, logger);
   }
 
   res_ = observer_.update();
-  if(!ekfIsSet_)
+
+  if(!ekfIsSet_ && withDebugLogs_)
   {
     plotVariablesAfterUpdate(ctl, logger);
   }
@@ -321,61 +323,70 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
   ekfIsSet_ = true;
 
   /* Debug */
-  robotImuOri_0 =
-      so::KineticsObserver::Orientation(
-          so::Matrix3(robot.bodyPosW(robot.bodySensor(mapIMUs_.getNameFromNum(0)).parentBody()).rotation().transpose()))
-          .inverse()
-          .toQuaternion();
+  if(withDebugLogs_)
+  {
+    robotImuOri_0 =
+        so::KineticsObserver::Orientation(
+            so::Matrix3(
+                robot.bodyPosW(robot.bodySensor(mapIMUs_.getNameFromNum(0)).parentBody()).rotation().transpose()))
+            .inverse()
+            .toQuaternion();
 
-  robotImuOri_1 =
-      so::KineticsObserver::Orientation(
-          so::Matrix3(robot.bodyPosW(robot.bodySensor(mapIMUs_.getNameFromNum(1)).parentBody()).rotation().transpose()))
-          .inverse()
-          .toQuaternion();
-  realRobotImuOri_0 =
-      so::KineticsObserver::Orientation(
-          so::Matrix3(
-              realRobot.bodyPosW(realRobot.bodySensor(mapIMUs_.getNameFromNum(0)).parentBody()).rotation().transpose()))
-          .inverse()
-          .toQuaternion();
+    robotImuOri_1 =
+        so::KineticsObserver::Orientation(
+            so::Matrix3(
+                robot.bodyPosW(robot.bodySensor(mapIMUs_.getNameFromNum(1)).parentBody()).rotation().transpose()))
+            .inverse()
+            .toQuaternion();
+    realRobotImuOri_0 =
+        so::KineticsObserver::Orientation(
+            so::Matrix3(realRobot.bodyPosW(realRobot.bodySensor(mapIMUs_.getNameFromNum(0)).parentBody())
+                            .rotation()
+                            .transpose()))
+            .inverse()
+            .toQuaternion();
 
-  realRobotImuOri_1 =
-      so::KineticsObserver::Orientation(
-          so::Matrix3(
-              realRobot.bodyPosW(realRobot.bodySensor(mapIMUs_.getNameFromNum(1)).parentBody()).rotation().transpose()))
-          .inverse()
-          .toQuaternion();
+    realRobotImuOri_1 =
+        so::KineticsObserver::Orientation(
+            so::Matrix3(realRobot.bodyPosW(realRobot.bodySensor(mapIMUs_.getNameFromNum(1)).parentBody())
+                            .rotation()
+                            .transpose()))
+            .inverse()
+            .toQuaternion();
 
-  robotFbOri_ =
-      so::KineticsObserver::Orientation(so::Matrix3(robot.posW().rotation().transpose())).inverse().toQuaternion();
+    robotFbOri_ =
+        so::KineticsObserver::Orientation(so::Matrix3(robot.posW().rotation().transpose())).inverse().toQuaternion();
 
-  realRobotFbOri_ =
-      so::KineticsObserver::Orientation(so::Matrix3(realRobot.posW().rotation().transpose())).inverse().toQuaternion();
+    realRobotFbOri_ =
+        so::KineticsObserver::Orientation(so::Matrix3(realRobot.posW().rotation().transpose())).inverse().toQuaternion();
 
-  robotPosImuInFB_0 = robot.bodySensor(mapIMUs_.getNameFromNum(0)).X_b_s().rotation().transpose()
-                      * robot.bodySensor(mapIMUs_.getNameFromNum(0)).X_b_s().translation();
-  robotPosImuInFB_1 = robot.bodySensor(mapIMUs_.getNameFromNum(1)).X_b_s().rotation().transpose()
-                      * robot.bodySensor(mapIMUs_.getNameFromNum(1)).X_b_s().translation();
+    robotPosImuInFB_0 = robot.bodySensor(mapIMUs_.getNameFromNum(0)).X_b_s().rotation().transpose()
+                        * robot.bodySensor(mapIMUs_.getNameFromNum(0)).X_b_s().translation();
+    robotPosImuInFB_1 = robot.bodySensor(mapIMUs_.getNameFromNum(1)).X_b_s().rotation().transpose()
+                        * robot.bodySensor(mapIMUs_.getNameFromNum(1)).X_b_s().translation();
 
-  realRobotPosImuInFB_0 = realRobot.bodySensor(mapIMUs_.getNameFromNum(0)).X_b_s().rotation().transpose()
-                          * realRobot.bodySensor(mapIMUs_.getNameFromNum(0)).X_b_s().translation();
-  realRobotPosImuInFB_1 = realRobot.bodySensor(mapIMUs_.getNameFromNum(1)).X_b_s().rotation().transpose()
-                          * realRobot.bodySensor(mapIMUs_.getNameFromNum(1)).X_b_s().translation();
+    realRobotPosImuInFB_0 = realRobot.bodySensor(mapIMUs_.getNameFromNum(0)).X_b_s().rotation().transpose()
+                            * realRobot.bodySensor(mapIMUs_.getNameFromNum(0)).X_b_s().translation();
+    realRobotPosImuInFB_1 = realRobot.bodySensor(mapIMUs_.getNameFromNum(1)).X_b_s().rotation().transpose()
+                            * realRobot.bodySensor(mapIMUs_.getNameFromNum(1)).X_b_s().translation();
 
-  robotTilt_0 =
-      robot.bodySensor(mapIMUs_.getNameFromNum(0)).X_b_s().rotation() * robot.posW().rotation() * so::cst::gravity;
-  robotTilt_1 =
-      robot.bodySensor(mapIMUs_.getNameFromNum(1)).X_b_s().rotation() * robot.posW().rotation() * so::cst::gravity;
-  realRobotTilt_0 = realRobot.bodySensor(mapIMUs_.getNameFromNum(0)).X_b_s().rotation() * realRobot.posW().rotation()
-                    * so::cst::gravity;
-  realRobotTilt_1 = realRobot.bodySensor(mapIMUs_.getNameFromNum(1)).X_b_s().rotation() * realRobot.posW().rotation()
-                    * so::cst::gravity;
+    robotTilt_0 =
+        robot.bodySensor(mapIMUs_.getNameFromNum(0)).X_b_s().rotation() * robot.posW().rotation() * so::cst::gravity;
+    robotTilt_1 =
+        robot.bodySensor(mapIMUs_.getNameFromNum(1)).X_b_s().rotation() * robot.posW().rotation() * so::cst::gravity;
+    realRobotTilt_0 = realRobot.bodySensor(mapIMUs_.getNameFromNum(0)).X_b_s().rotation() * realRobot.posW().rotation()
+                      * so::cst::gravity;
+    realRobotTilt_1 = realRobot.bodySensor(mapIMUs_.getNameFromNum(1)).X_b_s().rotation() * realRobot.posW().rotation()
+                      * so::cst::gravity;
 
-  realRobot_centroidImuOri_0 = observer_.getGlobalCentroidKinematics().orientation.inverse()
-                               * so::kine::Orientation(realRobot.bodySensor(mapIMUs_.getNameFromNum(0)).orientation());
+    realRobot_centroidImuOri_0 =
+        observer_.getGlobalCentroidKinematics().orientation.inverse()
+        * so::kine::Orientation(realRobot.bodySensor(mapIMUs_.getNameFromNum(0)).orientation());
 
-  realRobot_centroidImuOri_1 = observer_.getGlobalCentroidKinematics().orientation.inverse()
-                               * so::kine::Orientation(realRobot.bodySensor(mapIMUs_.getNameFromNum(1)).orientation());
+    realRobot_centroidImuOri_1 =
+        observer_.getGlobalCentroidKinematics().orientation.inverse()
+        * so::kine::Orientation(realRobot.bodySensor(mapIMUs_.getNameFromNum(1)).orientation());
+  }
 
   /* Core */
   so::kine::Kinematics fbFb; // "Zero" Kinematics
@@ -386,10 +397,13 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
   X_0_fb_.rotation() = mcko_K_0_fb.orientation.toMatrix3().transpose();
   X_0_fb_.translation() = mcko_K_0_fb.position();
 
-  MCKOrobotTilt_0 =
-      robot.bodySensor(mapIMUs_.getNameFromNum(0)).X_b_s().rotation() * X_0_fb_.rotation() * so::cst::gravity;
-  MCKOrobotTilt_1 =
-      robot.bodySensor(mapIMUs_.getNameFromNum(1)).X_b_s().rotation() * X_0_fb_.rotation() * so::cst::gravity;
+  if(withDebugLogs_)
+  {
+    MCKOrobotTilt_0 =
+        robot.bodySensor(mapIMUs_.getNameFromNum(0)).X_b_s().rotation() * X_0_fb_.rotation() * so::cst::gravity;
+    MCKOrobotTilt_1 =
+        robot.bodySensor(mapIMUs_.getNameFromNum(1)).X_b_s().rotation() * X_0_fb_.rotation() * so::cst::gravity;
+  }
 
   /* Bring velocity of the IMU to the origin of the joint : we want the
    * velocity of joint 0, so stop one before the first joint */
@@ -400,18 +414,21 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
   a_fb_0_.angular() = mcko_K_0_fb.angAcc(); //  X_0_fb_.rotation() = mcko_K_0_fb.orientation.toMatrix3().transpose()
   a_fb_0_.linear() = mcko_K_0_fb.linAcc();
 
-  /* Updates of the logged variables */
-  correctedMeasurements_ = observer_.getEKF().getSimulatedMeasurement(
-      observer_.getEKF().getCurrentTime()); // Used only in the logger as debugging help
-  globalCentroidKinematics_ = observer_.getGlobalCentroidKinematics(); // Used only in the logger as debugging help
+  if(withDebugLogs_)
+  {
+    /* Updates of the logged variables */
+    correctedMeasurements_ = observer_.getEKF().getSimulatedMeasurement(
+        observer_.getEKF().getCurrentTime()); // Used only in the logger as debugging help
+    globalCentroidKinematics_ = observer_.getGlobalCentroidKinematics(); // Used only in the logger as debugging help
 
-  predictedGlobalCentroidState_ =
-      observer_.getPredictedGlobalCentroidState(); // Used only in the logger as debugging help
-  predictedAccelerometersGravityComponent_ =
-      observer_.getPredictedAccelerometersGravityComponent(); // Used only in the logger as debugging help
-  predictedWorldIMUsLinAcc_ =
-      observer_.getPredictedAccelerometersLinAccComponent(); // Used only in the logger as debugging help
-  predictedAccelerometers_ = observer_.getPredictedAccelerometers(); // Used only in the logger as debugging help
+    predictedGlobalCentroidState_ =
+        observer_.getPredictedGlobalCentroidState(); // Used only in the logger as debugging help
+    predictedAccelerometersGravityComponent_ =
+        observer_.getPredictedAccelerometersGravityComponent(); // Used only in the logger as debugging help
+    predictedWorldIMUsLinAcc_ =
+        observer_.getPredictedAccelerometersLinAccComponent(); // Used only in the logger as debugging help
+    predictedAccelerometers_ = observer_.getPredictedAccelerometers(); // Used only in the logger as debugging help
+  }
 
   /* Update of the visual representation (only a visual feature) of the observed robot */
   my_robots_->robot().mbc().q = ctl.realRobot().mbc().q;
@@ -733,7 +750,10 @@ void MCKineticsObserver::updateContact(const mc_rbdyn::Robot & robot,
     observer_.updateContactWithWrenchSensor(contactWrenchVector_,
                                             contactSensorCovariance_, // contactInitCovariance_.block<6,6>(6,6)
                                             fbContactKineInputRobot, numContact);
-    addContactLogEntries(logger, numContact);
+    if(withDebugLogs_)
+    {
+      addContactLogEntries(logger, numContact);
+    }
   }
 }
 
@@ -771,7 +791,10 @@ void MCKineticsObserver::updateContacts(const mc_rbdyn::Robot & robot,
   {
     int numDiff = mapContacts_.getNumFromName(diff);
     observer_.removeContact(numDiff);
-    removeContactLogEntries(logger, numDiff);
+    if(withDebugLogs_)
+    {
+      removeContactLogEntries(logger, numDiff);
+    }
   }
 
   oldContacts_ = updatedContacts;
