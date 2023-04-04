@@ -24,8 +24,7 @@ struct MocapData
 {
   int indexReader = 0;
   double time = 0.0;
-  so::Vector3 pos = so::Vector3::Zero();
-  so::kine::Orientation ori = so::kine::Orientation::zeroRotation();
+  so::kine::Kinematics kine;
 };
 
 struct MOCAPVisualizer : public mc_observers::Observer
@@ -83,7 +82,9 @@ protected:
 
 public:
 private:
+  std::string csvPath_;
   sva::PTransformd X_0_fb_ = sva::PTransformd::Identity();
+  sva::PTransformd X_0_fb_init_ = sva::PTransformd::Identity();
   MocapData tempMocapData_; // for the insertion in the map
   std::map<std::string, MocapData> mocapDataTable_; // {timecode, data}
   double currentMocapDataTime_ = 0.0;
