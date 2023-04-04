@@ -23,7 +23,7 @@ namespace so = stateObservation;
 struct Contact
 {
   Contact(double filteredForceZ) : filteredForceZ_(filteredForceZ) {}
-  so::kine::Kinematics worldPositionKine_;
+  so::kine::Kinematics worldRefKine_;
   double filteredForceZ_;
   double lambda_ = 100;
 };
@@ -123,12 +123,11 @@ protected:
   std::set<std::string> findContacts(const mc_control::MCController & solver);
 
   void updateContacts(const mc_rbdyn::Robot & robot,
-                      const mc_rbdyn::Robot & odometryRobot,
+                      const mc_rbdyn::Robot & realRobot,
+                      mc_rbdyn::Robot & odometryRobot,
                       std::set<std::string> contacts);
 
-  void setNewContact(const mc_rbdyn::Robot & robot,
-                     const mc_rbdyn::Robot & odometryRobot,
-                     const mc_rbdyn::ForceSensor forceSensor);
+  void setNewContact(const mc_rbdyn::Robot & odometryRobot, const mc_rbdyn::ForceSensor forceSensor);
 
 protected:
   std::string robot_ = "";
@@ -210,6 +209,7 @@ private:
   std::unordered_map<std::string, Contact> contacts_;
 
   bool withFlatOdometry_ = false;
+  bool withNaiveYawEstimation_ = true;
   bool withContactsDetection_ = true;
   bool withFilteredForcesContactDetection_ = false;
 };
