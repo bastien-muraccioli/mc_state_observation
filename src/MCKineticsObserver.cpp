@@ -1001,6 +1001,39 @@ void MCKineticsObserver::plotVariablesBeforeUpdate(const mc_control::MCControlle
                          return ctl.realRobot().frame("RightHand").position();
                        }
                      });
+  logger.addLogEntry(category_ + "_ctlRobot_LeftFoot",
+                     [&ctl]()
+                     {
+                       if(ctl.robot().hasBody("LeftFoot"))
+                       {
+                         return ctl.robot().frame("LeftFoot").position();
+                       }
+                     });
+
+  logger.addLogEntry(category_ + "_ctlRobot_RightFoot",
+                     [&ctl]()
+                     {
+                       if(ctl.robot().hasBody("RightFoot"))
+                       {
+                         return ctl.robot().frame("RightFoot").position();
+                       }
+                     });
+  logger.addLogEntry(category_ + "_ctlRobot_LeftHand",
+                     [&ctl]()
+                     {
+                       if(ctl.robot().hasBody("LeftHand"))
+                       {
+                         return ctl.robot().frame("LeftHand").position();
+                       }
+                     });
+  logger.addLogEntry(category_ + "_ctlRobot_RightHand",
+                     [&ctl]()
+                     {
+                       if(ctl.robot().hasBody("RightHand"))
+                       {
+                         return ctl.robot().frame("RightHand").position();
+                       }
+                     });
 }
 
 void MCKineticsObserver::plotVariablesAfterUpdate(const mc_control::MCController & ctl, mc_rtc::Logger & logger)
