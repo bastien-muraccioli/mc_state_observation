@@ -20,6 +20,14 @@ namespace mc_state_observation
    *
    */
 
+  struct MocapData
+  {
+    int indexReader = 0;
+    double time = 0.0;
+    so::Vector3 pos = so::Vector3::Zero();
+    so::Quaternion ori = so::kine::Orientation::zeroRotation().toQuaternion();
+  };
+
   struct ForceSignal
   {
     ForceSignal(bool isExternalWrench, double filteredForceZ)
@@ -144,6 +152,8 @@ protected:
                      const bool & alreadySet,
                      const mc_rbdyn::ForceSensor forceSensor,
                      mc_rtc::Logger & logger);
+
+  void extractMocapData();
 
 protected:
   std::string robot_ = "";
@@ -286,6 +296,11 @@ public:
     }
 
   private:
+    MocapData tempMocapData_; // for the insertion in the map
+    std::map<std::string, MocapData> mocapDataTable_; // {timecode, data}
+    double currentMocapDataTime_ = 0.0;
+    bool mocapFinished = false;
+
     sva::PTransformd zeroPose_;
     sva::MotionVecd zeroMotion_;
 

@@ -230,6 +230,10 @@ void MCKineticsObserver::reset(const mc_control::MCController & ctl)
                         mc_rtc::gui::Robot("Real", [&ctl]() -> const mc_rbdyn::Robot & { return ctl.realRobot(); }));
 
   X_0_fb_ = robot.posW().translation();
+
+  // MOCAP DATA TEST
+  auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
+  extractMocapData();
 }
 
 bool MCKineticsObserver::run(const mc_control::MCController & ctl)
@@ -240,6 +244,36 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
   const auto & realRobot = ctl.realRobot(robot_);
   auto & inputRobot = my_robots_->robot("inputRobot");
   auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
+
+  std::string mocapTime = std::to_string(currentMocapDataTime_);
+  if(mocapTime[mocapTime.find_last_not_of('0')] == '.')
+  {
+    mocapTime.erase(mocapTime.find_last_not_of('0') + 2, std::string::npos);
+  }
+  else
+  {
+    mocapTime.erase(mocapTime.find_last_not_of('0') + 1, std::string::npos);
+  }
+  if(mocapTime.back() == '.')
+  {
+    mocapTime.pop_back();
+  }
+
+  if(!mocapFinished)
+  {
+    if(mocapDataTable_.find(mocapTime) != mocapDataTable_.end())
+    {
+      tempMocapData_ = mocapDataTable_.at(mocapTime);
+    }
+    else
+    {
+      mocapFinished = true;
+      logger.removeLogEntry(category_ + "_MOCAP_pos");
+      logger.removeLogEntry(category_ + "_MOCAP_ori");
+    }
+  }
+  currentMocapDataTime_ += observer_.getSamplingTime();
+  ;
 
   inputRobot.mbc() = realRobot.mbc();
   inputRobot.mb() = realRobot.mb();
@@ -819,6 +853,9 @@ void MCKineticsObserver::addToLogger(const mc_control::MCController &,
                                      mc_rtc::Logger & logger,
                                      const std::string & category)
 {
+  logger.addLogEntry(category + "_MOCAP_pos", [this]() -> const so::Vector3 & { return tempMocapData_.pos; });
+  logger.addLogEntry(category + "_MOCAP_ori", [this]() -> const so::Quaternion & { return tempMocapData_.ori; });
+
   logger.addLogEntry(category + "_mcko_fb_posW", [this]() -> const sva::PTransformd & { return X_0_fb_; });
   logger.addLogEntry(category + "_mcko_fb_velW", [this]() -> const sva::MotionVecd & { return v_fb_0_; });
   logger.addLogEntry(category + "_mcko_fb_accW", [this]() -> const sva::MotionVecd & { return a_fb_0_; });
@@ -1233,6 +1270,94 @@ void MCKineticsObserver::plotVariablesAfterUpdate(const mc_control::MCController
                      [this]() -> Eigen::Vector3d { return my_robots_->robot("inputRobot").accW().linear(); });
   logger.addLogEntry(category_ + "_debug_worldInputRobotKine_angAcc",
                      [this]() -> Eigen::Vector3d { return my_robots_->robot("inputRobot").accW().angular(); });
+}
+
+#include <fstream>
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <vector>
+
+void MCKineticsObserver::extractMocapData()
+{
+  std::string fname;
+  // cout << "Enter the file name: ";
+  //  cin >> fname;
+  fname = "/home/arnaud/Documents/KineticObserver/logs/expHRP5/MoCap/c++Reader/resampledMOCAP_final.csv";
+  std::ofstream myfile;
+  myfile.open("/home/arnaud/Documents/KineticObserver/logs/expHRP5/MoCap/c++Reader/example.txt");
+  std::vector<std::vector<std::string>> content;
+  std::vector<std::string> row;
+
+  std::vector<std::vector<std::string>> newFile;
+  // vector<string> newRow(8);
+  std::string line, word;
+
+  std::fstream file(fname, std::ios::in);
+
+  if(file.is_open())
+  {
+    int i = 0;
+    while(getline(file, line))
+    {
+      row.clear();
+      std::vector<std::string> newRow(8);
+      std::stringstream str(line);
+
+      while(getline(str, word, ',')) row.push_back(word);
+      i++;
+      if(i > 1)
+      {
+        if(mocapDataTable_.find(row.at(1)) != mocapDataTable_.end()) // if timecode already exists we compute the mean
+        {
+          auto & alreadyExistingMocapData = mocapDataTable_.at(row.at(1));
+
+          alreadyExistingMocapData.time = (alreadyExistingMocapData.time + std::stod(row.at(1))) / 2;
+          alreadyExistingMocapData.ori.x() = (alreadyExistingMocapData.ori.x() + std::stod(row.at(2))) / 2;
+          alreadyExistingMocapData.ori.y() = (alreadyExistingMocapData.ori.y() + std::stod(row.at(3))) / 2;
+          alreadyExistingMocapData.ori.z() = (alreadyExistingMocapData.ori.z() + std::stod(row.at(4))) / 2;
+          alreadyExistingMocapData.ori.w() = (alreadyExistingMocapData.ori.w() + std::stod(row.at(5))) / 2;
+          alreadyExistingMocapData.pos(0) = (alreadyExistingMocapData.pos(0) + std::stod(row.at(6))) / 2;
+          alreadyExistingMocapData.pos(1) = (alreadyExistingMocapData.pos(1) + std::stod(row.at(7))) / 2;
+          alreadyExistingMocapData.pos(2) = (alreadyExistingMocapData.pos(2) + std::stod(row.at(8))) / 2;
+        }
+        else // new row
+        {
+          tempMocapData_.indexReader = std::stoi(row.at(0));
+          tempMocapData_.time = std::stoi(row.at(1));
+          tempMocapData_.ori.x() = std::stod(row.at(2));
+          tempMocapData_.ori.y() = std::stod(row.at(3));
+          tempMocapData_.ori.z() = std::stod(row.at(4));
+          tempMocapData_.ori.w() = std::stod(row.at(5));
+          tempMocapData_.pos(0) = std::stod(row.at(6));
+          tempMocapData_.pos(1) = std::stod(row.at(7));
+          tempMocapData_.pos(2) = std::stod(row.at(8));
+
+          mocapDataTable_.insert(std::make_pair(row.at(1), tempMocapData_));
+
+          newRow.at(0) = row.at(1);
+          newRow.at(1) = row.at(2);
+          newRow.at(2) = row.at(3);
+          newRow.at(3) = row.at(4);
+          newRow.at(4) = row.at(5);
+          newRow.at(5) = row.at(6);
+          newRow.at(6) = row.at(7);
+          newRow.at(7) = row.at(8);
+
+          newFile.push_back(newRow);
+
+          for(int j = 0; j < newRow.size(); j++)
+          {
+            myfile << newRow[j] << " ";
+          }
+          myfile << std::endl;
+        }
+      }
+    }
+    myfile.close();
+  }
+  else
+    std::cout << "Could not open the file\n";
 }
 
 void MCKineticsObserver::addContactLogEntries(mc_rtc::Logger & logger, const int & numContact)
