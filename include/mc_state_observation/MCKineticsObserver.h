@@ -54,6 +54,11 @@ namespace mc_state_observation
       return insertOrder;
     }
 
+    inline bool hasElement(const std::string & element)
+    {
+      return map_.find(element) != map_.end();
+    }
+
     inline void insertPair(std::string name) {
       if(map_.find(name) != map_.end()) return;
       insertOrder.push_back(name);
@@ -286,6 +291,10 @@ public:
     }
 
   private:
+    std::map<std::string, so::Vector6> contactWrenchesInCentroid_;
+    so::Vector3 totalForceCentroid_ = so::Vector3::Zero();
+    so::Vector3 totalTorqueCentroid_ = so::Vector3::Zero();
+
     sva::PTransformd zeroPose_;
     sva::MotionVecd zeroMotion_;
 
@@ -293,7 +302,7 @@ public:
     // so::kine::Kinematics fbWorldKine_;
     so::kine::Kinematics worldCoMKine_;
 
-    std::string category_ = "Observer_LIPMStabilizerObserverPipeline";
+    std::string category_ = "MCKineticsObserver";
     /* custom list of robots to display */
     std::shared_ptr<mc_rbdyn::Robots> my_robots_;
 
@@ -356,6 +365,7 @@ public:
     so::Matrix3 angDamping_;
 
     bool withDebugLogs_ = false;
+    bool withHandsDetection_ = true;
 
     bool withOdometry_ = false;
     bool withFlatOdometry_ = false;
