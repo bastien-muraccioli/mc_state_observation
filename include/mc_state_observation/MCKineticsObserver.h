@@ -31,7 +31,9 @@ namespace mc_state_observation
     double filteredForceZ_;
     double lambda_ = 100;
   };
-  class MapContactsIMU {
+
+  struct MapContactsIMUs
+  {
     /*
     Care with the use of getNameFromNum() : the mapping remains the same but the list of contacts returned buy the controller might differ over time 
     (contacts broken, etc) and the id of a contact in this list might not match with its rank in the controller's list. 
@@ -71,7 +73,7 @@ namespace mc_state_observation
       // maxElements_ = maxElements_;
     }
 
-  private:
+  protected:
     std::vector<std::string> insertOrder;
     std::map<std::string, int> map_;
     // int maxElements_ = 4;
@@ -291,6 +293,9 @@ public:
     }
 
   private:
+    std::map<std::string, so::Vector3> gyroBiases_;
+    double gyroBiasStandardDeviation_ = 0.0;
+
     std::map<std::string, so::Vector6> contactWrenchesInCentroid_;
     so::Vector3 totalForceCentroid_ = so::Vector3::Zero();
     so::Vector3 totalTorqueCentroid_ = so::Vector3::Zero();
@@ -331,10 +336,10 @@ public:
     stateObservation::KineticsObserver observer_;
     //std::set<std::string> contacts_; ///< Sorted list of contacts
     std::set<std::string> oldContacts_;
-    MapContactsIMU mapContacts_; // contacts are detected in findContacts() function. They are detected from force
-                                 // sensors so their names corresponds to the name of the associated force sensors. Has
-                                 // to be changed if one wants to works with contacts without force sensors.
-    MapContactsIMU mapIMUs_;
+    MapContactsIMUs mapContacts_; // contacts are detected in findContacts() function. They are detected from force
+                                  // sensors so their names corresponds to the name of the associated force sensors. Has
+                                  // to be changed if one wants to works with contacts without force sensors.
+    MapContactsIMUs mapIMUs_;
     std::vector<sva::PTransformd> contactPositions_; ///< Position of the contact frames (force sensor frame when using force sensors)
     //sva::MotionVecd flexDamping_{{17, 17, 17}, {250, 250, 250}}; // HRP-4, {25.0, 200} for HRP-2
     
@@ -365,8 +370,7 @@ public:
     so::Matrix3 angDamping_;
 
     bool withDebugLogs_ = false;
-    bool withHandsDetection_ = true;
-
+    std::string leftHandDetection_ = "asContact";
     bool withOdometry_ = false;
     bool withFlatOdometry_ = false;
 
