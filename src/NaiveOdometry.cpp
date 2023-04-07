@@ -119,7 +119,7 @@ bool NaiveOdometry::run(const mc_control::MCController & ctl)
   /** Contacts
    * Note that when we use force sensors, this should be the position of the force sensor!
    */
-  updateContacts(robot, realRobot, odometryRobot, contactsFound_);
+  updateContacts(ctl, odometryRobot, contactsFound_, logger);
 
   // X_0_fb_.rotation() = odometryRobot.posW().rotation();
   //  X_0_fb_.translation() = mcko_K_0_fb.position();
@@ -261,11 +261,13 @@ void NaiveOdometry::setNewContact(const mc_rbdyn::Robot & odometryRobot, const m
   }
 }
 
-void NaiveOdometry::updateContacts(const mc_rbdyn::Robot & robot,
-                                   const mc_rbdyn::Robot & realRobot,
+void NaiveOdometry::updateContacts(const mc_control::MCController & ctl,
                                    mc_rbdyn::Robot & odometryRobot,
-                                   std::set<std::string> updatedContacts)
+                                   std::set<std::string> updatedContacts,
+                                   mc_rtc::Logger & logger)
 {
+  const auto & robot = ctl.robot(robot_);
+  const auto & realRobot = ctl.realRobot(robot_);
   odometryRobot.posW(X_0_fb_);
   /** Debugging output **/
   if(verbose_ && updatedContacts != oldContacts_)
@@ -431,7 +433,17 @@ void NaiveOdometry::updateContacts(const mc_rbdyn::Robot & robot,
       const mc_rbdyn::ForceSensor & fs = robot.forceSensor(updatedContact);
       mapContacts_.insertPair(robot.forceSensor(updatedContact).name());
       setNewContact(odometryRobot, fs);
+      addContactLogEntries(logger, robot.forceSensor(updatedContact).name());
     }
+  }
+
+  std::set<std::string>
+      diffs; // List of the contact that were available on last iteration but are not set anymore on the current one
+  std::set_difference(oldContacts_.begin(), oldContacts_.end(), updatedContacts.begin(), updatedContacts.end(),
+                      std::inserter(diffs, diffs.end()));
+  for(const auto & diff : diffs)
+  {
+    removeContactLogEntries(logger, robot.forceSensor(diff).name());
   }
 
   oldContacts_ = updatedContacts;
@@ -440,6 +452,22 @@ void NaiveOdometry::updateContacts(const mc_rbdyn::Robot & robot,
   {
     mc_rtc::log::info("nbContacts = {}", nbContacts);
   }
+}
+
+void NaiveOdometry::addContactLogEntries(mc_rtc::Logger & logger, const std::string & contactName)
+{
+  logger.addLogEntry(category_ + contactName + "_position",
+                     [this, contactName]() -> Eigen::Vector3d
+                     { return contacts_.at(contactName).worldRefKine_.position(); });
+  logger.addLogEntry(category_ + contactName + "_orientation",
+                     [this, contactName]() -> so::Quaternion
+                     { return contacts_.at(contactName).worldRefKine_.orientation.toQuaternion().inverse(); });
+}
+
+void NaiveOdometry::removeContactLogEntries(mc_rtc::Logger & logger, const std::string & contactName)
+{
+  logger.removeLogEntry(category_ + contactName + "_position");
+  logger.removeLogEntry(category_ + contactName + "_orientation");
 }
 
 void NaiveOdometry::mass(double mass)
@@ -453,9 +481,9 @@ void NaiveOdometry::mass(double mass)
 
 void NaiveOdometry::addToLogger(const mc_control::MCController &, mc_rtc::Logger & logger, const std::string & category)
 {
-  logger.addLogEntry(category + "_mcko_fb_posW", [this]() -> const sva::PTransformd & { return X_0_fb_; });
-  logger.addLogEntry(category + "_mcko_fb_velW", [this]() -> const sva::MotionVecd & { return v_fb_0_; });
-  logger.addLogEntry(category + "_mcko_fb_accW", [this]() -> const sva::MotionVecd & { return a_fb_0_; });
+  logger.addLogEntry(category + "_naive_fb_posW", [this]() -> const sva::PTransformd & { return X_0_fb_; });
+  logger.addLogEntry(category + "_naive_fb_velW", [this]() -> const sva::MotionVecd & { return v_fb_0_; });
+  logger.addLogEntry(category + "_naive_fb_accW", [this]() -> const sva::MotionVecd & { return a_fb_0_; });
   logger.addLogEntry(category + "_constants_forceThreshold",
                      [this]() -> double { return mass_ * so::cst::gravityConstant * contactDetectionPropThreshold_; });
 }

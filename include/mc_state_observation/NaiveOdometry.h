@@ -27,7 +27,7 @@ struct Contact
   double filteredForceZ_;
   double lambda_ = 100;
 };
-class MapContactsIMU
+class MapContactsIMUs
 {
   /*
   Care with the use of getNameFromNum() : the mapping remains the same but the list of contacts returned buy the
@@ -99,6 +99,10 @@ protected:
 
   void addToLogger(const mc_control::MCController &, mc_rtc::Logger &, const std::string & category) override;
 
+  void addContactLogEntries(mc_rtc::Logger & logger, const std::string & contactName);
+
+  void removeContactLogEntries(mc_rtc::Logger & logger, const std::string & contactName);
+
   /*! \brief Remove observer from logger
    *
    * @param category Category in which this observer entries are logged
@@ -122,10 +126,10 @@ protected:
    */
   std::set<std::string> findContacts(const mc_control::MCController & solver);
 
-  void updateContacts(const mc_rbdyn::Robot & robot,
-                      const mc_rbdyn::Robot & realRobot,
+  void updateContacts(const mc_control::MCController & ctl,
                       mc_rbdyn::Robot & odometryRobot,
-                      std::set<std::string> contacts);
+                      std::set<std::string> contacts,
+                      mc_rtc::Logger & logger);
 
   void setNewContact(const mc_rbdyn::Robot & odometryRobot, const mc_rbdyn::ForceSensor forceSensor);
 
@@ -186,7 +190,7 @@ private:
   sva::PTransformd zeroPose_;
   sva::MotionVecd zeroMotion_;
 
-  std::string category_ = "NaiveOdometry";
+  std::string category_ = "NaiveOdometry_";
   /* custom list of robots to display */
   std::shared_ptr<mc_rbdyn::Robots> my_robots_;
 
@@ -200,7 +204,7 @@ private:
   double mass_ = 42; // [kg]
   // std::set<std::string> contacts_; ///< Sorted list of contacts
   std::set<std::string> oldContacts_;
-  MapContactsIMU mapContacts_;
+  MapContactsIMUs mapContacts_;
 
   sva::MotionVecd v_fb_0_ = sva::MotionVecd::Zero();
   sva::PTransformd X_0_fb_ = sva::PTransformd::Identity();

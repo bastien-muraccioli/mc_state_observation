@@ -31,7 +31,7 @@ struct ForceSignal
   double filteredForceZ_;
   double lambda_ = 100;
 };
-class MapContactsIMU
+class MapContactsIMUs
 {
   /*
   Care with the use of getNameFromNum() : the mapping remains the same but the list of contacts returned buy the
@@ -334,8 +334,8 @@ private:
   stateObservation::KineticsObserver observer_;
   // std::set<std::string> contacts_; ///< Sorted list of contacts
   std::set<std::string> oldContacts_;
-  MapContactsIMU mapContacts_;
-  MapContactsIMU mapIMUs_;
+  MapContactsIMUs mapContacts_;
+  MapContactsIMUs mapIMUs_;
   std::vector<sva::PTransformd>
       contactPositions_; ///< Position of the contact frames (force sensor frame when using force sensors)
   // sva::MotionVecd flexDamping_{{17, 17, 17}, {250, 250, 250}}; // HRP-4, {25.0, 200} for HRP-2
