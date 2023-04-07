@@ -221,6 +221,8 @@ void MCKineticsObserver::reset(const mc_control::MCController & ctl)
   {
     forceSignals.insert(
         std::make_pair(forceSensor.name(), ForceSignal(true, forceSensor.wrenchWithoutGravity(robot).force().z())));
+
+    mapContacts_.insertContact(forceSensor.name(), true);
   }
 
   if(debug_)
@@ -276,7 +278,7 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
   /** Contacts
    * Note that when we use force sensors, this should be the position of the force sensor!
    */
-  updateContacts(robot, inputRobot, contactsFound_, logger);
+  updateContacts(ctl, inputRobot, contactsFound_, logger);
 
   // std::cout << std::endl << "Time: " << std::endl << observer_.getEKF().getCurrentTime() << std::endl;
 
@@ -572,7 +574,7 @@ void MCKineticsObserver::updateIMUs(const mc_rbdyn::Robot & measRobot, const mc_
   unsigned i = 0;
   for(const auto & imu : IMUs_)
   {
-    mapIMUs_.insertPair(imu.name());
+    mapIMUs_.insertSensor(imu.name());
     gyroBiases_.insert(std::make_pair(imu.name(), so::Vector3::Zero()));
 
     so::Vector3 & gyroBias = gyroBiases_.at(imu.name());
@@ -668,9 +670,11 @@ std::set<std::string> MCKineticsObserver::findContacts(const mc_control::MCContr
   {
     for(auto forceSensor : measRobot.forceSensors())
     {
-      auto forceSignal = forceSignals.at(forceSensor.name());
-      if(forceSensor.name().find("LeftHandForceSensor") == std::string::npos
-         || (forceSensor.name().find("LeftHandForceSensor") != std::string::npos && leftHandDetection_ == "asContact"))
+      const std::string & fsName = forceSensor.name();
+      auto forceSignal = forceSignals.at(fsName);
+
+      if(fsName.find("LeftHandForceSensor") == std::string::npos
+         || (fsName.find("LeftHandForceSensor") != std::string::npos && leftHandDetection_ == "asContact"))
       {
         if(withFilteredForcesContactDetection_)
         {
@@ -680,8 +684,8 @@ std::set<std::string> MCKineticsObserver::findContacts(const mc_control::MCContr
 
           if(forceSignal.filteredForceZ_ > measRobot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_)
           {
-            contactsFound_.insert(forceSensor.name());
-            forceSignals.at(forceSensor.name()).isExternalWrench_ =
+            contactsFound_.insert(fsName);
+            forceSignals.at(fsName).isExternalWrench_ =
                 false; // the measurement of the sensor is not passed as an input external wrench
           }
         }
@@ -690,8 +694,8 @@ std::set<std::string> MCKineticsObserver::findContacts(const mc_control::MCContr
           if(forceSensor.wrenchWithoutGravity(measRobot).force().z()
              > measRobot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_)
           {
-            contactsFound_.insert(forceSensor.name());
-            forceSignals.at(forceSensor.name()).isExternalWrench_ =
+            contactsFound_.insert(fsName);
+            forceSignals.at(fsName).isExternalWrench_ =
                 false; // the measurement of the sensor is not passed as an input external wrench
           }
         }
@@ -709,12 +713,15 @@ std::set<std::string> MCKineticsObserver::findContacts(const mc_control::MCContr
   return contactsFound_;
 }
 
-void MCKineticsObserver::updateContact(const mc_rbdyn::Robot & robot,
+void MCKineticsObserver::updateContact(const mc_control::MCController & ctl,
                                        const mc_rbdyn::Robot & inputRobot,
                                        const bool & alreadySet,
                                        const mc_rbdyn::ForceSensor forceSensor,
                                        mc_rtc::Logger & logger)
 {
+  const auto & robot = ctl.robot(robot_);
+  const std::string & fsName = forceSensor.name();
+
   contactWrenchVector_.segment<3>(0) = forceSensor.wrenchWithoutGravity(robot).force(); // retrieving the force
   contactWrenchVector_.segment<3>(3) = forceSensor.wrenchWithoutGravity(robot).moment(); // retrieving the torque
 
@@ -747,14 +754,14 @@ void MCKineticsObserver::updateContact(const mc_rbdyn::Robot & robot,
   if(alreadySet) // checks if the contact already exists, if yes, it is updated
   {
     observer_.updateContactWithWrenchSensor(contactWrenchVector_, contactSensorCovariance_, fbContactKineInputRobot,
-                                            mapContacts_.getNumFromName(forceSensor.name()));
+                                            mapContacts_.getNumFromName(fsName));
   }
   else // the contact still doesn't exist, it is added to the observer
   {
     so::kine::Kinematics
         worldContactKineRef; // reference of the contact in the control world frame using the control robot
 
-    const int & numContact = mapContacts_.getNumFromName(forceSensor.name());
+    const int & numContact = mapContacts_.getNumFromName(fsName);
     /* robot for the kinematics in the world frame */
 
     if(withOdometry_)
@@ -829,6 +836,21 @@ void MCKineticsObserver::updateContact(const mc_rbdyn::Robot & robot,
     observer_.updateContactWithWrenchSensor(contactWrenchVector_,
                                             contactSensorCovariance_, // contactInitCovariance_.block<6,6>(6,6)
                                             fbContactKineInputRobot, numContact);
+
+    contactWithSensor_.insert(std::make_pair(fsName, true));
+
+    ctl.gui()->addElement({"MCKineticsObserver", "Contacts"},
+                          mc_rtc::gui::Checkbox(
+                              fsName + ": Use wrench sensor", [this, fsName]() { return true; },
+                              [this, fsName]()
+                              {
+                                contactWithSensor_.at(fsName) = !contactWithSensor_.at(fsName);
+                                std::cout << std::endl
+                                          << "Enable / disable :" + fsName + " "
+                                                 + std::to_string(contactWithSensor_.at(fsName))
+                                          << std::endl;
+                              }));
+
     if(withDebugLogs_)
     {
       addContactLogEntries(logger, numContact);
@@ -836,11 +858,13 @@ void MCKineticsObserver::updateContact(const mc_rbdyn::Robot & robot,
   }
 }
 
-void MCKineticsObserver::updateContacts(const mc_rbdyn::Robot & robot,
+void MCKineticsObserver::updateContacts(const mc_control::MCController & ctl,
                                         const mc_rbdyn::Robot & inputRobot,
                                         std::set<std::string> updatedContacts,
                                         mc_rtc::Logger & logger)
 {
+  const auto & robot = ctl.robot(robot_);
+
   /** Debugging output **/
   if(verbose_ && updatedContacts != oldContacts_)
     mc_rtc::log::info("[{}] Contacts changed: {}", name(), mc_rtc::io::to_string(updatedContacts));
@@ -857,10 +881,10 @@ void MCKineticsObserver::updateContacts(const mc_rbdyn::Robot & robot,
     }
     else
     {
-      mapContacts_.insertPair(robot.forceSensor(updatedContact).name());
+      mapContacts_.insertContact(robot.forceSensor(updatedContact).name(), true);
     }
 
-    updateContact(robot, inputRobot, contactAlreadySet, robot.forceSensor(updatedContact), logger);
+    updateContact(ctl, inputRobot, contactAlreadySet, robot.forceSensor(updatedContact), logger);
   }
   std::set<std::string>
       diffs; // List of the contact that were available on last iteration but are not set anymore on the current one
@@ -870,6 +894,8 @@ void MCKineticsObserver::updateContacts(const mc_rbdyn::Robot & robot,
   {
     int numDiff = mapContacts_.getNumFromName(diff);
     observer_.removeContact(numDiff);
+
+    ctl.gui()->removeElement({"MCKineticsObserver", "Contacts"}, diff + ": Use wrench sensor");
     if(withDebugLogs_)
     {
       removeContactLogEntries(logger, numDiff);

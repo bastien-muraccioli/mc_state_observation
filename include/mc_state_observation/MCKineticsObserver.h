@@ -32,21 +32,146 @@ namespace mc_state_observation
     double lambda_ = 100;
   };
 
-  struct MapContactsIMUs
+  struct Element
   {
-    /*
-    Care with the use of getNameFromNum() : the mapping remains the same but the list of contacts returned buy the controller might differ over time 
-    (contacts broken, etc) and the id of a contact in this list might not match with its rank in the controller's list. 
-    Use this function preferably only to perform tasks performed on all the contacts and that require their name.
-    */
 
   public:
-    inline const int & getNumFromName(std::string name)
+    inline const int & getID()
     {
-      return map_.find(name)->second;
+      return id_;
     }
 
-    inline const std::string & getNameFromNum(int num)
+  protected:
+    Element() {}
+    ~Element() {}
+    Element(int id) : id_(id) {}
+
+  protected:
+    int id_;
+  };
+
+  struct IMU : virtual public Element
+  {
+  public:
+    IMU(int id)
+    {
+      id_ = id;
+    }
+    ~IMU() {}
+  };
+
+  struct Contact : virtual public Element
+  {
+  protected:
+    Contact() {}
+    ~Contact() {}
+    Contact(int id)
+    {
+      id_ = id;
+    }
+  };
+
+  struct ContactWithSensor : virtual public Contact
+  {
+  public:
+    ContactWithSensor(int id)
+    {
+      id_ = id;
+    }
+    ~ContactWithSensor() {}
+
+    virtual inline bool getIsExternalWrench()
+    {
+      return isExternalWrench_;
+    }
+    virtual inline void setIsExternalWrench(const bool & isExtWrench)
+    {
+      isExternalWrench_ = isExtWrench;
+    }
+
+    virtual inline bool getSensorEnabled()
+    {
+      return isExternalWrench_;
+    }
+
+    virtual inline void setSensorEnabled(const bool & sensEnabled)
+    {
+      sensorEnabled_ = sensEnabled;
+    }
+
+  public:
+    bool isExternalWrench_ = false;
+    bool sensorEnabled_ = true;
+  };
+
+  struct ContactWithoutSensor : virtual public Contact
+  {
+  public:
+    ContactWithoutSensor(int id)
+    {
+      id_ = id;
+    }
+    ~ContactWithoutSensor() {}
+  };
+
+  struct MapInputs
+  {
+
+  public:
+    inline virtual const int & getNumFromName(const std::string & name) = 0;
+
+    inline const std::string & getNameFromNum(const int & num)
+    {
+      return insertOrder.at(num);
+    }
+
+    inline const std::vector<std::string> & getList()
+    {
+      return insertOrder;
+    }
+    inline virtual bool hasElement(const std::string & name) = 0;
+
+    inline void insertSensor(std::string name)
+    {
+      checkAlreadyExists(name); // returns if the sensor is found
+      insertOrder.push_back(name);
+      insertElement(name);
+      num++;
+    }
+
+  protected:
+    inline virtual void insertElement(const std::string & name) = 0;
+    inline virtual void checkAlreadyExists(const std::string & name) = 0;
+
+  protected:
+    std::vector<std::string> insertOrder;
+    int num = 0;
+  };
+
+  struct MapContacts
+  {
+  public:
+    inline ContactWithSensor & contactWithSensors(const std::string & name)
+    {
+      return mapContactsWithSensors_.at(name);
+    }
+
+    inline ContactWithoutSensor & contactWithoutSensors(const std::string & name)
+    {
+      return mapContactsWithoutSensors_.at(name);
+    }
+
+    inline std::map<std::string, ContactWithSensor> & contactsWithSensors()
+    {
+      return mapContactsWithSensors_;
+    }
+
+    inline std::map<std::string, ContactWithoutSensor> & contactsWithoutSensors()
+    {
+      return mapContactsWithoutSensors_;
+    }
+
+    inline const std::string & getNameFromNum(const int & num)
     {
       return insertOrder.at(num);
     }
@@ -56,28 +181,101 @@ namespace mc_state_observation
       return insertOrder;
     }
 
+    inline const int & getNumFromName(const std::string & name)
+    {
+      if(hasSensor_.at(name))
+      {
+        return mapContactsWithSensors_.at(name).getID();
+      }
+      else
+      {
+        return mapContactsWithoutSensors_.at(name).getID();
+      }
+    }
     inline bool hasElement(const std::string & element)
     {
-      return map_.find(element) != map_.end();
+      return hasSensor_.find(element) != hasSensor_.end();
     }
 
-    inline void insertPair(std::string name) {
-      if(map_.find(name) != map_.end()) return;
+    inline void insertContact(const std::string & name, const bool & hasSensor)
+    {
+      if(checkAlreadyExists(name, hasSensor)) return;
       insertOrder.push_back(name);
-      map_.insert(std::make_pair(name, num));
+      insertElement(name, hasSensor);
+
       num++;
     }
 
-    inline void setMaxElements(int maxElements)
+  private:
+    inline void insertElement(const std::string & name, const bool & hasSensor)
     {
-      // maxElements_ = maxElements_;
+      if(hasSensor)
+      {
+        mapContactsWithSensors_.insert(std::make_pair(name, ContactWithSensor(num)));
+        hasSensor_.insert(std::make_pair(name, true));
+      }
+      else
+      {
+        mapContactsWithoutSensors_.insert(std::make_pair(name, ContactWithoutSensor(num)));
+        hasSensor_.insert(std::make_pair(name, true));
+      }
+    }
+    inline virtual bool checkAlreadyExists(const std::string & name, const bool & hasContact)
+    {
+      if(hasSensor_.find(name) != hasSensor_.end())
+      {
+        if(hasContact)
+        {
+          BOOST_ASSERT((mapContactsWithoutSensors_.find(name) == mapContactsWithoutSensors_.end())
+                       && "The contact already exists but was associated to no sensor");
+          return true;
+        }
+        else
+        {
+          BOOST_ASSERT((mapContactsWithSensors_.find(name) == mapContactsWithSensors_.end())
+                       && "The contact already exists but was associated to a sensor");
+          return true;
+        }
+      }
+      else
+      {
+        return false;
+      }
     }
 
-  protected:
+  private:
+    std::map<std::string, bool>
+        hasSensor_; // map containing all the contacts and indicating if each sensor has a contact or not
+    std::map<std::string, ContactWithSensor> mapContactsWithSensors_;
+    std::map<std::string, ContactWithoutSensor> mapContactsWithoutSensors_;
     std::vector<std::string> insertOrder;
-    std::map<std::string, int> map_;
-    // int maxElements_ = 4;
     int num = 0;
+  };
+
+  struct MapIMUs : public MapInputs
+  {
+  public:
+    inline const int & getNumFromName(const std::string & name)
+    {
+      return mapIMUs_.find(name)->second->getID();
+    }
+    inline bool hasElement(const std::string & element)
+    {
+      return mapIMUs_.find(element) != mapIMUs_.end();
+    }
+
+  private:
+    inline void insertElement(const std::string & name)
+    {
+      mapIMUs_.insert(std::make_pair(name, new IMU(num)));
+    }
+    inline virtual void checkAlreadyExists(const std::string & name)
+    {
+      if(mapIMUs_.find(name) != mapIMUs_.end()) return;
+    }
+
+  private:
+    std::map<std::string, IMU *> mapIMUs_;
   };
 
   struct MCKineticsObserver : public mc_observers::Observer
@@ -142,11 +340,11 @@ protected:
    */
   std::set<std::string> findContacts(const mc_control::MCController & solver);
 
-  void updateContacts(const mc_rbdyn::Robot & robot,
+  void updateContacts(const mc_control::MCController & ctl,
                       const mc_rbdyn::Robot & inputRobot,
                       std::set<std::string> contacts,
                       mc_rtc::Logger & logger);
-  void updateContact(const mc_rbdyn::Robot & robot,
+  void updateContact(const mc_control::MCController & ctl,
                      const mc_rbdyn::Robot & inputRobot,
                      const bool & alreadySet,
                      const mc_rbdyn::ForceSensor forceSensor,
@@ -293,6 +491,8 @@ public:
     }
 
   private:
+    std::map<std::string, bool> contactWithSensor_;
+
     std::map<std::string, so::Vector3> gyroBiases_;
     double gyroBiasStandardDeviation_ = 0.0;
 
@@ -336,10 +536,10 @@ public:
     stateObservation::KineticsObserver observer_;
     //std::set<std::string> contacts_; ///< Sorted list of contacts
     std::set<std::string> oldContacts_;
-    MapContactsIMUs mapContacts_; // contacts are detected in findContacts() function. They are detected from force
-                                  // sensors so their names corresponds to the name of the associated force sensors. Has
-                                  // to be changed if one wants to works with contacts without force sensors.
-    MapContactsIMUs mapIMUs_;
+    MapContacts mapContacts_; // contacts are detected in findContacts() function. They are detected from force
+                              // sensors so their names corresponds to the name of the associated force sensors. Has
+                              // to be changed if one wants to works with contacts without force sensors.
+    MapIMUs mapIMUs_;
     std::vector<sva::PTransformd> contactPositions_; ///< Position of the contact frames (force sensor frame when using force sensors)
     //sva::MotionVecd flexDamping_{{17, 17, 17}, {250, 250, 250}}; // HRP-4, {25.0, 200} for HRP-2
     
