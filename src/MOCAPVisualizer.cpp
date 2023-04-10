@@ -90,12 +90,6 @@ bool MOCAPVisualizer::run(const mc_control::MCController & ctl)
   currentMocapDataTime_ += ctl.timeStep;
 
   // tempMocapData_ is an increment in position and orientation on the initial pose
-  std::cout << std::endl << "t: " << mocapTime << std::endl;
-  std::cout << std::endl << "pos1: " << X_0_fb_.translation().transpose() << std::endl;
-  std::cout << std::endl << "ori1: " << X_0_fb_.rotation().transpose() << std::endl;
-
-  std::cout << std::endl << "dx: " << tempMocapData_.kine.position().transpose() << std::endl;
-  std::cout << std::endl << "dtheta: " << tempMocapData_.kine.orientation.toMatrix3() << std::endl;
 
   so::kine::Kinematics newKine; // we initialize the new Kinematics with the initial ones
   newKine.position = X_0_fb_init_.translation();
@@ -108,13 +102,8 @@ bool MOCAPVisualizer::run(const mc_control::MCController & ctl)
       (X_0_fb_init_.rotation().transpose() * tempMocapData_.kine.orientation.toMatrix3()).transpose();
   */
 
-  // std::cout << std::endl << "newPos: " << newPos.transpose() << std::endl;
-  // std::cout << std::endl << "newOri: " << newOri << std::endl;
-
   X_0_fb_.translation() = newKine.position;
-  std::cout << std::endl << "pos2: " << X_0_fb_.translation().transpose() << std::endl;
   X_0_fb_.rotation() = newKine.orientation.toMatrix3().transpose();
-  std::cout << std::endl << "ori2: " << X_0_fb_.rotation().transpose() << std::endl;
 
   my_robots_->robot().mbc().q = ctl.realRobot().mbc().q;
   update(my_robots_->robot());
@@ -243,7 +232,7 @@ void MOCAPVisualizer::extractMocapData()
           quat(2) = std::stod(row.at(3)); // y
           quat(3) = std::stod(row.at(4)); // z
 
-          currentKine.orientation = Eigen::Quaterniond(quat(0), quat(1), quat(2), quat(3));
+          currentKine.orientation = Eigen::Quaterniond(quat(0), quat(1), quat(2), quat(3)).normalized();
 
           so::kine::Orientation oriTransfo( // so::Quaternion(Eigen::AngleAxis(-M_PI_2, Eigen::Vector3d::UnitZ()))
                                             //*
@@ -271,13 +260,9 @@ void MOCAPVisualizer::extractMocapData()
           currentKine.position()(0) = std::stod(row.at(6));
           currentKine.position()(1) = std::stod(row.at(7));
           currentKine.position()(2) = std::stod(row.at(8));
-          std::cout << std::endl << "currentKine.position1: " << currentKine.position().transpose() << std::endl;
 
           currentKine.position = realignOrientation.orientation * currentKine.position();
           // currentKine = realignOrientation * currentKine;
-
-          std::cout << std::endl << "realignOrientation: " << realignOrientation.orientation.toMatrix3() << std::endl;
-          std::cout << std::endl << "currentKine.position2: " << currentKine.position().transpose() << std::endl;
 
           if(!intitialized)
           {
@@ -289,7 +274,6 @@ void MOCAPVisualizer::extractMocapData()
           }
 
           tempMocapData_.kine = initKine.getInverse() * currentKine;
-
           mocapDataTable_.insert(std::make_pair(row.at(1), tempMocapData_));
 
           newRow.at(0) = row.at(1);
