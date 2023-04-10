@@ -217,6 +217,11 @@ void MCKineticsObserver::reset(const mc_control::MCController & ctl)
   inertiaWaist_ = mergeMbg.nodeByName(realRobotModule.mb.body(0).name())->body.inertia();
   mass(ctl.realRobot(robot_).mass());
 
+  for(const auto & imu : IMUs_)
+  {
+    mapIMUs_.insertIMU(imu.name());
+  }
+
   for(auto forceSensor : realRobot.forceSensors())
   {
     forceSignals.insert(
@@ -574,10 +579,7 @@ void MCKineticsObserver::updateIMUs(const mc_rbdyn::Robot & measRobot, const mc_
   unsigned i = 0;
   for(const auto & imu : IMUs_)
   {
-    mapIMUs_.insertSensor(imu.name());
-    gyroBiases_.insert(std::make_pair(imu.name(), so::Vector3::Zero()));
-
-    so::Vector3 & gyroBias = gyroBiases_.at(imu.name());
+    so::Vector3 & gyroBias = mapIMUs_(imu.name()).gyroBias;
     /** Position of accelerometer **/
 
     const sva::PTransformd & bodyImuPose = inputRobot.bodySensor(imu.name()).X_b_s();
@@ -715,7 +717,6 @@ std::set<std::string> MCKineticsObserver::findContacts(const mc_control::MCContr
 
 void MCKineticsObserver::updateContact(const mc_control::MCController & ctl,
                                        const mc_rbdyn::Robot & inputRobot,
-                                       const bool & alreadySet,
                                        const mc_rbdyn::ForceSensor forceSensor,
                                        mc_rtc::Logger & logger)
 {
@@ -751,7 +752,8 @@ void MCKineticsObserver::updateContact(const mc_control::MCController & ctl,
   so::kine::Kinematics worldContactKineInputRobot = worldBodyKineInputRobot * bodyContactKine;
   const so::kine::Kinematics & fbContactKineInputRobot = worldContactKineInputRobot;
 
-  if(alreadySet) // checks if the contact already exists, if yes, it is updated
+  if(mapContacts_.contactWithSensor(forceSensor.name())
+         .wasAlreadySet) // checks if the contact already exists, if yes, it is updated
   {
     observer_.updateContactWithWrenchSensor(contactWrenchVector_, contactSensorCovariance_, fbContactKineInputRobot,
                                             mapContacts_.getNumFromName(fsName));
@@ -870,21 +872,26 @@ void MCKineticsObserver::updateContacts(const mc_control::MCController & ctl,
     mc_rtc::log::info("[{}] Contacts changed: {}", name(), mc_rtc::io::to_string(updatedContacts));
   contactPositions_.clear();
 
-  bool contactAlreadySet;
   for(const auto & updatedContact : updatedContacts)
   {
-    contactAlreadySet = false;
     if(oldContacts_.find(updatedContact)
        != oldContacts_.end()) // checks if the contact already exists, if yes, it is updated
     {
-      contactAlreadySet = true;
+      mapContacts_.contactWithSensor(updatedContact).wasAlreadySet = true;
     }
+    else
+    {
+      mapContacts_.contactWithSensor(updatedContact).wasAlreadySet = false;
+      mapContacts_.contactWithSensor(updatedContact).isSet = true;
+    }
+    /*
     else
     {
       mapContacts_.insertContact(robot.forceSensor(updatedContact).name(), true);
     }
+    */
 
-    updateContact(ctl, inputRobot, contactAlreadySet, robot.forceSensor(updatedContact), logger);
+    updateContact(ctl, inputRobot, robot.forceSensor(updatedContact), logger);
   }
   std::set<std::string>
       diffs; // List of the contact that were available on last iteration but are not set anymore on the current one
@@ -1394,7 +1401,7 @@ void MCKineticsObserver::plotVariablesAfterUpdate(const mc_control::MCController
   for(const auto & imu : IMUs_)
   {
     logger.addLogEntry(category_ + "_debug_gyroBias_" + imu.name(),
-                       [this, imu]() -> Eigen::Vector3d { return gyroBiases_.at(imu.name()); });
+                       [this, imu]() -> Eigen::Vector3d { return mapIMUs_(imu.name()).gyroBias; });
   }
 }
 

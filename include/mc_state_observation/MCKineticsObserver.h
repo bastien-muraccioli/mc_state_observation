@@ -44,20 +44,26 @@ namespace mc_state_observation
   protected:
     Sensor() {}
     ~Sensor() {}
-    Sensor(int id) : id_(id) {}
+    Sensor(int id, std::string name) : id_(id), name_(name) {}
 
   protected:
     int id_;
+    std::string name_;
   };
 
   struct IMU : virtual public Sensor
   {
   public:
-    IMU(int id)
+    IMU(int id, std::string name)
     {
       id_ = id;
+      name_ = name;
+      gyroBias = so::Vector3::Zero();
     }
     ~IMU() {}
+
+  public:
+    so::Vector3 gyroBias;
   };
 
   struct Contact : virtual public Sensor
@@ -65,70 +71,44 @@ namespace mc_state_observation
   protected:
     Contact() {}
     ~Contact() {}
-    Contact(int id)
+    Contact(int id, std::string name)
     {
       id_ = id;
+      name_ = name;
     }
+
+  public:
+    bool isSet = false;
+    bool wasAlreadySet = false;
+    bool isWeakContact = false;
   };
 
   struct ContactWithSensor : virtual public Contact
   {
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   public:
-    ContactWithSensor(int id)
+    ContactWithSensor(int id, std::string name)
     {
       id_ = id;
+      name_ = name;
     }
     ~ContactWithSensor() {}
 
   public:
     so::Vector6 wrenchInCentroid_ = so::Vector6::Zero();
-    bool isExternalWrench_ = false;
-    bool sensorEnabled_ = true;
+    bool isExternalWrench = false;
+    bool sensorEnabled = true;
   };
 
   struct ContactWithoutSensor : virtual public Contact
   {
   public:
-    ContactWithoutSensor(int id)
+    ContactWithoutSensor(int id, std::string name)
     {
       id_ = id;
+      name_ = name;
     }
     ~ContactWithoutSensor() {}
-  };
-
-  struct MapSensors
-  {
-
-  public:
-    inline virtual const int & getNumFromName(const std::string & name) = 0;
-
-    inline const std::string & getNameFromNum(const int & num)
-    {
-      return insertOrder.at(num);
-    }
-
-    inline const std::vector<std::string> & getList()
-    {
-      return insertOrder;
-    }
-    inline virtual bool hasElement(const std::string & name) = 0;
-
-    inline void insertSensor(std::string name)
-    {
-      if(checkAlreadyExists(name)) return;
-      insertOrder.push_back(name);
-      insertElement(name);
-      num++;
-    }
-
-  protected:
-    inline virtual void insertElement(const std::string & name) = 0;
-    inline virtual bool checkAlreadyExists(const std::string & name) = 0;
-
-  protected:
-    std::vector<std::string> insertOrder;
-    int num = 0;
   };
 
   struct MapContacts
@@ -194,12 +174,12 @@ namespace mc_state_observation
     {
       if(hasSensor)
       {
-        mapContactsWithSensors_.insert(std::make_pair(name, ContactWithSensor(num)));
+        mapContactsWithSensors_.insert(std::make_pair(name, ContactWithSensor(num, name)));
         hasSensor_.insert(std::make_pair(name, true));
       }
       else
       {
-        mapContactsWithoutSensors_.insert(std::make_pair(name, ContactWithoutSensor(num)));
+        mapContactsWithoutSensors_.insert(std::make_pair(name, ContactWithoutSensor(num, name)));
         hasSensor_.insert(std::make_pair(name, true));
       }
     }
@@ -235,30 +215,56 @@ namespace mc_state_observation
     int num = 0;
   };
 
-  struct MapIMUs : public MapSensors
+  struct MapIMUs
   {
   public:
     inline const int & getNumFromName(const std::string & name)
     {
-      return mapIMUs_.find(name)->second->getID();
+      return mapIMUs_.find(name)->second.getID();
     }
-    inline bool hasElement(const std::string & element)
+    inline bool hasIMU(const std::string & element)
     {
       return mapIMUs_.find(element) != mapIMUs_.end();
     }
 
-  private:
-    inline void insertElement(const std::string & name)
+    inline const std::string & getNameFromNum(const int & num)
     {
-      mapIMUs_.insert(std::make_pair(name, new IMU(num)));
+      return insertOrder.at(num);
     }
+
+    inline const std::vector<std::string> & getList()
+    {
+      return insertOrder;
+    }
+    inline virtual bool hasElement(const std::string & name)
+    {
+      checkAlreadyExists(name);
+    }
+
+    inline void insertIMU(std::string name)
+    {
+      if(checkAlreadyExists(name)) return;
+      insertOrder.push_back(name);
+      mapIMUs_.insert(std::make_pair(name, IMU(num, name)));
+      num++;
+    }
+
+    inline IMU & operator()(std::string name)
+    {
+      BOOST_ASSERT(checkAlreadyExists(name) && "The requested sensor doesn't exist");
+      return mapIMUs_.at(name);
+    }
+
+  private:
     inline virtual bool checkAlreadyExists(const std::string & name)
     {
       if(mapIMUs_.find(name) != mapIMUs_.end()) return true;
     }
 
   private:
-    std::map<std::string, IMU *> mapIMUs_;
+    std::vector<std::string> insertOrder;
+    std::map<std::string, IMU> mapIMUs_;
+    int num = 0;
   };
 
   struct MCKineticsObserver : public mc_observers::Observer
@@ -329,7 +335,6 @@ protected:
                       mc_rtc::Logger & logger);
   void updateContact(const mc_control::MCController & ctl,
                      const mc_rbdyn::Robot & inputRobot,
-                     const bool & alreadySet,
                      const mc_rbdyn::ForceSensor forceSensor,
                      mc_rtc::Logger & logger);
 
@@ -476,7 +481,6 @@ public:
   private:
     std::map<std::string, bool> contactWithSensor_;
 
-    std::map<std::string, so::Vector3> gyroBiases_;
     double gyroBiasStandardDeviation_ = 0.0;
 
     so::Vector3 totalForceCentroid_ = so::Vector3::Zero();
