@@ -86,6 +86,7 @@ namespace mc_state_observation
     so::Vector6 wrenchInCentroid = so::Vector6::Zero();
     bool isExternalWrench = false;
     bool sensorEnabled = true;
+    bool sensorWasEnabled = false; // allows to know if the contact's measurements have to be added during the update
 
     /* Force filtering for the contact detection */
     so::Vector3 filteredForce = so::Vector3::Zero();
@@ -296,6 +297,10 @@ protected:
 
   void removeContactLogEntries(mc_rtc::Logger & logger, const int & numContact);
 
+  void addContactMeasurementsLogEntries(mc_rtc::Logger & logger, const int & numContact);
+
+  void removeContactMeasurementsLogEntries(mc_rtc::Logger & logger, const int & numContact);
+
   void addToLogger(const mc_control::MCController &, mc_rtc::Logger &, const std::string & category) override;
 
   /*! \brief Remove observer from logger
@@ -471,8 +476,6 @@ public:
     }
 
   private:
-    std::map<std::string, bool> contactWithSensor_;
-
     double gyroBiasStandardDeviation_ = 0.0;
 
     so::Vector3 totalForceCentroid_ = so::Vector3::Zero();
