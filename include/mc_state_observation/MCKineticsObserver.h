@@ -20,18 +20,6 @@ namespace mc_state_observation
    *
    */
 
-  struct ForceSignal
-  {
-    ForceSignal(bool isExternalWrench, double filteredForceZ)
-    : isExternalWrench_(isExternalWrench), filteredForceZ_(filteredForceZ)
-    {
-    }
-
-    bool isExternalWrench_;
-    double filteredForceZ_;
-    double lambda_ = 100;
-  };
-
   struct Sensor
   {
 
@@ -95,9 +83,13 @@ namespace mc_state_observation
     ~ContactWithSensor() {}
 
   public:
-    so::Vector6 wrenchInCentroid_ = so::Vector6::Zero();
+    so::Vector6 wrenchInCentroid = so::Vector6::Zero();
     bool isExternalWrench = false;
     bool sensorEnabled = true;
+
+    /* Force filtering for the contact detection */
+    so::Vector3 filteredForce = so::Vector3::Zero();
+    double lambda = 0.0;
   };
 
   struct ContactWithoutSensor : virtual public Contact
@@ -540,8 +532,6 @@ public:
 
     so::Vector3 additionalUserResultingForce_ = so::Vector3::Zero();
     so::Vector3 additionalUserResultingMoment_ = so::Vector3::Zero();
-
-    std::unordered_map<std::string, ForceSignal> forceSignals;
 
     bool simStarted_ = false; // this variable is set to true when the robot touches the ground at the beginning of the simulation, 
                               // allowing to start the estimaion at that time and not when the robot is still in the air, 
