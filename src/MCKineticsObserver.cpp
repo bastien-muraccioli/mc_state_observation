@@ -557,14 +557,14 @@ void MCKineticsObserver::inputAdditionalWrench(const mc_rbdyn::Robot & inputRobo
     for(auto wrenchSensor : measRobot.forceSensors()) // if a force sensor is not associated to a contact, its
                                                       // measurement is given as an input external wrench
     {
-      contactWrenchesInCentroid_.insert(std::make_pair(wrenchSensor.name(), so::Vector6::Zero()));
       so::Vector3 forceCentroid = so::Vector3::Zero();
       so::Vector3 torqueCentroid = so::Vector3::Zero();
       observer_.convertWrenchFromUserToCentroid(wrenchSensor.worldWrenchWithoutGravity(inputRobot).force(),
                                                 wrenchSensor.worldWrenchWithoutGravity(inputRobot).moment(),
                                                 forceCentroid, torqueCentroid);
-      contactWrenchesInCentroid_.at(wrenchSensor.name()).segment<3>(0) = forceCentroid;
-      contactWrenchesInCentroid_.at(wrenchSensor.name()).segment<3>(3) = torqueCentroid;
+
+      mapContacts_.contactWithSensor(wrenchSensor.name()).wrenchInCentroid_.segment<3>(0) = forceCentroid;
+      mapContacts_.contactWithSensor(wrenchSensor.name()).wrenchInCentroid_.segment<3>(3) = torqueCentroid;
     }
   }
 }
@@ -1367,23 +1367,23 @@ void MCKineticsObserver::plotVariablesAfterUpdate(const mc_control::MCController
     const std::string & sensorName = wrenchSensor.name();
     logger.addLogEntry(category_ + "_debug_wrenchesInCentroid_" + sensorName + "_force",
                        [this, sensorName]() -> Eigen::Vector3d
-                       { return contactWrenchesInCentroid_.at(sensorName).segment<3>(0); });
+                       { return mapContacts_.contactWithSensor(sensorName).wrenchInCentroid_.segment<3>(0); });
     logger.addLogEntry(category_ + "_debug_wrenchesInCentroid_" + sensorName + "_torque",
                        [this, sensorName]() -> Eigen::Vector3d
-                       { return contactWrenchesInCentroid_.at(sensorName).segment<3>(3); });
+                       { return mapContacts_.contactWithSensor(sensorName).wrenchInCentroid_.segment<3>(3); });
     logger.addLogEntry(category_ + "_debug_wrenchesInCentroid_" + sensorName + "_forceWithUnmodeled",
                        [this, sensorName]() -> Eigen::Vector3d
                        {
                          return observer_.getCurrentStateVector().segment<int(observer_.sizeForce)>(
                                     observer_.unmodeledForceIndex())
-                                + contactWrenchesInCentroid_.at(sensorName).segment<3>(0);
+                                + mapContacts_.contactWithSensor(sensorName).wrenchInCentroid_.segment<3>(0);
                        });
     logger.addLogEntry(category_ + "_debug_wrenchesInCentroid_" + sensorName + "_torqueWithUnmodeled",
                        [this, sensorName]() -> Eigen::Vector3d
                        {
                          return observer_.getCurrentStateVector().segment<int(observer_.sizeTorque)>(
                                     observer_.unmodeledTorqueIndex())
-                                + contactWrenchesInCentroid_.at(sensorName).segment<3>(3);
+                                + mapContacts_.contactWithSensor(sensorName).wrenchInCentroid_.segment<3>(3);
                        });
   }
   logger.addLogEntry(category_ + "_debug_wrenchesInCentroid_total_force",

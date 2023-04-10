@@ -32,7 +32,7 @@ namespace mc_state_observation
     double lambda_ = 100;
   };
 
-  struct Element
+  struct Sensor
   {
 
   public:
@@ -42,15 +42,15 @@ namespace mc_state_observation
     }
 
   protected:
-    Element() {}
-    ~Element() {}
-    Element(int id) : id_(id) {}
+    Sensor() {}
+    ~Sensor() {}
+    Sensor(int id) : id_(id) {}
 
   protected:
     int id_;
   };
 
-  struct IMU : virtual public Element
+  struct IMU : virtual public Sensor
   {
   public:
     IMU(int id)
@@ -60,7 +60,7 @@ namespace mc_state_observation
     ~IMU() {}
   };
 
-  struct Contact : virtual public Element
+  struct Contact : virtual public Sensor
   {
   protected:
     Contact() {}
@@ -73,6 +73,7 @@ namespace mc_state_observation
 
   struct ContactWithSensor : virtual public Contact
   {
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   public:
     ContactWithSensor(int id)
     {
@@ -80,26 +81,8 @@ namespace mc_state_observation
     }
     ~ContactWithSensor() {}
 
-    virtual inline bool getIsExternalWrench()
-    {
-      return isExternalWrench_;
-    }
-    virtual inline void setIsExternalWrench(const bool & isExtWrench)
-    {
-      isExternalWrench_ = isExtWrench;
-    }
-
-    virtual inline bool getSensorEnabled()
-    {
-      return isExternalWrench_;
-    }
-
-    virtual inline void setSensorEnabled(const bool & sensEnabled)
-    {
-      sensorEnabled_ = sensEnabled;
-    }
-
   public:
+    so::Vector6 wrenchInCentroid_ = so::Vector6::Zero();
     bool isExternalWrench_ = false;
     bool sensorEnabled_ = true;
   };
@@ -114,7 +97,7 @@ namespace mc_state_observation
     ~ContactWithoutSensor() {}
   };
 
-  struct MapInputs
+  struct MapSensors
   {
 
   public:
@@ -133,7 +116,7 @@ namespace mc_state_observation
 
     inline void insertSensor(std::string name)
     {
-      checkAlreadyExists(name); // returns if the sensor is found
+      if(checkAlreadyExists(name)) return;
       insertOrder.push_back(name);
       insertElement(name);
       num++;
@@ -141,7 +124,7 @@ namespace mc_state_observation
 
   protected:
     inline virtual void insertElement(const std::string & name) = 0;
-    inline virtual void checkAlreadyExists(const std::string & name) = 0;
+    inline virtual bool checkAlreadyExists(const std::string & name) = 0;
 
   protected:
     std::vector<std::string> insertOrder;
@@ -151,12 +134,12 @@ namespace mc_state_observation
   struct MapContacts
   {
   public:
-    inline ContactWithSensor & contactWithSensors(const std::string & name)
+    inline ContactWithSensor & contactWithSensor(const std::string & name)
     {
       return mapContactsWithSensors_.at(name);
     }
 
-    inline ContactWithoutSensor & contactWithoutSensors(const std::string & name)
+    inline ContactWithoutSensor & contactWithoutSensor(const std::string & name)
     {
       return mapContactsWithoutSensors_.at(name);
     }
@@ -252,7 +235,7 @@ namespace mc_state_observation
     int num = 0;
   };
 
-  struct MapIMUs : public MapInputs
+  struct MapIMUs : public MapSensors
   {
   public:
     inline const int & getNumFromName(const std::string & name)
@@ -269,9 +252,9 @@ namespace mc_state_observation
     {
       mapIMUs_.insert(std::make_pair(name, new IMU(num)));
     }
-    inline virtual void checkAlreadyExists(const std::string & name)
+    inline virtual bool checkAlreadyExists(const std::string & name)
     {
-      if(mapIMUs_.find(name) != mapIMUs_.end()) return;
+      if(mapIMUs_.find(name) != mapIMUs_.end()) return true;
     }
 
   private:
@@ -496,7 +479,6 @@ public:
     std::map<std::string, so::Vector3> gyroBiases_;
     double gyroBiasStandardDeviation_ = 0.0;
 
-    std::map<std::string, so::Vector6> contactWrenchesInCentroid_;
     so::Vector3 totalForceCentroid_ = so::Vector3::Zero();
     so::Vector3 totalTorqueCentroid_ = so::Vector3::Zero();
 
@@ -629,4 +611,3 @@ public:
   };
 
 } // mc_state_observation
-
