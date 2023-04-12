@@ -1780,7 +1780,6 @@ void MCKineticsObserver::removeContactLogEntries(mc_rtc::Logger & logger, const 
 
   logger.removeLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
                         + "_inputUserContactKine_orientation");
-  logger.removeLogEntry(category_ + "_debug_contactState_isWeakContact_" + mapContacts_.getNameFromNum(numContact));
   logger.removeLogEntry(category_ + "_debug_contactState_isExternalWrench_" + mapContacts_.getNameFromNum(numContact));
   logger.removeLogEntry(category_ + "_debug_contactState_isSet_" + mapContacts_.getNameFromNum(numContact));
 }
