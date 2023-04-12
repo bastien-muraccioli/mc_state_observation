@@ -63,12 +63,19 @@ namespace mc_state_observation
     {
       id_ = id;
       name_ = name;
+      resetContact();
+    }
+
+  public:
+    inline void resetContact()
+    {
+      wasAlreadySet = false;
+      isSet = false;
     }
 
   public:
     bool isSet = false;
     bool wasAlreadySet = false;
-    bool isWeakContact = false;
   };
 
   struct ContactWithSensor : virtual public Contact
@@ -79,12 +86,21 @@ namespace mc_state_observation
     {
       id_ = id;
       name_ = name;
+      resetContact();
     }
     ~ContactWithSensor() {}
+    inline void resetContact()
+    {
+      wasAlreadySet = false;
+      isSet = false;
+      sensorWasEnabled = false;
+
+      // also filtered force? see when this feature will be corrected
+    }
 
   public:
     so::Vector6 wrenchInCentroid = so::Vector6::Zero();
-    bool isExternalWrench = false;
+    bool isExternalWrench = true;
     bool sensorEnabled = true;
     bool sensorWasEnabled = false; // allows to know if the contact's measurements have to be added during the update
 
@@ -112,9 +128,19 @@ namespace mc_state_observation
       return mapContactsWithSensors_.at(name);
     }
 
+    inline ContactWithSensor & contactWithSensor(const int & num)
+    {
+      return mapContactsWithSensors_.at(getNameFromNum(num));
+    }
+
     inline ContactWithoutSensor & contactWithoutSensor(const std::string & name)
     {
       return mapContactsWithoutSensors_.at(name);
+    }
+
+    inline ContactWithoutSensor & contactWithoutSensor(const int & num)
+    {
+      return mapContactsWithoutSensors_.at(getNameFromNum(num));
     }
 
     inline std::map<std::string, ContactWithSensor> & contactsWithSensors()
