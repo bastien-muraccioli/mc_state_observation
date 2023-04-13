@@ -278,6 +278,8 @@ namespace mc_state_observation
     inline virtual bool checkAlreadyExists(const std::string & name)
     {
       if(mapIMUs_.find(name) != mapIMUs_.end()) return true;
+      else
+        return false;
     }
 
   private:
