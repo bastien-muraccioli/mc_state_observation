@@ -957,7 +957,7 @@ void MCKineticsObserver::updateContact(const mc_control::MCController & ctl,
   const std::string & fsName = forceSensor.name();
   ContactWithSensor & contact = mapContacts_.contactWithSensor(fsName);
 
-  sva::ForceVecd measuredWrench = forceSensor.worldWrenchWithoutGravity(robot);
+  sva::ForceVecd measuredWrench = forceSensor.wrenchWithoutGravity(robot);
 
   const sva::PTransformd & bodySensorPoseRobot = forceSensor.X_p_f();
   so::kine::Kinematics bodySensorKine;
@@ -985,8 +985,6 @@ void MCKineticsObserver::updateContact(const mc_control::MCController & ctl,
   so::kine::Kinematics worldSensorKineInputRobot = worldBodyKineInputRobot * bodySensorKine;
 
   so::kine::Kinematics fbContactKineInputRobot;
-  std::cout << std::endl << "surface" << std::endl << contact.surface << std::endl;
-  std::cout << std::endl << "isAttached" << std::endl << contact.isAttachedToSurface << std::endl;
   if(contact.isAttachedToSurface)
   {
     fbContactKineInputRobot = worldSensorKineInputRobot;
@@ -1004,15 +1002,11 @@ void MCKineticsObserver::updateContact(const mc_control::MCController & ctl,
 
     so::kine::Kinematics surfaceSensorKine;
     surfaceSensorKine = worldSurfaceKineInputRobot.getInverse() * worldSensorKineInputRobot;
-    std::cout << std::endl << "kine" << std::endl << surfaceSensorKine << std::endl;
-    std::cout << std::endl << "forcebefore" << std::endl << measuredWrench.force() << std::endl;
-    std::cout << std::endl << "torquebefore" << std::endl << measuredWrench.moment() << std::endl;
     worldSurfaceKineInputRobot = worldSensorKineInputRobot * surfaceSensorKine.getInverse();
     contactWrenchVector_.segment<3>(0) = surfaceSensorKine.orientation * measuredWrench.force();
 
     contactWrenchVector_.segment<3>(3) = surfaceSensorKine.orientation * measuredWrench.moment()
                                          + surfaceSensorKine.position().cross(contactWrenchVector_.segment<3>(0));
-    std::cout << std::endl << "contactWrenchVector2" << std::endl << contactWrenchVector_ << std::endl;
   }
 
   if(contact.wasAlreadySet) // checks if the contact already exists, if yes, it is updated
