@@ -285,10 +285,8 @@ void NaiveOdometry::updateContacts(const mc_control::MCController & ctl,
       0.0; // two different lists for position and orientation as the orientation list can contain only two contacts
   double sumAlreadySetForcesNormOrientationOdometry = 0.0;
   so::Vector3 totalFbPosition = so::Vector3::Zero();
-
   for(const std::string & updatedContact : updatedContacts)
   {
-    const mc_rbdyn::ForceSensor & fs = robot.forceSensor(updatedContact);
     if(oldContacts_.find(updatedContact)
        != oldContacts_.end()) // the contact already exists so we will use it to estimate the floating base pose
     {
@@ -325,6 +323,15 @@ void NaiveOdometry::updateContacts(const mc_control::MCController & ctl,
           alreadySetContactsOrientationOdometry.insert(std::make_pair(updatedContact, kine));
         }
       }
+    }
+  }
+
+  for(const std::string & updatedContact : updatedContacts)
+  {
+    const mc_rbdyn::ForceSensor & fs = robot.forceSensor(updatedContact);
+    if(oldContacts_.find(updatedContact)
+       != oldContacts_.end()) // the contact already exists so we will use it to estimate the floating base pose
+    {
 
       so::kine::Kinematics kine;
       alreadySetContactsPositionOdometry.insert(std::make_pair(updatedContact, kine));
@@ -366,20 +373,26 @@ void NaiveOdometry::updateContacts(const mc_control::MCController & ctl,
                         * worldAlreadySetContactKineOdometryRobot.orientation.toMatrix3().transpose()
                         * odometryRobot.posW().rotation().transpose());
         alreadySetContactsOrientationOdometry.at(updatedContact).position = worldFbPositionOdometry;
+
+        sumAlreadySetForcesNormOrientationOdometry +=
+            fs.wrenchWithoutGravity(robot).force().norm(); // robot because odometryRobot has no sensors
       }
 
       // with the names convention used in state observation : worldFbOriOdometry = worldContactOriRef * contactFbOri
       // = worldContactOriRef * contactWorldOri * worldFbOri;
 
       totalFbPosition += worldFbPositionOdometry * fs.wrenchWithoutGravity(odometryRobot).force().norm();
-
-      sumAlreadySetForcesNormOrientationOdometry +=
-          fs.wrenchWithoutGravity(robot).force().norm(); // robot because odometryRobot has no sensors
-
       sumAlreadySetForcesNormPositionOdometry +=
           fs.wrenchWithoutGravity(robot).force().norm(); // robot because odometryRobot has no sensors
     }
   }
+
+  std::cout << std::endl
+            << "sumAlreadySetForcesNormOrientationOdometry" << std::endl
+            << sumAlreadySetForcesNormOrientationOdometry << std::endl;
+  std::cout << std::endl
+            << "sumAlreadySetForcesNormPositionOdometry" << std::endl
+            << sumAlreadySetForcesNormPositionOdometry << std::endl;
 
   if(alreadySetContactsPositionOdometry.size() > 0)
   {
