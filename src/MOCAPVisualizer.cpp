@@ -50,6 +50,16 @@ void MOCAPVisualizer::reset(const mc_control::MCController & ctl)
 
   X_0_fb_ = realRobot.posW(); // we initialize the mocap robot with the real robot
   X_0_fb_init_ = realRobot.posW(); // we initialize the mocap robot with the real robot
+
+  for(auto forceSensor : realRobot.forceSensors())
+  {
+    contacts_.insert(std::make_pair(forceSensor.name(), Contact()));
+  }
+  updateContacts(ctl);
+  for(auto forceSensor : realRobot.forceSensors())
+  {
+    addContactsLogs(forceSensor.name(), const_cast<mc_control::MCController &>(ctl).logger());
+  }
 }
 
 bool MOCAPVisualizer::run(const mc_control::MCController & ctl)
@@ -107,6 +117,8 @@ bool MOCAPVisualizer::run(const mc_control::MCController & ctl)
 
   my_robots_->robot().mbc().q = ctl.realRobot().mbc().q;
   update(my_robots_->robot());
+
+  updateContacts(ctl);
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -126,6 +138,49 @@ void MOCAPVisualizer::update(mc_rbdyn::Robot & robot)
   // robot.velW(v_fb_0_.vector());
 }
 
+void MOCAPVisualizer::updateContacts(const mc_control::MCController & ctl)
+{
+  const auto & realRobot = ctl.realRobot(robot_);
+  const auto & mocapRobot = my_robots_->robot();
+
+  for(auto forceSensor : realRobot.forceSensors())
+  {
+    so::kine::Kinematics worldContactKineRef;
+    worldContactKineRef.setZero(so::kine::Kinematics::Flags::position);
+
+    // getting the position in the world of the new contact
+    const sva::PTransformd & bodyNewContactPoseRobot = forceSensor.X_p_f();
+    so::kine::Kinematics bodyNewContactKine;
+    bodyNewContactKine.setZero(so::kine::Kinematics::Flags::all);
+    bodyNewContactKine.position = bodyNewContactPoseRobot.translation();
+    bodyNewContactKine.orientation = so::Matrix3(bodyNewContactPoseRobot.rotation().transpose());
+
+    so::kine::Kinematics worldBodyKineOdometryRobot;
+
+    worldBodyKineOdometryRobot.position =
+        mocapRobot.mbc().bodyPosW[mocapRobot.bodyIndexByName(forceSensor.parentBody())].translation();
+    worldBodyKineOdometryRobot.orientation = so::Matrix3(
+        mocapRobot.mbc().bodyPosW[mocapRobot.bodyIndexByName(forceSensor.parentBody())].rotation().transpose());
+    worldBodyKineOdometryRobot.linVel =
+        mocapRobot.mbc().bodyVelW[mocapRobot.bodyIndexByName(forceSensor.parentBody())].linear();
+    worldBodyKineOdometryRobot.angVel =
+        mocapRobot.mbc().bodyVelW[mocapRobot.bodyIndexByName(forceSensor.parentBody())].angular();
+    worldBodyKineOdometryRobot.linAcc =
+        worldBodyKineOdometryRobot.orientation.toMatrix3()
+        * mocapRobot.mbc().bodyAccB[mocapRobot.bodyIndexByName(forceSensor.parentBody())].linear();
+    worldBodyKineOdometryRobot.angAcc =
+        worldBodyKineOdometryRobot.orientation.toMatrix3()
+        * mocapRobot.mbc().bodyAccB[mocapRobot.bodyIndexByName(forceSensor.parentBody())].angular();
+
+    // std::cout << std::endl << "bodyNewContactKine" << std::endl << bodyNewContactKine << std::endl;
+    // std::cout << std::endl << "worldBodyKineOdometryRobot" << std::endl << worldBodyKineOdometryRobot << std::endl;
+    so::kine::Kinematics worldNewContactKineOdometryRobot = worldBodyKineOdometryRobot * bodyNewContactKine;
+
+    contacts_.at(forceSensor.name()).worldRefKine_.position = worldNewContactKineOdometryRobot.position();
+    contacts_.at(forceSensor.name()).worldRefKine_.orientation = worldNewContactKineOdometryRobot.orientation;
+    contacts_.at(forceSensor.name()).quat_ = worldNewContactKineOdometryRobot.orientation.toQuaternion().inverse();
+  }
+}
 ///////////////////////////////////////////////////////////////////////
 /// -------------------------------Logs--------------------------------
 ///////////////////////////////////////////////////////////////////////
@@ -139,6 +194,20 @@ void MOCAPVisualizer::addToLogger(const mc_control::MCController &,
   logger.addLogEntry(category + "_MOCAP_ori",
                      [this]() -> so::Quaternion { return tempMocapData_.kine.orientation.toQuaternion().inverse(); });
   logger.addLogEntry(category + "_mocap_fb_posW", [this]() -> const sva::PTransformd & { return X_0_fb_; });
+  logger.addLogEntry(category + "_mocap_fb_yaw",
+                     [this]() -> const double
+                     { return -so::kine::rotationMatrixToYawAxisAgnostic(X_0_fb_.rotation()); });
+}
+
+void MOCAPVisualizer::addContactsLogs(const std::string & name, mc_rtc::Logger & logger)
+{
+  logger.addLogEntry("MOCAPVisualizer_contacts_" + name + "_position",
+                     [this, name]() -> so::Vector3 { return contacts_.at(name).worldRefKine_.position(); });
+  logger.addLogEntry("MOCAPVisualizer_contacts_" + name + "_orientation",
+                     [this, name]() -> so::Quaternion { return contacts_.at(name).quat_; });
+  logger.addLogEntry("MOCAPVisualizer_contacts_" + name + "_orientation_RollPitchYaw",
+                     [this, name]() -> so::Vector3
+                     { return contacts_.at(name).worldRefKine_.orientation.toRollPitchYaw(); });
 }
 
 void MOCAPVisualizer::removeFromLogger(mc_rtc::Logger & logger, const std::string & category) {}

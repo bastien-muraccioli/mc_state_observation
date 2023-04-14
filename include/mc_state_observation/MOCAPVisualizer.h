@@ -19,7 +19,12 @@ namespace so = stateObservation;
  *    Yacine Chitour. IEEE-RAS Humanoids 2017. <hal-01499167>
  *
  */
-
+struct Contact
+{
+  Contact() {}
+  so::kine::Kinematics worldRefKine_;
+  so::Quaternion quat_;
+};
 struct MocapData
 {
   int indexReader = 0;
@@ -66,6 +71,10 @@ protected:
                 mc_rtc::gui::StateBuilder &,
                 const std::vector<std::string> & /* category */) override;
 
+  void updateContacts(const mc_control::MCController & ctl);
+
+  void addContactsLogs(const std::string & name, mc_rtc::Logger & logger);
+
 protected:
   /**
    * Find established contacts between the observed robot and the fixed robots
@@ -82,6 +91,7 @@ protected:
 
 public:
 private:
+  std::unordered_map<std::string, Contact> contacts_;
   std::string csvPath_;
   sva::PTransformd X_0_fb_ = sva::PTransformd::Identity();
   sva::PTransformd X_0_fb_init_ = sva::PTransformd::Identity();
