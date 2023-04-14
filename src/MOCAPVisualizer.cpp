@@ -313,7 +313,11 @@ void MOCAPVisualizer::extractMocapData()
             tempOri << 1, 0, 0, 0, 0, -1, 0, 1, 0; // 0, 0, -1, 0, 1, 0, 1, 0, 0;
             so::kine::Orientation fixOrientations(tempOri);
             oriTransfo = so::Matrix3(
-                tempOri * so::Quaternion(Eigen::AngleAxis(M_PI_2, Eigen::Vector3d::UnitY())).toRotationMatrix()
+                so::Quaternion(Eigen::AngleAxis(0.0269199223, Eigen::Vector3d::UnitY()))
+                    .toRotationMatrix() // 0.0269199223 comes from the compensation of the very slight disalignment
+                                        // between the world and the mocap axis causing the mocap to go down over the
+                                        // time
+                * tempOri * so::Quaternion(Eigen::AngleAxis(M_PI_2, Eigen::Vector3d::UnitY())).toRotationMatrix()
                 * oriTransfo.toMatrix3() * tempOri.transpose());
 
             /*
