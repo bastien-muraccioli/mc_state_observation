@@ -44,6 +44,31 @@ void NaiveOdometry::configure(const mc_control::MCController & ctl, const mc_rtc
         "Odometry type not allowed. Please pick among : [flatOdometry, 6dOdometry]");
   }
 
+  contactsDetection_ = static_cast<std::string>(config("contactsDetection"));
+  if(contactsDetection_ != "fromSolver" && contactsDetection_ != "fromThreshold"
+     && contactsDetection_ != "fromSurfaces")
+  {
+    mc_rtc::log::error_and_throw<std::runtime_error>(
+        "Contacts detection type not allowed. Please pick among : [fromSolver, fromThreshold, fromSurfaces] or "
+        "initialize a list of surfaces with the variable surfacesForContactDetection");
+  }
+  config("surfacesForContactDetection", surfacesForContactDetection_);
+  if(surfacesForContactDetection_.size() > 0)
+  {
+    if(contactsDetection_ != "fromSurfaces")
+    {
+      mc_rtc::log::error_and_throw<std::runtime_error>(
+          "Another type of contacts detection is currently used, please change it to 'fromSurfaces' or empty the "
+          "surfacesForContactDetection variable");
+    }
+  }
+  else if(contactsDetection_ == "fromSurfaces")
+  {
+    mc_rtc::log::error_and_throw<std::runtime_error>(
+        "You selected the contacts detection using surfaces but didn't add the list of surfaces, please add it usign "
+        "the variable surfacesForContactDetection");
+  }
+
   zeroPose_.translation().setZero();
   zeroPose_.rotation().setIdentity();
   zeroMotion_.linear().setZero();
@@ -85,7 +110,37 @@ void NaiveOdometry::reset(const mc_control::MCController & ctl)
 
   for(auto forceSensor : realRobot.forceSensors())
   {
-    contacts_.insert(std::make_pair(forceSensor.name(), Contact(forceSensor.wrenchWithoutGravity(robot).force().z())));
+    if(contactsDetection_ == "fromThreshold")
+    {
+      for(auto forceSensor : realRobot.forceSensors())
+      {
+        const std::string & fsName = forceSensor.name();
+
+        mapContacts_.insertContact(forceSensor.name());
+      }
+    }
+    if(contactsDetection_ == "fromSurfaces")
+    {
+      for(const std::string & surface : surfacesForContactDetection_)
+      {
+        if(robot.surfaceHasForceSensor(surface))
+        {
+          const mc_rbdyn::ForceSensor & forceSensor = robot.surfaceForceSensor(surface);
+          const std::string & fsName = forceSensor.name();
+          mapContacts_.insertContact(forceSensor.name());
+          mapContacts_.contactWithSensor(fsName).surface = surface;
+        }
+        else
+        {
+          const mc_rbdyn::ForceSensor & forceSensor = robot.indirectSurfaceForceSensor(surface);
+          const std::string & fsName = forceSensor.name();
+
+          mapContacts_.insertContact(forceSensor.name());
+          mapContacts_.contactWithSensor(fsName).isAttachedToSurface = false;
+          mapContacts_.contactWithSensor(fsName).surface = surface;
+        }
+      }
+    }
   }
 
   mass(ctl.realRobot(robot_).mass());
@@ -156,69 +211,127 @@ void NaiveOdometry::update(mc_rbdyn::Robot & robot)
   robot.velW(v_fb_0_.vector());
 }
 
-std::set<std::string> NaiveOdometry::findContacts(const mc_control::MCController & ctl)
+const std::set<std::string> & NaiveOdometry::findContactsFromSolver(const mc_control::MCController & ctl)
+{
+  const auto & measRobot = ctl.robot(robot_);
+  auto & odometryRobot = my_robots_->robot("odometryRobot");
+
+  contactsFound_.clear();
+  for(const auto & contact : ctl.solver().contacts())
+  {
+    // std::cout << std::endl << contact.toStr() << std::endl;
+    if(ctl.robots().robot(contact.r1Index()).name() == measRobot.name())
+    {
+      if(ctl.robots().robot(contact.r2Index()).mb().joint(0).type() == rbd::Joint::Fixed)
+      {
+        const auto & ifs = measRobot.indirectSurfaceForceSensor(contact.r1Surface()->name());
+        if(ifs.wrenchWithoutGravity(measRobot).force().norm()
+           > measRobot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_)
+        {
+          contactsFound_.insert(ifs.name());
+        }
+      }
+    }
+    else if(ctl.robots().robot(contact.r2Index()).name() == measRobot.name())
+    {
+      if(ctl.robots().robot(contact.r1Index()).mb().joint(0).type() == rbd::Joint::Fixed)
+      {
+        const auto & ifs = measRobot.indirectSurfaceForceSensor(contact.r2Surface()->name());
+
+        if(ifs.wrenchWithoutGravity(measRobot).force().norm()
+           > measRobot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_)
+        {
+          contactsFound_.insert(ifs.name());
+        }
+      }
+    }
+  }
+}
+
+const std::set<std::string> & NaiveOdometry::findContactsFromSurfaces(const mc_control::MCController & ctl)
 {
   const auto & measRobot = ctl.robot(robot_);
   auto & odometryRobot = my_robots_->robot("odometryRobot");
 
   contactsFound_.clear();
 
-  if(withContactsDetection_)
+  for(auto & contact : mapContacts_.contactsWithSensors())
   {
-    for(const auto & contact : ctl.solver().contacts())
+    const std::string & fsName = contact.first;
+
+    const mc_rbdyn::ForceSensor forceSensor = measRobot.forceSensor(fsName);
+
+    if(withFilteredForcesContactDetection_) // NOT WORKING FOR NOW
     {
-      if(ctl.robots().robot(contact.r1Index()).name() == measRobot.name())
+      ContactWithSensor & contact = mapContacts_.contactWithSensor(fsName);
+      contact.filteredForce = (1 - ctl.timeStep * contact.lambda) * contact.filteredForce
+                              + contact.lambda * ctl.timeStep * forceSensor.wrenchWithoutGravity(measRobot).force();
+
+      if(contact.filteredForce.norm() > measRobot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_)
       {
-        if(ctl.robots().robot(contact.r2Index()).mb().joint(0).type() == rbd::Joint::Fixed)
-        {
-          const auto & ifs = measRobot.indirectSurfaceForceSensor(contact.r1Surface()->name());
-          if(ifs.wrenchWithoutGravity(measRobot).force().norm()
-             > measRobot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_)
-          {
-            contactsFound_.insert(ifs.name());
-          }
-        }
+        contactsFound_.insert(fsName);
       }
-      else if(ctl.robots().robot(contact.r2Index()).name() == measRobot.name())
+    }
+    else
+    {
+      if(forceSensor.wrenchWithoutGravity(measRobot).force().norm()
+         > measRobot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_)
       {
-        if(ctl.robots().robot(contact.r1Index()).mb().joint(0).type() == rbd::Joint::Fixed)
-        {
-          const auto & ifs = measRobot.indirectSurfaceForceSensor(contact.r2Surface()->name());
-          if(ifs.wrenchWithoutGravity(measRobot).force().norm()
-             > measRobot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_)
-          {
-            contactsFound_.insert(ifs.name());
-          }
-        }
+        contactsFound_.insert(fsName);
       }
     }
   }
-  else
+}
+
+const std::set<std::string> & NaiveOdometry::findContactsFromThreshold(const mc_control::MCController & ctl)
+{
+  const auto & measRobot = ctl.robot(robot_);
+  auto & odometryRobot = my_robots_->robot("odometryRobot");
+
+  contactsFound_.clear();
+
+  for(auto & contact : mapContacts_.contactsWithSensors())
   {
-    for(auto forceSensor : measRobot.forceSensors())
+    const std::string & fsName = contact.first;
+    const mc_rbdyn::ForceSensor forceSensor = measRobot.forceSensor(fsName);
+    if(withFilteredForcesContactDetection_) // NOT WORKING FOR NOW
     {
-      auto forceSignal = contacts_.at(forceSensor.name());
+      ContactWithSensor & contact = mapContacts_.contactWithSensor(fsName);
+      contact.filteredForce = (1 - ctl.timeStep * contact.lambda) * contact.filteredForce
+                              + contact.lambda * ctl.timeStep * forceSensor.wrenchWithoutGravity(measRobot).force();
 
-      if(withFilteredForcesContactDetection_)
+      if(contact.filteredForce.norm() > measRobot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_)
       {
-        forceSignal.filteredForceZ_ =
-            (1 - ctl.timeStep * forceSignal.lambda_) * forceSignal.filteredForceZ_
-            + forceSignal.lambda_ * ctl.timeStep * forceSensor.wrenchWithoutGravity(measRobot).force().norm();
-
-        if(forceSignal.filteredForceZ_ > measRobot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_)
-        {
-          contactsFound_.insert(forceSensor.name());
-        }
-      }
-      else
-      {
-        if(forceSensor.wrenchWithoutGravity(measRobot).force().norm()
-           > measRobot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_)
-        {
-          contactsFound_.insert(forceSensor.name());
-        }
+        contactsFound_.insert(fsName);
       }
     }
+    else
+    {
+      if(forceSensor.wrenchWithoutGravity(measRobot).force().norm()
+         > measRobot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_)
+      {
+        contactsFound_.insert(fsName);
+      }
+    }
+  }
+}
+
+const std::set<std::string> & NaiveOdometry::findContacts(const mc_control::MCController & ctl)
+{
+  const auto & measRobot = ctl.robot(robot_);
+  auto & odometryRobot = my_robots_->robot("odometryRobot");
+
+  if(contactsDetection_ == "fromSolver")
+  {
+    findContactsFromSolver(ctl);
+  }
+  if(contactsDetection_ == "fromThreshold")
+  {
+    findContactsFromThreshold(ctl);
+  }
+  if(contactsDetection_ == "fromSurfaces")
+  {
+    findContactsFromSurfaces(ctl);
   }
 
   return contactsFound_;
@@ -226,40 +339,58 @@ std::set<std::string> NaiveOdometry::findContacts(const mc_control::MCController
 
 void NaiveOdometry::setNewContact(const mc_rbdyn::Robot & odometryRobot, const mc_rbdyn::ForceSensor forceSensor)
 {
-  so::kine::Kinematics worldContactKineRef;
-  worldContactKineRef.setZero(so::kine::Kinematics::Flags::position);
 
-  // getting the position in the world of the new contact
-  const sva::PTransformd & bodyNewContactPoseRobot = forceSensor.X_p_f();
-  so::kine::Kinematics bodyNewContactKine;
-  bodyNewContactKine.setZero(so::kine::Kinematics::Flags::all);
-  bodyNewContactKine.position = bodyNewContactPoseRobot.translation();
-  bodyNewContactKine.orientation = so::Matrix3(bodyNewContactPoseRobot.rotation().transpose());
+  if(mapContacts_.contactWithSensor(forceSensor.name()).isAttachedToSurface)
+  {
+    so::kine::Kinematics worldNewContactKineOdometryRobot;
+    so::kine::Kinematics worldContactKineRef;
+    worldContactKineRef.setZero(so::kine::Kinematics::Flags::position);
 
-  so::kine::Kinematics worldBodyKineOdometryRobot;
+    // getting the position in the world of the new contact
+    const sva::PTransformd & bodyNewContactPoseRobot = forceSensor.X_p_f();
+    so::kine::Kinematics bodyNewContactKine;
+    bodyNewContactKine.setZero(so::kine::Kinematics::Flags::all);
+    bodyNewContactKine.position = bodyNewContactPoseRobot.translation();
+    bodyNewContactKine.orientation = so::Matrix3(bodyNewContactPoseRobot.rotation().transpose());
 
-  worldBodyKineOdometryRobot.position =
-      odometryRobot.mbc().bodyPosW[odometryRobot.bodyIndexByName(forceSensor.parentBody())].translation();
-  worldBodyKineOdometryRobot.orientation = so::Matrix3(
-      odometryRobot.mbc().bodyPosW[odometryRobot.bodyIndexByName(forceSensor.parentBody())].rotation().transpose());
-  worldBodyKineOdometryRobot.linVel =
-      odometryRobot.mbc().bodyVelW[odometryRobot.bodyIndexByName(forceSensor.parentBody())].linear();
-  worldBodyKineOdometryRobot.angVel =
-      odometryRobot.mbc().bodyVelW[odometryRobot.bodyIndexByName(forceSensor.parentBody())].angular();
-  worldBodyKineOdometryRobot.linAcc =
-      worldBodyKineOdometryRobot.orientation.toMatrix3()
-      * odometryRobot.mbc().bodyAccB[odometryRobot.bodyIndexByName(forceSensor.parentBody())].linear();
-  worldBodyKineOdometryRobot.angAcc =
-      worldBodyKineOdometryRobot.orientation.toMatrix3()
-      * odometryRobot.mbc().bodyAccB[odometryRobot.bodyIndexByName(forceSensor.parentBody())].angular();
+    so::kine::Kinematics worldBodyKineOdometryRobot;
 
-  so::kine::Kinematics worldNewContactKineOdometryRobot = worldBodyKineOdometryRobot * bodyNewContactKine;
+    worldBodyKineOdometryRobot.position =
+        odometryRobot.mbc().bodyPosW[odometryRobot.bodyIndexByName(forceSensor.parentBody())].translation();
+    worldBodyKineOdometryRobot.orientation = so::Matrix3(
+        odometryRobot.mbc().bodyPosW[odometryRobot.bodyIndexByName(forceSensor.parentBody())].rotation().transpose());
+    worldBodyKineOdometryRobot.linVel =
+        odometryRobot.mbc().bodyVelW[odometryRobot.bodyIndexByName(forceSensor.parentBody())].linear();
+    worldBodyKineOdometryRobot.angVel =
+        odometryRobot.mbc().bodyVelW[odometryRobot.bodyIndexByName(forceSensor.parentBody())].angular();
+    worldBodyKineOdometryRobot.linAcc =
+        worldBodyKineOdometryRobot.orientation.toMatrix3()
+        * odometryRobot.mbc().bodyAccB[odometryRobot.bodyIndexByName(forceSensor.parentBody())].linear();
+    worldBodyKineOdometryRobot.angAcc =
+        worldBodyKineOdometryRobot.orientation.toMatrix3()
+        * odometryRobot.mbc().bodyAccB[odometryRobot.bodyIndexByName(forceSensor.parentBody())].angular();
 
-  contacts_.at(forceSensor.name()).worldRefKine_.position = worldNewContactKineOdometryRobot.position();
-  contacts_.at(forceSensor.name()).worldRefKine_.orientation = worldNewContactKineOdometryRobot.orientation;
+    worldNewContactKineOdometryRobot = worldBodyKineOdometryRobot * bodyNewContactKine;
+
+    mapContacts_.contactWithSensor(forceSensor.name()).worldRefKine_.position =
+        worldNewContactKineOdometryRobot.position();
+    mapContacts_.contactWithSensor(forceSensor.name()).worldRefKine_.orientation =
+        worldNewContactKineOdometryRobot.orientation;
+  }
+  else
+  {
+    sva::PTransformd worldSurfacePoseOdometryRobot =
+        odometryRobot.surfacePose(mapContacts_.contactWithSensor(forceSensor.name()).surface);
+
+    mapContacts_.contactWithSensor(forceSensor.name()).worldRefKine_.position =
+        worldSurfacePoseOdometryRobot.translation();
+    mapContacts_.contactWithSensor(forceSensor.name()).worldRefKine_.orientation =
+        so::Matrix3(worldSurfacePoseOdometryRobot.rotation().transpose());
+  }
+
   if(withFlatOdometry_)
   {
-    contacts_.at(forceSensor.name()).worldRefKine_.position()(2) = 0.0;
+    mapContacts_.contactWithSensor(forceSensor.name()).worldRefKine_.position()(2) = 0.0;
   }
 }
 
@@ -329,18 +460,53 @@ void NaiveOdometry::updateContacts(const mc_control::MCController & ctl,
   for(const std::string & updatedContact : updatedContacts)
   {
     const mc_rbdyn::ForceSensor & fs = robot.forceSensor(updatedContact);
+    ContactWithSensor & currentContact = mapContacts_.contactWithSensor(fs.name());
+    sva::ForceVecd measuredWrench = fs.wrenchWithoutGravity(robot);
     if(oldContacts_.find(updatedContact)
        != oldContacts_.end()) // the contact already exists so we will use it to estimate the floating base pose
     {
+      if(withNaiveYawEstimation_
+         && updatedContact.find("Hand") == std::string::npos) // we don't use hands for the orientation odometry
+      {
+        if(alreadySetContactsOrientationOdometry.size()
+           == 2) // this is to keep a list of at most two contacts in the case we use the
+                 // naive yaw estimation as the expressions used impose this constraint
+        {
+          std::string minForceContact = alreadySetContactsOrientationOdometry.begin()->first;
+          double minForce = robot.forceSensor(alreadySetContactsOrientationOdometry.begin()->first)
+                                .wrenchWithoutGravity(odometryRobot)
+                                .force()
+                                .norm();
+          for(auto & contact : alreadySetContactsOrientationOdometry)
+          {
+            if(robot.forceSensor(contact.first).wrenchWithoutGravity(odometryRobot).force().norm() < minForce)
+            {
+              minForce = robot.forceSensor(contact.first).wrenchWithoutGravity(odometryRobot).force().norm();
+              minForceContact = contact.first;
+            }
+          }
+          if(robot.forceSensor(updatedContact).wrenchWithoutGravity(odometryRobot).force().norm() > minForce)
+          {
+            alreadySetContactsOrientationOdometry.erase(minForceContact);
+            so::kine::Kinematics kine;
+            alreadySetContactsOrientationOdometry.insert(std::make_pair(updatedContact, kine));
+          }
+        }
+        else
+        {
+          so::kine::Kinematics kine;
+          alreadySetContactsOrientationOdometry.insert(std::make_pair(updatedContact, kine));
+        }
+      }
 
       so::kine::Kinematics kine;
       alreadySetContactsPositionOdometry.insert(std::make_pair(updatedContact, kine));
-      const sva::PTransformd & bodyAlreadySetContactPose = fs.X_p_f();
-      so::kine::Kinematics bodyAlreadySetContactKine;
-      bodyAlreadySetContactKine.setZero(so::kine::Kinematics::Flags::position
-                                        | so::kine::Kinematics::Flags::orientation);
-      bodyAlreadySetContactKine.position = bodyAlreadySetContactPose.translation();
-      bodyAlreadySetContactKine.orientation = so::Matrix3(bodyAlreadySetContactPose.rotation().transpose());
+      const sva::PTransformd & bodyAlreadySetContactSensorPose = fs.X_p_f();
+      so::kine::Kinematics bodyAlreadySetContactSensorKine;
+      bodyAlreadySetContactSensorKine.setZero(so::kine::Kinematics::Flags::position
+                                              | so::kine::Kinematics::Flags::orientation);
+      bodyAlreadySetContactSensorKine.position = bodyAlreadySetContactSensorPose.translation();
+      bodyAlreadySetContactSensorKine.orientation = so::Matrix3(bodyAlreadySetContactSensorPose.rotation().transpose());
 
       so::kine::Kinematics worldBodyKineOdometryRobot;
 
@@ -349,27 +515,48 @@ void NaiveOdometry::updateContacts(const mc_control::MCController & ctl,
       worldBodyKineOdometryRobot.orientation = so::Matrix3(
           odometryRobot.mbc().bodyPosW[odometryRobot.bodyIndexByName(fs.parentBody())].rotation().transpose());
 
-      so::kine::Kinematics worldAlreadySetContactKineOdometryRobot =
-          worldBodyKineOdometryRobot * bodyAlreadySetContactKine;
+      so::kine::Kinematics worldAlreadySetContactSensorKineOdometryRobot =
+          worldBodyKineOdometryRobot * bodyAlreadySetContactSensorKine;
 
+      so::kine::Kinematics worldAlreadySetContactKineOdometryRobot;
+      if(currentContact.isAttachedToSurface)
+      {
+        worldAlreadySetContactKineOdometryRobot = worldAlreadySetContactSensorKineOdometryRobot;
+      }
+      else
+      {
+        sva::PTransformd worldSurfacePoseOdometryRobot = odometryRobot.surfacePose(currentContact.surface);
+        so::kine::Kinematics worldSurfaceKineOdometryRobot;
+        worldSurfaceKineOdometryRobot.setZero(so::kine::Kinematics::Flags::all);
+        worldSurfaceKineOdometryRobot.position = worldSurfacePoseOdometryRobot.translation();
+        worldSurfaceKineOdometryRobot.orientation = so::Matrix3(worldSurfacePoseOdometryRobot.rotation().transpose());
+        worldAlreadySetContactKineOdometryRobot = worldSurfaceKineOdometryRobot;
+
+        so::kine::Kinematics surfaceSensorKine;
+        surfaceSensorKine = worldSurfaceKineOdometryRobot.getInverse() * worldAlreadySetContactSensorKineOdometryRobot;
+
+        contactWrenchVector_.segment<3>(0) = surfaceSensorKine.orientation * measuredWrench.force();
+        contactWrenchVector_.segment<3>(3) = surfaceSensorKine.orientation * measuredWrench.moment()
+                                             + surfaceSensorKine.position().cross(contactWrenchVector_.segment<3>(0));
+      }
       const so::Vector3 & worldAlreadySetContactPositionOdometryRobot =
           worldAlreadySetContactKineOdometryRobot.position();
 
       const so::Vector3 & worldFbPositionOdometryRobot = odometryRobot.posW().translation();
 
       so::Vector3 worldFbPositionOdometry =
-          contacts_.at(updatedContact).worldRefKine_.position()
+          mapContacts_.contactWithSensor(updatedContact).worldRefKine_.position()
           + (worldFbPositionOdometryRobot - worldAlreadySetContactPositionOdometryRobot);
       alreadySetContactsPositionOdometry.at(updatedContact).position = worldFbPositionOdometry;
       alreadySetContactsPositionOdometry.at(updatedContact).orientation =
-          so::Matrix3(contacts_.at(updatedContact).worldRefKine_.orientation.toMatrix3()
+          so::Matrix3(mapContacts_.contactWithSensor(updatedContact).worldRefKine_.orientation.toMatrix3()
                       * worldAlreadySetContactKineOdometryRobot.orientation.toMatrix3().transpose()
                       * odometryRobot.posW().rotation().transpose());
       if(withNaiveYawEstimation_
          && alreadySetContactsOrientationOdometry.find(updatedContact) != alreadySetContactsOrientationOdometry.end())
       {
         alreadySetContactsOrientationOdometry.at(updatedContact).orientation =
-            so::Matrix3(contacts_.at(updatedContact).worldRefKine_.orientation.toMatrix3()
+            so::Matrix3(mapContacts_.contactWithSensor(updatedContact).worldRefKine_.orientation.toMatrix3()
                         * worldAlreadySetContactKineOdometryRobot.orientation.toMatrix3().transpose()
                         * odometryRobot.posW().rotation().transpose());
         alreadySetContactsOrientationOdometry.at(updatedContact).position = worldFbPositionOdometry;
@@ -446,7 +633,7 @@ void NaiveOdometry::updateContacts(const mc_control::MCController & ctl,
     if(alreadySetContactsPositionOdometry.find(updatedContact) == alreadySetContactsPositionOdometry.end())
     {
       const mc_rbdyn::ForceSensor & fs = robot.forceSensor(updatedContact);
-      mapContacts_.insertPair(robot.forceSensor(updatedContact).name());
+      mapContacts_.contactWithSensor(robot.forceSensor(updatedContact).name()).isSet = true;
       setNewContact(odometryRobot, fs);
       addContactLogEntries(logger, robot.forceSensor(updatedContact).name());
     }
@@ -458,6 +645,7 @@ void NaiveOdometry::updateContacts(const mc_control::MCController & ctl,
                       std::inserter(diffs, diffs.end()));
   for(const auto & diff : diffs)
   {
+    mapContacts_.contactWithSensor(robot.forceSensor(diff).name()).isSet = false;
     removeContactLogEntries(logger, robot.forceSensor(diff).name());
   }
 
@@ -473,10 +661,11 @@ void NaiveOdometry::addContactLogEntries(mc_rtc::Logger & logger, const std::str
 {
   logger.addLogEntry(category_ + contactName + "_position",
                      [this, contactName]() -> Eigen::Vector3d
-                     { return contacts_.at(contactName).worldRefKine_.position(); });
-  logger.addLogEntry(category_ + contactName + "_orientation",
-                     [this, contactName]() -> so::Quaternion
-                     { return contacts_.at(contactName).worldRefKine_.orientation.toQuaternion().inverse(); });
+                     { return mapContacts_.contactWithSensor(contactName).worldRefKine_.position(); });
+  logger.addLogEntry(
+      category_ + contactName + "_orientation",
+      [this, contactName]() -> so::Quaternion
+      { return mapContacts_.contactWithSensor(contactName).worldRefKine_.orientation.toQuaternion().inverse(); });
 }
 
 void NaiveOdometry::removeContactLogEntries(mc_rtc::Logger & logger, const std::string & contactName)

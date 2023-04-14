@@ -75,7 +75,6 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   config("surfacesForContactDetection", surfacesForContactDetection_);
   if(surfacesForContactDetection_.size() > 0)
   {
-    contactsBySurface_ = true;
     if(contactsDetection_ != "fromSurfaces")
     {
       mc_rtc::log::error_and_throw<std::runtime_error>(
@@ -1002,7 +1001,6 @@ void MCKineticsObserver::updateContact(const mc_control::MCController & ctl,
 
     so::kine::Kinematics surfaceSensorKine;
     surfaceSensorKine = worldSurfaceKineInputRobot.getInverse() * worldSensorKineInputRobot;
-    worldSurfaceKineInputRobot = worldSensorKineInputRobot * surfaceSensorKine.getInverse();
     contactWrenchVector_.segment<3>(0) = surfaceSensorKine.orientation * measuredWrench.force();
 
     contactWrenchVector_.segment<3>(3) = surfaceSensorKine.orientation * measuredWrench.moment()

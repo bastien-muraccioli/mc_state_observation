@@ -20,29 +20,129 @@ namespace so = stateObservation;
  *
  */
 
-struct Contact
+struct Sensor
 {
-  Contact(double filteredForceZ) : filteredForceZ_(filteredForceZ) {}
-  so::kine::Kinematics worldRefKine_;
-  double filteredForceZ_;
-  double lambda_ = 100;
-};
-class MapContactsIMUs
-{
-  /*
-  Care with the use of getNameFromNum() : the mapping remains the same but the list of contacts returned buy the
-  controller might differ over time (contacts broken, etc) and the id of a contact in this list might not match with its
-  rank in the controller's list. Use this function preferably only to perform tasks performed on all the contacts and
-  that require their name.
-  */
 
 public:
-  inline const int & getNumFromName(std::string name)
+  inline const int & getID()
   {
-    return map_.find(name)->second;
+    return id_;
   }
 
-  inline const std::string & getNameFromNum(int num)
+protected:
+  Sensor() {}
+  ~Sensor() {}
+  Sensor(int id, std::string name) : id_(id), name_(name) {}
+
+protected:
+  int id_;
+  std::string name_;
+};
+
+struct IMU : virtual public Sensor
+{
+public:
+  IMU(int id, std::string name)
+  {
+    id_ = id;
+    name_ = name;
+    gyroBias = so::Vector3::Zero();
+  }
+  ~IMU() {}
+
+public:
+  so::Vector3 gyroBias;
+};
+
+struct Contact : virtual public Sensor
+{
+protected:
+  Contact() {}
+  ~Contact() {}
+  Contact(int id, std::string name)
+  {
+    id_ = id;
+    name_ = name;
+    zmp = so::Vector3::Zero();
+    resetContact();
+  }
+
+public:
+  inline void resetContact()
+  {
+    wasAlreadySet = false;
+    isSet = false;
+  }
+  inline const so::Vector3 & getZMP()
+  {
+    return zmp;
+  }
+
+public:
+  bool isSet = false;
+  bool wasAlreadySet = false;
+  so::Vector3 zmp;
+  so::kine::Kinematics worldRefKine_;
+};
+
+struct ContactWithSensor : virtual public Contact
+{
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+public:
+  ContactWithSensor(int id, std::string name)
+  {
+    id_ = id;
+    name_ = name;
+    resetContact();
+  }
+  ~ContactWithSensor() {}
+  inline void resetContact()
+  {
+    wasAlreadySet = false;
+    isSet = false;
+
+    // also filtered force? see when this feature will be corrected
+  }
+
+public:
+  bool isAttachedToSurface = true;
+  std::string surface;
+
+  /* Force filtering for the contact detection */
+  so::Vector3 filteredForce = so::Vector3::Zero();
+  double lambda = 0.0;
+};
+
+struct ContactWithoutSensor : virtual public Contact
+{
+public:
+  ContactWithoutSensor(int id, std::string name)
+  {
+    id_ = id;
+    name_ = name;
+  }
+  ~ContactWithoutSensor() {}
+};
+
+struct MapContacts
+{
+public:
+  inline ContactWithSensor & contactWithSensor(const std::string & name)
+  {
+    return mapContactsWithSensors_.at(name);
+  }
+
+  inline ContactWithSensor & contactWithSensor(const int & num)
+  {
+    return mapContactsWithSensors_.at(getNameFromNum(num));
+  }
+
+  inline std::map<std::string, ContactWithSensor> & contactsWithSensors()
+  {
+    return mapContactsWithSensors_;
+  }
+
+  inline const std::string & getNameFromNum(const int & num)
   {
     return insertOrder.at(num);
   }
@@ -52,23 +152,105 @@ public:
     return insertOrder;
   }
 
-  inline void insertPair(std::string name)
+  inline const int & getNumFromName(const std::string & name)
   {
-    if(map_.find(name) != map_.end()) return;
+    return mapContactsWithSensors_.at(name).getID();
+  }
+
+  inline const so::Vector3 & getZMPFromName(const std::string & name)
+  {
+    return mapContactsWithSensors_.at(name).getZMP();
+  }
+
+  inline bool hasElement(const std::string & element)
+  {
+    return mapContactsWithSensors_.find(element) != mapContactsWithSensors_.end();
+  }
+
+  inline void insertContact(const std::string & name)
+  {
+    if(checkAlreadyExists(name)) return;
     insertOrder.push_back(name);
-    map_.insert(std::make_pair(name, num));
+    insertElement(name);
+
     num++;
   }
 
-  inline void setMaxElements(int maxElements)
+private:
+  inline void insertElement(const std::string & name)
   {
-    // maxElements_ = maxElements_;
+    mapContactsWithSensors_.insert(std::make_pair(name, ContactWithSensor(num, name)));
+  }
+  inline virtual bool checkAlreadyExists(const std::string & name)
+  {
+    if(mapContactsWithSensors_.find(name) != mapContactsWithSensors_.end())
+    {
+      return true;
+    }
+    else
+    {
+      return false;
+    }
+  }
+
+private:
+  std::map<std::string, ContactWithSensor> mapContactsWithSensors_;
+  std::vector<std::string> insertOrder;
+  int num = 0;
+};
+
+struct MapIMUs
+{
+public:
+  inline const int & getNumFromName(const std::string & name)
+  {
+    return mapIMUs_.find(name)->second.getID();
+  }
+  inline bool hasIMU(const std::string & element)
+  {
+    return mapIMUs_.find(element) != mapIMUs_.end();
+  }
+
+  inline const std::string & getNameFromNum(const int & num)
+  {
+    return insertOrder.at(num);
+  }
+
+  inline const std::vector<std::string> & getList()
+  {
+    return insertOrder;
+  }
+  inline virtual bool hasElement(const std::string & name)
+  {
+    checkAlreadyExists(name);
+  }
+
+  inline void insertIMU(std::string name)
+  {
+    if(checkAlreadyExists(name)) return;
+    insertOrder.push_back(name);
+    mapIMUs_.insert(std::make_pair(name, IMU(num, name)));
+    num++;
+  }
+
+  inline IMU & operator()(std::string name)
+  {
+    BOOST_ASSERT(checkAlreadyExists(name) && "The requested sensor doesn't exist");
+    return mapIMUs_.at(name);
+  }
+
+private:
+  inline virtual bool checkAlreadyExists(const std::string & name)
+  {
+    if(mapIMUs_.find(name) != mapIMUs_.end())
+      return true;
+    else
+      return false;
   }
 
 private:
   std::vector<std::string> insertOrder;
-  std::map<std::string, int> map_;
-  // int maxElements_ = 4;
+  std::map<std::string, IMU> mapIMUs_;
   int num = 0;
 };
 
@@ -124,7 +306,11 @@ protected:
    * \param ctl Controller that defines the contacts
    * \return Name of surfaces in contact with the environment
    */
-  std::set<std::string> findContacts(const mc_control::MCController & solver);
+
+  const std::set<std::string> & findContacts(const mc_control::MCController & solver);
+  const std::set<std::string> & findContactsFromSolver(const mc_control::MCController & solver);
+  const std::set<std::string> & findContactsFromSurfaces(const mc_control::MCController & solver);
+  const std::set<std::string> & findContactsFromThreshold(const mc_control::MCController & solver);
 
   void updateContacts(const mc_control::MCController & ctl,
                       mc_rbdyn::Robot & odometryRobot,
@@ -187,6 +373,9 @@ public:
   }
 
 private:
+  so::Vector6 contactWrenchVector_;
+  std::string contactsDetection_;
+  std::vector<std::string> surfacesForContactDetection_;
   sva::PTransformd zeroPose_;
   sva::MotionVecd zeroMotion_;
 
@@ -204,13 +393,11 @@ private:
   double mass_ = 42; // [kg]
   // std::set<std::string> contacts_; ///< Sorted list of contacts
   std::set<std::string> oldContacts_;
-  MapContactsIMUs mapContacts_;
+  MapContacts mapContacts_;
 
   sva::MotionVecd v_fb_0_ = sva::MotionVecd::Zero();
   sva::PTransformd X_0_fb_ = sva::PTransformd::Identity();
   sva::MotionVecd a_fb_0_ = sva::MotionVecd::Zero();
-
-  std::unordered_map<std::string, Contact> contacts_;
 
   bool withFlatOdometry_ = false;
   bool withNaiveYawEstimation_ = true;

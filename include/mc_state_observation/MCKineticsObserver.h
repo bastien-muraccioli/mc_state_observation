@@ -535,7 +535,6 @@ namespace mc_state_observation
 
   private:
     std::vector<std::string> surfacesForContactDetection_;
-    bool contactsBySurface_ = false;
 
     double gyroBiasStandardDeviation_ = 0.0;
     std::vector<std::string> contactsSensorDisabledInit_;
