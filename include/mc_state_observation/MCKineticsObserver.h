@@ -63,6 +63,7 @@ namespace mc_state_observation
     {
       id_ = id;
       name_ = name;
+      zmp = so::Vector3::Zero();
       resetContact();
     }
 
@@ -72,10 +73,15 @@ namespace mc_state_observation
       wasAlreadySet = false;
       isSet = false;
     }
+    inline const so::Vector3 & getZMP()
+    {
+      return zmp;
+    }
 
   public:
     bool isSet = false;
     bool wasAlreadySet = false;
+    so::Vector3 zmp;
   };
 
   struct ContactWithSensor : virtual public Contact
@@ -99,10 +105,14 @@ namespace mc_state_observation
     }
 
   public:
-    so::Vector6 wrenchInCentroid = so::Vector6::Zero();
+    so::Vector6 wrenchInCentroid = so::Vector6::Zero(); // for debug only
+    double normForce = 0.0; // for debug only
     bool isExternalWrench = true;
     bool sensorEnabled = true;
     bool sensorWasEnabled = false; // allows to know if the contact's measurements have to be added during the update
+
+    bool isAttachedToSurface = true;
+    std::string surface;
 
     /* Force filtering for the contact detection */
     so::Vector3 filteredForce = so::Vector3::Zero();
@@ -180,6 +190,19 @@ namespace mc_state_observation
         return mapContactsWithoutSensors_.at(name).getID();
       }
     }
+
+    inline const so::Vector3 & getZMPFromName(const std::string & name)
+    {
+      if(hasSensor_.at(name))
+      {
+        return mapContactsWithSensors_.at(name).getZMP();
+      }
+      else
+      {
+        return mapContactsWithoutSensors_.at(name).getZMP();
+      }
+    }
+
     inline bool hasElement(const std::string & element)
     {
       return hasSensor_.find(element) != hasSensor_.end();
@@ -283,7 +306,8 @@ namespace mc_state_observation
   private:
     inline virtual bool checkAlreadyExists(const std::string & name)
     {
-      if(mapIMUs_.find(name) != mapIMUs_.end()) return true;
+      if(mapIMUs_.find(name) != mapIMUs_.end())
+        return true;
       else
         return false;
     }
@@ -307,75 +331,75 @@ namespace mc_state_observation
 
     void update(mc_control::MCController & ctl) override;
 
-protected:
-  void update(mc_rbdyn::Robot & robot);
+  protected:
+    void update(mc_rbdyn::Robot & robot);
 
-  // void updateWorldFbKineAndViceVersa(const mc_rbdyn::Robot & robot);
+    // void updateWorldFbKineAndViceVersa(const mc_rbdyn::Robot & robot);
 
-  void initObserverStateVector(const mc_rbdyn::Robot & robot);
+    void initObserverStateVector(const mc_rbdyn::Robot & robot);
 
-  void inputAdditionalWrench(const mc_rbdyn::Robot & inputRobot, const mc_rbdyn::Robot & measRobot);
+    void inputAdditionalWrench(const mc_rbdyn::Robot & inputRobot, const mc_rbdyn::Robot & measRobot);
 
-  void updateIMUs(const mc_rbdyn::Robot & measRobot, const mc_rbdyn::Robot & inputRobot);
+    void updateIMUs(const mc_rbdyn::Robot & measRobot, const mc_rbdyn::Robot & inputRobot);
 
-  /*! \brief Add observer from logger
-   *
-   * @param category Category in which to log this observer
-   */
+    /*! \brief Add observer from logger
+     *
+     * @param category Category in which to log this observer
+     */
 
-  void plotVariablesBeforeUpdate(const mc_control::MCController & ctl, mc_rtc::Logger & logger);
+    void plotVariablesBeforeUpdate(const mc_control::MCController & ctl, mc_rtc::Logger & logger);
 
-  void plotVariablesAfterUpdate(const mc_control::MCController & ctl, mc_rtc::Logger & logger);
+    void plotVariablesAfterUpdate(const mc_control::MCController & ctl, mc_rtc::Logger & logger);
 
-  void addContactLogEntries(mc_rtc::Logger & logger, const std::string & contactName);
+    void addContactLogEntries(mc_rtc::Logger & logger, const std::string & contactName);
 
-  void removeContactLogEntries(mc_rtc::Logger & logger, const std::string & contactName);
+    void removeContactLogEntries(mc_rtc::Logger & logger, const std::string & contactName);
 
-  void addContactMeasurementsLogEntries(mc_rtc::Logger & logger, const std::string & contactName);
+    void addContactMeasurementsLogEntries(mc_rtc::Logger & logger, const std::string & contactName);
 
-  void removeContactMeasurementsLogEntries(mc_rtc::Logger & logger, const std::string & contactName);
+    void removeContactMeasurementsLogEntries(mc_rtc::Logger & logger, const std::string & contactName);
 
-  void addToLogger(const mc_control::MCController &, mc_rtc::Logger &, const std::string & category) override;
+    void addToLogger(const mc_control::MCController &, mc_rtc::Logger &, const std::string & category) override;
 
-  /*! \brief Remove observer from logger
-   *
-   * @param category Category in which this observer entries are logged
-   */
-  void removeFromLogger(mc_rtc::Logger &, const std::string & category) override;
+    /*! \brief Remove observer from logger
+     *
+     * @param category Category in which this observer entries are logged
+     */
+    void removeFromLogger(mc_rtc::Logger &, const std::string & category) override;
 
-  /*! \brief Add observer information the GUI.
-   *
-   * @param category Category in which to add this observer
-   */
-  void addToGUI(const mc_control::MCController &,
-                mc_rtc::gui::StateBuilder &,
-                const std::vector<std::string> & /* category */) override;
-  
-protected:
-  /**
-   * Find established contacts between the observed robot and the fixed robots
-   * 
-   * \param ctl Controller that defines the contacts 
-   * \return Name of surfaces in contact with the environment
-   */
-  std::set<std::string> findContacts(const mc_control::MCController & solver);
+    /*! \brief Add observer information the GUI.
+     *
+     * @param category Category in which to add this observer
+     */
+    void addToGUI(const mc_control::MCController &,
+                  mc_rtc::gui::StateBuilder &,
+                  const std::vector<std::string> & /* category */) override;
 
-  void updateContacts(const mc_control::MCController & ctl,
-                      const mc_rbdyn::Robot & inputRobot,
-                      std::set<std::string> contacts,
-                      mc_rtc::Logger & logger);
-  void updateContact(const mc_control::MCController & ctl,
-                     const mc_rbdyn::Robot & inputRobot,
-                     const mc_rbdyn::ForceSensor forceSensor,
-                     mc_rtc::Logger & logger);
+  protected:
+    /**
+     * Find established contacts between the observed robot and the fixed robots
+     *
+     * \param ctl Controller that defines the contacts
+     * \return Name of surfaces in contact with the environment
+     */
+    const std::set<std::string> & findContacts(const mc_control::MCController & solver);
+    const std::set<std::string> & findContactsFromSolver(const mc_control::MCController & solver);
+    const std::set<std::string> & findContactsFromSurfaces(const mc_control::MCController & solver);
+    const std::set<std::string> & findContactsFromThreshold(const mc_control::MCController & solver);
 
-protected:
-  std::string robot_ = "";
-  //std::string imuSensor_ = "";
-  mc_rbdyn::BodySensorVector IMUs_; ///< list of IMUs
+    void updateContacts(const mc_control::MCController & ctl,
+                        std::set<std::string> contacts,
+                        mc_rtc::Logger & logger);
+    void updateContact(const mc_control::MCController & ctl,
+                       const std::string & name,
+                       mc_rtc::Logger & logger);
 
+  protected:
+    std::string robot_ = "";
+    // std::string imuSensor_ = "";
+    mc_rbdyn::BodySensorVector IMUs_; ///< list of IMUs
 
-public:
+  public:
     /** Get robot mass.
      *
      */
@@ -510,7 +534,11 @@ public:
     }
 
   private:
+    std::vector<std::string> surfacesForContactDetection_;
+    bool contactsBySurface_ = false;
+
     double gyroBiasStandardDeviation_ = 0.0;
+    std::vector<std::string> contactsSensorDisabledInit_;
 
     so::Vector3 totalForceCentroid_ = so::Vector3::Zero();
     so::Vector3 totalTorqueCentroid_ = so::Vector3::Zero();
@@ -587,7 +615,7 @@ public:
     bool withOdometry_ = false;
     bool withFlatOdometry_ = false;
 
-    bool withContactsDetection_ = true;
+    std::string contactsDetection_;
     bool withFilteredForcesContactDetection_ = false;
     bool withUnmodeledWrench_ = true;
     bool withGyroBias_ = true;
@@ -638,7 +666,6 @@ public:
     so::Matrix6 contactSensorCovariance_;
 
     /* Config variables */
-
   };
 
 } // mc_state_observation
