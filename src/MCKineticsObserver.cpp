@@ -34,6 +34,9 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   config("verbose", verbose_);
 
   config("gyroBiasStandardDeviation", gyroBiasStandardDeviation_);
+
+  config("contactsSensorDisabledInit", contactsSensorDisabledInit_);
+
   config("leftHandDetection", leftHandDetection_);
   if(leftHandDetection_ != "None" && leftHandDetection_ != "asContact" && leftHandDetection_ != "asExternalWrench")
   {
@@ -241,6 +244,11 @@ void MCKineticsObserver::reset(const mc_control::MCController & ctl)
                                + std::to_string(mapContacts_.contactWithSensor(fsName).sensorEnabled)
                         << std::endl;
             }));
+  }
+  for(auto const & contactSensorDisabledInit : contactsSensorDisabledInit_)
+  {
+    BOOST_ASSERT(mapContacts_.hasElement(contactSensorDisabledInit) && "This sensor is not attached to the robot");
+    mapContacts_.contactWithSensor(contactSensorDisabledInit).sensorEnabled = false;
   }
 
   if(debug_)
@@ -656,7 +664,8 @@ std::set<std::string> MCKineticsObserver::findContacts(const mc_control::MCContr
                 false; // if the sensor attached to the contact is not enabled, it must not be considered as an external
                        // perturbation in any case
           }
-          if(ifs.wrenchWithoutGravity(measRobot).force().z() > measRobot.mass() * so::cst::gravityConstant * 0.05)
+          if(ifs.wrenchWithoutGravity(measRobot).force().norm()
+             > measRobot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_)
           {
             if(ifs.name().find("LeftHandForceSensor") == std::string::npos
                || (ifs.name().find("LeftHandForceSensor") != std::string::npos
@@ -682,7 +691,8 @@ std::set<std::string> MCKineticsObserver::findContacts(const mc_control::MCContr
                 false; // if the sensor attached to the contact is not enabled, it must not be considered as an external
                        // perturbation in any case
           }
-          if(ifs.wrenchWithoutGravity(measRobot).force().z() > measRobot.mass() * so::cst::gravityConstant * 0.05)
+          if(ifs.wrenchWithoutGravity(measRobot).force().norm()
+             > measRobot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_)
           {
             if(ifs.name().find("LeftHandForceSensor") == std::string::npos
                || (ifs.name().find("LeftHandForceSensor") != std::string::npos
@@ -731,7 +741,7 @@ std::set<std::string> MCKineticsObserver::findContacts(const mc_control::MCContr
         }
         else
         {
-          if(forceSensor.wrenchWithoutGravity(measRobot).force().z()
+          if(forceSensor.wrenchWithoutGravity(measRobot).force().norm()
              > measRobot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_)
           {
             contactsFound_.insert(fsName);
@@ -806,12 +816,12 @@ void MCKineticsObserver::updateContact(const mc_control::MCController & ctl,
     {
       if(contact.sensorEnabled && !contact.sensorWasEnabled)
       {
-        addContactMeasurementsLogEntries(logger, mapContacts_.getNumFromName(fsName));
+        addContactMeasurementsLogEntries(logger, fsName);
         contact.sensorWasEnabled = true;
       }
       if(!contact.sensorEnabled && contact.sensorWasEnabled)
       {
-        removeContactMeasurementsLogEntries(logger, mapContacts_.getNumFromName(fsName));
+        removeContactMeasurementsLogEntries(logger, fsName);
         contact.sensorWasEnabled = false;
       }
     }
@@ -911,7 +921,7 @@ void MCKineticsObserver::updateContact(const mc_control::MCController & ctl,
 
     if(withDebugLogs_)
     {
-      addContactLogEntries(logger, numContact);
+      addContactLogEntries(logger, fsName);
     }
   }
 }
@@ -961,8 +971,8 @@ void MCKineticsObserver::updateContacts(const mc_control::MCController & ctl,
 
     if(withDebugLogs_)
     {
-      removeContactLogEntries(logger, numDiff);
-      removeContactMeasurementsLogEntries(logger, numDiff);
+      removeContactLogEntries(logger, diff);
+      removeContactMeasurementsLogEntries(logger, diff);
     }
   }
   oldContacts_ = updatedContacts;
@@ -991,6 +1001,10 @@ void MCKineticsObserver::addToLogger(const mc_control::MCController &,
   logger.addLogEntry(category + "_mcko_fb_posW", [this]() -> const sva::PTransformd & { return X_0_fb_; });
   logger.addLogEntry(category + "_mcko_fb_velW", [this]() -> const sva::MotionVecd & { return v_fb_0_; });
   logger.addLogEntry(category + "_mcko_fb_accW", [this]() -> const sva::MotionVecd & { return a_fb_0_; });
+
+  logger.addLogEntry(category + "_mcko_fb_yaw",
+                     [this]() -> const double
+                     { return -so::kine::rotationMatrixToYawAxisAgnostic(X_0_fb_.rotation()); });
 
   logger.addLogEntry(category + "_constants_mass", [this]() -> const double & { return observer_.getMass(); });
 
@@ -1462,18 +1476,17 @@ void MCKineticsObserver::plotVariablesAfterUpdate(const mc_control::MCController
   }
 }
 
-void MCKineticsObserver::addContactLogEntries(mc_rtc::Logger & logger, const int & numContact)
+void MCKineticsObserver::addContactLogEntries(mc_rtc::Logger & logger, const std::string & contactName)
 {
+  const int & numContact = mapContacts_.getNumFromName(contactName);
   if(observer_.getContactIsSetByNum(numContact))
   {
-    logger.addLogEntry(category_ + "_globalWorldCentroidState_contact_" + mapContacts_.getNameFromNum(numContact)
-                           + "_position",
+    logger.addLogEntry(category_ + "_globalWorldCentroidState_contact_" + contactName + "_position",
                        [this, numContact]() -> Eigen::Vector3d {
                          return observer_.getCurrentStateVector().segment<int(observer_.sizePos)>(
                              observer_.contactPosIndex(numContact));
                        });
-    logger.addLogEntry(category_ + "_globalWorldCentroidState_contact_" + mapContacts_.getNameFromNum(numContact)
-                           + "_orientation",
+    logger.addLogEntry(category_ + "_globalWorldCentroidState_contact_" + contactName + "_orientation",
                        [this, numContact]() -> Eigen::Quaternion<double>
                        {
                          so::kine::Orientation ori;
@@ -1483,15 +1496,22 @@ void MCKineticsObserver::addContactLogEntries(mc_rtc::Logger & logger, const int
                              .inverse()
                              .toQuaternion();
                        });
-    logger.addLogEntry(category_ + "_globalWorldCentroidState_contact_" + mapContacts_.getNameFromNum(numContact)
-                           + "_forces",
+    logger.addLogEntry(category_ + "_globalWorldCentroidState_contact_" + contactName + "_orientation_RollPitchYaw",
+                       [this, numContact]() -> so::Vector3
+                       {
+                         so::kine::Orientation ori;
+                         return so::kine::rotationMatrixToRollPitchYaw(
+                             ori.fromVector4(observer_.getCurrentStateVector().segment<int(observer_.sizeOri)>(
+                                                 observer_.contactOriIndex(numContact)))
+                                 .toMatrix3());
+                       });
+    logger.addLogEntry(category_ + "_globalWorldCentroidState_contact_" + contactName + "_forces",
                        [this, numContact]() -> Eigen::Vector3d
                        {
                          return observer_.getCurrentStateVector().segment<int(observer_.sizeForce)>(
                              observer_.contactForceIndex(numContact));
                        });
-    logger.addLogEntry(category_ + "_globalWorldCentroidState_contact_" + mapContacts_.getNameFromNum(numContact)
-                           + "_torques",
+    logger.addLogEntry(category_ + "_globalWorldCentroidState_contact_" + contactName + "_torques",
                        [this, numContact]() -> Eigen::Vector3d
                        {
                          return globalCentroidKinematics_.orientation.toMatrix3()
@@ -1499,7 +1519,7 @@ void MCKineticsObserver::addContactLogEntries(mc_rtc::Logger & logger, const int
                                     observer_.contactTorqueIndex(numContact));
                        });
     logger.addLogEntry(
-        category_ + "_stateCovariances_contact_" + mapContacts_.getNameFromNum(numContact) + "_position_",
+        category_ + "_stateCovariances_contact_" + contactName + "_position_",
         [this, numContact]() -> Eigen::Vector3d
         {
           return observer_.getEKF()
@@ -1509,7 +1529,7 @@ void MCKineticsObserver::addContactLogEntries(mc_rtc::Logger & logger, const int
               .diagonal();
         });
     logger.addLogEntry(
-        category_ + "_stateCovariances_contact_" + mapContacts_.getNameFromNum(numContact) + "_orientation_",
+        category_ + "_stateCovariances_contact_" + contactName + "_orientation_",
         [this, numContact]() -> Eigen::Vector3d
         {
           return observer_.getEKF()
@@ -1518,7 +1538,7 @@ void MCKineticsObserver::addContactLogEntries(mc_rtc::Logger & logger, const int
                   observer_.contactOriIndexTangent(numContact), observer_.contactOriIndexTangent(numContact))
               .diagonal();
         });
-    logger.addLogEntry(category_ + "_stateCovariances_contact_" + mapContacts_.getNameFromNum(numContact) + "_Force_",
+    logger.addLogEntry(category_ + "_stateCovariances_contact_" + contactName + "_Force_",
                        [this, numContact]() -> Eigen::Vector3d
                        {
                          return observer_.getEKF()
@@ -1528,7 +1548,7 @@ void MCKineticsObserver::addContactLogEntries(mc_rtc::Logger & logger, const int
                                  observer_.contactForceIndexTangent(numContact))
                              .diagonal();
                        });
-    logger.addLogEntry(category_ + "_stateCovariances_contact_" + mapContacts_.getNameFromNum(numContact) + "_Torque_",
+    logger.addLogEntry(category_ + "_stateCovariances_contact_" + contactName + "_Torque_",
                        [this, numContact]() -> Eigen::Vector3d
                        {
                          return observer_.getEKF()
@@ -1539,14 +1559,12 @@ void MCKineticsObserver::addContactLogEntries(mc_rtc::Logger & logger, const int
                              .diagonal();
                        });
 
-    logger.addLogEntry(category_ + "_predictedGlobalCentroidKinematics_contact_"
-                           + mapContacts_.getNameFromNum(numContact) + "_position",
+    logger.addLogEntry(category_ + "_predictedGlobalCentroidKinematics_contact_" + contactName + "_position",
                        [this, numContact]() -> Eigen::Vector3d {
                          return predictedGlobalCentroidState_.segment<int(observer_.sizePos)>(
                              observer_.contactPosIndex(numContact));
                        });
-    logger.addLogEntry(category_ + "_predictedGlobalCentroidKinematics_contact_"
-                           + mapContacts_.getNameFromNum(numContact) + "_orientation",
+    logger.addLogEntry(category_ + "_predictedGlobalCentroidKinematics_contact_" + contactName + "_orientation",
                        [this, numContact]() -> Eigen::Quaternion<double>
                        {
                          so::kine::Orientation ori;
@@ -1556,26 +1574,24 @@ void MCKineticsObserver::addContactLogEntries(mc_rtc::Logger & logger, const int
                              .inverse()
                              .toQuaternion();
                        });
-    logger.addLogEntry(category_ + "_predictedGlobalCentroidKinematics_contact_"
-                           + mapContacts_.getNameFromNum(numContact) + "_forces",
+    logger.addLogEntry(category_ + "_predictedGlobalCentroidKinematics_contact_" + contactName + "_forces",
                        [this, numContact]() -> Eigen::Vector3d {
                          return predictedGlobalCentroidState_.segment<int(observer_.sizeForce)>(
                              observer_.contactForceIndex(numContact));
                        });
-    logger.addLogEntry(category_ + "_predictedGlobalCentroidKinematics_contact_"
-                           + mapContacts_.getNameFromNum(numContact) + "_torques",
+    logger.addLogEntry(category_ + "_predictedGlobalCentroidKinematics_contact_" + contactName + "_torques",
                        [this, numContact]() -> Eigen::Vector3d {
                          return predictedGlobalCentroidState_.segment<int(observer_.sizeTorque)>(
                              observer_.contactTorqueIndex(numContact));
                        });
 
-    logger.addLogEntry(category_ + "_innovation_contact_" + mapContacts_.getNameFromNum(numContact) + "_position",
+    logger.addLogEntry(category_ + "_innovation_contact_" + contactName + "_position",
                        [this, numContact]() -> Eigen::Vector3d
                        {
                          return observer_.getEKF().getInnovation().segment<int(observer_.sizePos)>(
                              observer_.contactPosIndexTangent(numContact));
                        });
-    logger.addLogEntry(category_ + "_innovation_contact_" + mapContacts_.getNameFromNum(numContact) + "_orientation",
+    logger.addLogEntry(category_ + "_innovation_contact_" + contactName + "_orientation",
                        [this, numContact]() -> Eigen::Quaternion<double>
                        {
                          so::kine::Orientation ori;
@@ -1585,125 +1601,115 @@ void MCKineticsObserver::addContactLogEntries(mc_rtc::Logger & logger, const int
                              .inverse()
                              .toQuaternion();
                        });
-    logger.addLogEntry(category_ + "_innovation_contact_" + mapContacts_.getNameFromNum(numContact) + "_forces",
+    logger.addLogEntry(category_ + "_innovation_contact_" + contactName + "_forces",
                        [this, numContact]() -> Eigen::Vector3d
                        {
                          return observer_.getEKF().getInnovation().segment<int(observer_.sizeForce)>(
                              observer_.contactForceIndexTangent(numContact));
                        });
-    logger.addLogEntry(category_ + "_innovation_contact_" + mapContacts_.getNameFromNum(numContact) + "_torques",
+    logger.addLogEntry(category_ + "_innovation_contact_" + contactName + "_torques",
                        [this, numContact]() -> Eigen::Vector3d
                        {
                          return observer_.getEKF().getInnovation().segment<int(observer_.sizeTorque)>(
                              observer_.contactTorqueIndexTangent(numContact));
                        });
 
-    logger.addLogEntry(category_ + "_debug_contactWrench_World_" + mapContacts_.getNameFromNum(numContact) + "_force",
+    logger.addLogEntry(category_ + "_debug_contactWrench_World_" + contactName + "_force",
                        [this, numContact]() -> Eigen::Vector3d
                        { return observer_.getWorldContactWrench(numContact).segment<int(observer_.sizeForce)>(0); });
 
-    logger.addLogEntry(category_ + "_debug_contactWrench_World_" + mapContacts_.getNameFromNum(numContact) + "_torque",
+    logger.addLogEntry(category_ + "_debug_contactWrench_World_" + contactName + "_torque",
                        [this, numContact]() -> Eigen::Vector3d
                        { return observer_.getWorldContactWrench(numContact).segment<int(observer_.sizeTorque)>(3); });
 
-    logger.addLogEntry(category_ + "_debug_contactWrench_Centroid_" + mapContacts_.getNameFromNum(numContact)
-                           + "_force",
+    logger.addLogEntry(category_ + "_debug_contactWrench_Centroid_" + contactName + "_force",
                        [this, numContact]() -> Eigen::Vector3d
                        { return observer_.getCentroidContactWrench(numContact).segment<int(observer_.sizeForce)>(0); });
 
-    logger.addLogEntry(
-        category_ + "_debug_contactWrench_Centroid_" + mapContacts_.getNameFromNum(numContact) + "_torque",
-        [this, numContact]() -> Eigen::Vector3d
-        { return observer_.getCentroidContactWrench(numContact).segment<int(observer_.sizeTorque)>(3); });
+    logger.addLogEntry(category_ + "_debug_contactWrench_Centroid_" + contactName + "_torque",
+                       [this, numContact]() -> Eigen::Vector3d {
+                         return observer_.getCentroidContactWrench(numContact).segment<int(observer_.sizeTorque)>(3);
+                       });
 
-    logger.addLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
-                           + "_inputWorldRef_position",
+    logger.addLogEntry(category_ + "_debug_contactPose_" + contactName + "_inputWorldRef_position",
                        [this, numContact]() -> Eigen::Vector3d
                        { return observer_.getWorldContactInputRefPose(numContact).position(); });
 
-    logger.addLogEntry(
-        category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact) + "_inputWorldRef_orientation",
-        [this, numContact]() -> Eigen::Quaternion<double>
-        { return observer_.getWorldContactInputRefPose(numContact).orientation.inverse().toQuaternion(); });
+    logger.addLogEntry(category_ + "_debug_contactPose_" + contactName + "_inputWorldRef_orientation",
+                       [this, numContact]() -> Eigen::Quaternion<double> {
+                         return observer_.getWorldContactInputRefPose(numContact).orientation.inverse().toQuaternion();
+                       });
 
-    logger.addLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
-                           + "_inputCentroidContactKine_position",
+    logger.addLogEntry(category_ + "_debug_contactPose_" + contactName + "_inputCentroidContactKine_position",
                        [this, numContact]() -> Eigen::Vector3d
                        { return observer_.getCentroidContactInputPose(numContact).position(); });
 
-    logger.addLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
-                           + "_inputCentroidContactKine_orientation",
+    logger.addLogEntry(category_ + "_debug_contactPose_" + contactName + "_inputCentroidContactKine_orientation",
                        [this, numContact]() -> Eigen::Quaternion<double> {
                          return observer_.getCentroidContactInputPose(numContact).orientation.inverse().toQuaternion();
                        });
 
-    logger.addLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
-                           + "_worldContactPoseFromCentroid_position",
+    logger.addLogEntry(category_ + "_debug_contactPose_" + contactName + "_worldContactPoseFromCentroid_position",
                        [this, numContact]() -> Eigen::Vector3d
                        { return observer_.getWorldContactPose(numContact).position(); });
 
-    logger.addLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
-                           + "_worldContactPoseFromCentroid_orientation",
+    logger.addLogEntry(category_ + "_debug_contactPose_" + contactName + "_worldContactPoseFromCentroid_orientation",
                        [this, numContact]() -> Eigen::Quaternion<double>
                        { return observer_.getWorldContactPose(numContact).orientation.inverse().toQuaternion(); });
 
-    logger.addLogEntry(
-        category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact) + "_inputUserContactKine_position",
-        [this, numContact]() -> Eigen::Vector3d { return observer_.getUserContactInputPose(numContact).position(); });
+    logger.addLogEntry(category_ + "_debug_contactPose_" + contactName + "_inputUserContactKine_position",
+                       [this, numContact]() -> Eigen::Vector3d
+                       { return observer_.getUserContactInputPose(numContact).position(); });
 
-    logger.addLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
-                           + "_inputUserContactKine_orientation",
+    logger.addLogEntry(category_ + "_debug_contactPose_" + contactName + "_inputUserContactKine_orientation",
                        [this, numContact]() -> Eigen::Quaternion<double>
                        { return observer_.getUserContactInputPose(numContact).orientation.inverse().toQuaternion(); });
-    logger.addLogEntry(category_ + "_debug_contactState_isExternalWrench_" + mapContacts_.getNameFromNum(numContact),
+    logger.addLogEntry(category_ + "_debug_contactState_isExternalWrench_" + contactName,
                        [this, numContact]() -> int
                        { return int(mapContacts_.contactWithSensor(numContact).isExternalWrench); });
-    logger.addLogEntry(category_ + "_debug_contactState_isSet_" + mapContacts_.getNameFromNum(numContact),
+    logger.addLogEntry(category_ + "_debug_contactState_isSet_" + contactName,
                        [this, numContact]() -> int { return int(mapContacts_.contactWithSensor(numContact).isSet); });
+    logger.addLogEntry(category_ + "_debug_zmp_" + contactName,
+                       [this, contactName]() -> so::Vector3 { return mapContacts_.getZMPFromName(contactName); });
   }
 }
 
-void MCKineticsObserver::addContactMeasurementsLogEntries(mc_rtc::Logger & logger, const int & numContact)
+void MCKineticsObserver::addContactMeasurementsLogEntries(mc_rtc::Logger & logger, const std::string & contactName)
 {
+  const int & numContact = mapContacts_.getNumFromName(contactName);
   if(observer_.getContactIsSetByNum(numContact))
   {
-    logger.addLogEntry(category_ + "_measurements_contacts_force_" + mapContacts_.getNameFromNum(numContact)
-                           + "_measured",
+    logger.addLogEntry(category_ + "_measurements_contacts_force_" + contactName + "_measured",
                        [this, numContact]() -> Eigen::Vector3d
                        {
                          return observer_.getEKF().getLastMeasurement().segment<int(observer_.sizeForce)>(
                              observer_.getContactMeasIndexByNum(numContact));
                        });
-    logger.addLogEntry(category_ + "_measurements_contacts_force_" + mapContacts_.getNameFromNum(numContact)
-                           + "_predicted",
+    logger.addLogEntry(category_ + "_measurements_contacts_force_" + contactName + "_predicted",
                        [this, numContact]() -> Eigen::Vector3d
                        {
                          return observer_.getEKF().getLastPredictedMeasurement().segment<int(observer_.sizeForce)>(
                              observer_.getContactMeasIndexByNum(numContact));
                        });
-    logger.addLogEntry(category_ + "_measurements_contacts_force_" + mapContacts_.getNameFromNum(numContact)
-                           + "_corrected",
+    logger.addLogEntry(category_ + "_measurements_contacts_force_" + contactName + "_corrected",
                        [this, numContact]() -> Eigen::Vector3d {
                          return correctedMeasurements_.segment<int(observer_.sizeForce)>(
                              observer_.getContactMeasIndexByNum(numContact));
                        });
 
-    logger.addLogEntry(category_ + "_measurements_contacts_torque_" + mapContacts_.getNameFromNum(numContact)
-                           + "_measured",
+    logger.addLogEntry(category_ + "_measurements_contacts_torque_" + contactName + "_measured",
                        [this, numContact]() -> Eigen::Vector3d
                        {
                          return observer_.getEKF().getLastMeasurement().segment<int(observer_.sizeTorque)>(
                              observer_.getContactMeasIndexByNum(numContact) + observer_.sizeForce);
                        });
-    logger.addLogEntry(category_ + "_measurements_contacts_torque_" + mapContacts_.getNameFromNum(numContact)
-                           + "_predicted",
+    logger.addLogEntry(category_ + "_measurements_contacts_torque_" + contactName + "_predicted",
                        [this, numContact]() -> Eigen::Vector3d
                        {
                          return observer_.getEKF().getLastPredictedMeasurement().segment<int(observer_.sizeTorque)>(
                              observer_.getContactMeasIndexByNum(numContact) + observer_.sizeForce);
                        });
-    logger.addLogEntry(category_ + "_measurements_contacts_torque_" + mapContacts_.getNameFromNum(numContact)
-                           + "_corrected",
+    logger.addLogEntry(category_ + "_measurements_contacts_torque_" + contactName + "_corrected",
                        [this, numContact]() -> Eigen::Vector3d
                        {
                          return correctedMeasurements_.segment<int(observer_.sizeTorque)>(
@@ -1712,93 +1718,66 @@ void MCKineticsObserver::addContactMeasurementsLogEntries(mc_rtc::Logger & logge
   }
 }
 
-void MCKineticsObserver::removeContactLogEntries(mc_rtc::Logger & logger, const int & numContact)
+void MCKineticsObserver::removeContactLogEntries(mc_rtc::Logger & logger, const std::string & contactName)
 {
-  logger.removeLogEntry(category_ + "_globalWorldCentroidState_contact_" + mapContacts_.getNameFromNum(numContact)
-                        + "_position");
-  logger.removeLogEntry(category_ + "_globalWorldCentroidState_contact_" + mapContacts_.getNameFromNum(numContact)
-                        + "_position");
-  logger.removeLogEntry(category_ + "_globalWorldCentroidState_contact_" + mapContacts_.getNameFromNum(numContact)
-                        + "_orientation");
-  logger.removeLogEntry(category_ + "_globalWorldCentroidState_contact_" + mapContacts_.getNameFromNum(numContact)
-                        + "_forces");
-  logger.removeLogEntry(category_ + "_globalWorldCentroidState_contact_" + mapContacts_.getNameFromNum(numContact)
-                        + "_torques");
-  logger.removeLogEntry(category_ + "_stateCovariances_contact_" + mapContacts_.getNameFromNum(numContact)
-                        + "_position_");
-  logger.removeLogEntry(category_ + "_stateCovariances_contact_" + mapContacts_.getNameFromNum(numContact)
-                        + "_orientation_");
-  logger.removeLogEntry(category_ + "_stateCovariances_contact_" + mapContacts_.getNameFromNum(numContact) + "_Force_");
-  logger.removeLogEntry(category_ + "_stateCovariances_contact_" + mapContacts_.getNameFromNum(numContact)
-                        + "_Torque_");
+  logger.removeLogEntry(category_ + "_globalWorldCentroidState_contact_" + contactName + "_position");
+  logger.removeLogEntry(category_ + "_globalWorldCentroidState_contact_" + contactName + "_position");
+  logger.removeLogEntry(category_ + "_globalWorldCentroidState_contact_" + contactName + "_orientation");
+  logger.removeLogEntry(category_ + "_globalWorldCentroidState_contact_" + contactName + "_orientation_RollPitchYaw");
+  logger.removeLogEntry(category_ + "_globalWorldCentroidState_contact_" + contactName + "_forces");
+  logger.removeLogEntry(category_ + "_globalWorldCentroidState_contact_" + contactName + "_torques");
+  logger.removeLogEntry(category_ + "_stateCovariances_contact_" + contactName + "_position_");
+  logger.removeLogEntry(category_ + "_stateCovariances_contact_" + contactName + "_orientation_");
+  logger.removeLogEntry(category_ + "_stateCovariances_contact_" + contactName + "_Force_");
+  logger.removeLogEntry(category_ + "_stateCovariances_contact_" + contactName + "_Torque_");
 
-  logger.removeLogEntry(category_ + "_predictedGlobalCentroidKinematics_contact_"
-                        + mapContacts_.getNameFromNum(numContact) + "_position");
-  logger.removeLogEntry(category_ + "_predictedGlobalCentroidKinematics_contact_"
-                        + mapContacts_.getNameFromNum(numContact) + "_orientation");
-  logger.removeLogEntry(category_ + "_predictedGlobalCentroidKinematics_contact_"
-                        + mapContacts_.getNameFromNum(numContact) + "_forces");
-  logger.removeLogEntry(category_ + "_predictedGlobalCentroidKinematics_contact_"
-                        + mapContacts_.getNameFromNum(numContact) + "_torques");
+  logger.removeLogEntry(category_ + "_predictedGlobalCentroidKinematics_contact_" + contactName + "_position");
+  logger.removeLogEntry(category_ + "_predictedGlobalCentroidKinematics_contact_" + contactName + "_orientation");
+  logger.removeLogEntry(category_ + "_predictedGlobalCentroidKinematics_contact_" + contactName + "_forces");
+  logger.removeLogEntry(category_ + "_predictedGlobalCentroidKinematics_contact_" + contactName + "_torques");
 
-  logger.removeLogEntry(category_ + "_innovation_contact_" + mapContacts_.getNameFromNum(numContact) + "_position");
-  logger.removeLogEntry(category_ + "_innovation_contact_" + mapContacts_.getNameFromNum(numContact) + "_orientation");
-  logger.removeLogEntry(category_ + "_innovation_contact_" + mapContacts_.getNameFromNum(numContact) + "_forces");
-  logger.removeLogEntry(category_ + "_innovation_contact_" + mapContacts_.getNameFromNum(numContact) + "_torques");
+  logger.removeLogEntry(category_ + "_innovation_contact_" + contactName + "_position");
+  logger.removeLogEntry(category_ + "_innovation_contact_" + contactName + "_orientation");
+  logger.removeLogEntry(category_ + "_innovation_contact_" + contactName + "_forces");
+  logger.removeLogEntry(category_ + "_innovation_contact_" + contactName + "_torques");
 
-  logger.removeLogEntry(category_ + "_debug_contactWrench_World_" + mapContacts_.getNameFromNum(numContact) + "_force");
+  logger.removeLogEntry(category_ + "_debug_contactWrench_World_" + contactName + "_force");
 
-  logger.removeLogEntry(category_ + "_debug_contactWrench_World_" + mapContacts_.getNameFromNum(numContact)
-                        + "_torque");
+  logger.removeLogEntry(category_ + "_debug_contactWrench_World_" + contactName + "_torque");
 
-  logger.removeLogEntry(category_ + "_debug_contactWrench_Centroid_" + mapContacts_.getNameFromNum(numContact)
-                        + "_force");
+  logger.removeLogEntry(category_ + "_debug_contactWrench_Centroid_" + contactName + "_force");
 
-  logger.removeLogEntry(category_ + "_debug_contactWrench_Centroid_" + mapContacts_.getNameFromNum(numContact)
-                        + "_torque");
+  logger.removeLogEntry(category_ + "_debug_contactWrench_Centroid_" + contactName + "_torque");
 
-  logger.removeLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
-                        + "_inputWorldRef_position");
+  logger.removeLogEntry(category_ + "_debug_contactPose_" + contactName + "_inputWorldRef_position");
 
-  logger.removeLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
-                        + "_inputWorldRef_orientation");
+  logger.removeLogEntry(category_ + "_debug_contactPose_" + contactName + "_inputWorldRef_orientation");
 
-  logger.removeLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
-                        + "_inputCentroidContactKine_position");
+  logger.removeLogEntry(category_ + "_debug_contactPose_" + contactName + "_inputCentroidContactKine_position");
 
-  logger.removeLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
-                        + "_inputCentroidContactKine_orientation");
+  logger.removeLogEntry(category_ + "_debug_contactPose_" + contactName + "_inputCentroidContactKine_orientation");
 
-  logger.removeLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
-                        + "_worldContactPoseFromCentroid_position");
+  logger.removeLogEntry(category_ + "_debug_contactPose_" + contactName + "_worldContactPoseFromCentroid_position");
 
-  logger.removeLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
-                        + "_worldContactPoseFromCentroid_orientation");
+  logger.removeLogEntry(category_ + "_debug_contactPose_" + contactName + "_worldContactPoseFromCentroid_orientation");
 
-  logger.removeLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
-                        + "_inputUserContactKine_position");
+  logger.removeLogEntry(category_ + "_debug_contactPose_" + contactName + "_inputUserContactKine_position");
 
-  logger.removeLogEntry(category_ + "_debug_contactPose_" + mapContacts_.getNameFromNum(numContact)
-                        + "_inputUserContactKine_orientation");
-  logger.removeLogEntry(category_ + "_debug_contactState_isExternalWrench_" + mapContacts_.getNameFromNum(numContact));
-  logger.removeLogEntry(category_ + "_debug_contactState_isSet_" + mapContacts_.getNameFromNum(numContact));
+  logger.removeLogEntry(category_ + "_debug_contactPose_" + contactName + "_inputUserContactKine_orientation");
+  logger.removeLogEntry(category_ + "_debug_contactState_isExternalWrench_" + contactName);
+  logger.removeLogEntry(category_ + "_debug_contactState_isSet_" + contactName);
+  logger.removeLogEntry(category_ + "_debug_zmp_" + contactName);
 }
 
-void MCKineticsObserver::removeContactMeasurementsLogEntries(mc_rtc::Logger & logger, const int & numContact)
+void MCKineticsObserver::removeContactMeasurementsLogEntries(mc_rtc::Logger & logger, const std::string & contactName)
 {
-  logger.removeLogEntry(category_ + "_measurements_contacts_force_" + mapContacts_.getNameFromNum(numContact)
-                        + "_measured");
-  logger.removeLogEntry(category_ + "_measurements_contacts_force_" + mapContacts_.getNameFromNum(numContact)
-                        + "_predicted");
-  logger.removeLogEntry(category_ + "_measurements_contacts_force_" + mapContacts_.getNameFromNum(numContact)
-                        + "_corrected");
+  logger.removeLogEntry(category_ + "_measurements_contacts_force_" + contactName + "_measured");
+  logger.removeLogEntry(category_ + "_measurements_contacts_force_" + contactName + "_predicted");
+  logger.removeLogEntry(category_ + "_measurements_contacts_force_" + contactName + "_corrected");
 
-  logger.removeLogEntry(category_ + "_measurements_contacts_torque_" + mapContacts_.getNameFromNum(numContact)
-                        + "_measured");
-  logger.removeLogEntry(category_ + "_measurements_contacts_torque_" + mapContacts_.getNameFromNum(numContact)
-                        + "_predicted");
-  logger.removeLogEntry(category_ + "_measurements_contacts_torque_" + mapContacts_.getNameFromNum(numContact)
-                        + "_corrected");
+  logger.removeLogEntry(category_ + "_measurements_contacts_torque_" + contactName + "_measured");
+  logger.removeLogEntry(category_ + "_measurements_contacts_torque_" + contactName + "_predicted");
+  logger.removeLogEntry(category_ + "_measurements_contacts_torque_" + contactName + "_corrected");
 }
 
 } // namespace mc_state_observation

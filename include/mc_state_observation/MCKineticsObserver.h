@@ -163,6 +163,12 @@ namespace mc_state_observation
       return insertOrder;
     }
 
+    inline bool hasSensor(const std::string & element)
+    {
+      BOOST_ASSERT(hasElement(element) && "This contact does not belong to the list.");
+      return hasSensor_.at(element);
+    }
+
     inline const int & getNumFromName(const std::string & name)
     {
       if(hasSensor_.at(name))
@@ -321,13 +327,13 @@ protected:
 
   void plotVariablesAfterUpdate(const mc_control::MCController & ctl, mc_rtc::Logger & logger);
 
-  void addContactLogEntries(mc_rtc::Logger & logger, const int & numContact);
+  void addContactLogEntries(mc_rtc::Logger & logger, const std::string & contactName);
 
-  void removeContactLogEntries(mc_rtc::Logger & logger, const int & numContact);
+  void removeContactLogEntries(mc_rtc::Logger & logger, const std::string & contactName);
 
-  void addContactMeasurementsLogEntries(mc_rtc::Logger & logger, const int & numContact);
+  void addContactMeasurementsLogEntries(mc_rtc::Logger & logger, const std::string & contactName);
 
-  void removeContactMeasurementsLogEntries(mc_rtc::Logger & logger, const int & numContact);
+  void removeContactMeasurementsLogEntries(mc_rtc::Logger & logger, const std::string & contactName);
 
   void addToLogger(const mc_control::MCController &, mc_rtc::Logger &, const std::string & category) override;
 
