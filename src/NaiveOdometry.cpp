@@ -574,13 +574,6 @@ void NaiveOdometry::updateContacts(const mc_control::MCController & ctl,
     }
   }
 
-  std::cout << std::endl
-            << "sumAlreadySetForcesNormOrientationOdometry" << std::endl
-            << sumAlreadySetForcesNormOrientationOdometry << std::endl;
-  std::cout << std::endl
-            << "sumAlreadySetForcesNormPositionOdometry" << std::endl
-            << sumAlreadySetForcesNormPositionOdometry << std::endl;
-
   if(alreadySetContactsPositionOdometry.size() > 0)
   {
     X_0_fb_.translation() = totalFbPosition / sumAlreadySetForcesNormPositionOdometry;
