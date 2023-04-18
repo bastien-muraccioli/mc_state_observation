@@ -28,6 +28,10 @@ namespace mc_state_observation
     {
       return id_;
     }
+    inline const std::string & getName()
+    {
+      return name_;
+    }
 
   protected:
     Sensor() {}
@@ -56,6 +60,7 @@ namespace mc_state_observation
 
   struct Contact : virtual public Sensor
   {
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   protected:
     Contact() {}
     ~Contact() {}
@@ -63,7 +68,6 @@ namespace mc_state_observation
     {
       id_ = id;
       name_ = name;
-      zmp = so::Vector3::Zero();
       resetContact();
     }
 
@@ -72,6 +76,7 @@ namespace mc_state_observation
     {
       wasAlreadySet = false;
       isSet = false;
+      zmp.set(false);
     }
     inline const so::Vector3 & getZMP()
     {
@@ -81,7 +86,7 @@ namespace mc_state_observation
   public:
     bool isSet = false;
     bool wasAlreadySet = false;
-    so::Vector3 zmp;
+    so::CheckedVector3 zmp;
   };
 
   struct ContactWithSensor : virtual public Contact
@@ -121,6 +126,7 @@ namespace mc_state_observation
 
   struct ContactWithoutSensor : virtual public Contact
   {
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   public:
     ContactWithoutSensor(int id, std::string name)
     {
@@ -568,6 +574,7 @@ namespace mc_state_observation
     std::vector<so::Vector> predictedAccelerometers_;
 
     double contactDetectionPropThreshold_ = 0.0;
+    double contactDetectionThreshold_ = 0.0;
 
     so::Vector innovation_;
 
