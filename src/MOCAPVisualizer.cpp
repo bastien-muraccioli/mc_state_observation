@@ -143,42 +143,57 @@ void MOCAPVisualizer::updateContacts(const mc_control::MCController & ctl)
   const auto & realRobot = ctl.realRobot(robot_);
   const auto & mocapRobot = my_robots_->robot();
 
-  for(auto forceSensor : realRobot.forceSensors())
+  for(auto contact : contacts_)
   {
-    so::kine::Kinematics worldContactKineRef;
-    worldContactKineRef.setZero(so::kine::Kinematics::Flags::position);
+    Contact & ct = contact.second;
+    const std::string & fsName = contact.first;
+    const mc_rbdyn::ForceSensor & forceSensor = realRobot.forceSensor(fsName);
+    if(fsName.find("LeftHand") == std::string::npos)
+    {
 
-    // getting the position in the world of the new contact
-    const sva::PTransformd & bodyNewContactPoseRobot = forceSensor.X_p_f();
-    so::kine::Kinematics bodyNewContactKine;
-    bodyNewContactKine.setZero(so::kine::Kinematics::Flags::all);
-    bodyNewContactKine.position = bodyNewContactPoseRobot.translation();
-    bodyNewContactKine.orientation = so::Matrix3(bodyNewContactPoseRobot.rotation().transpose());
+      so::kine::Kinematics worldContactKineRef;
+      worldContactKineRef.setZero(so::kine::Kinematics::Flags::position);
 
-    so::kine::Kinematics worldBodyKineOdometryRobot;
+      // getting the position in the world of the new contact
+      const sva::PTransformd & bodyNewContactPoseRobot = forceSensor.X_p_f();
+      so::kine::Kinematics bodyNewContactKine;
+      bodyNewContactKine.setZero(so::kine::Kinematics::Flags::all);
+      bodyNewContactKine.position = bodyNewContactPoseRobot.translation();
+      bodyNewContactKine.orientation = so::Matrix3(bodyNewContactPoseRobot.rotation().transpose());
 
-    worldBodyKineOdometryRobot.position =
-        mocapRobot.mbc().bodyPosW[mocapRobot.bodyIndexByName(forceSensor.parentBody())].translation();
-    worldBodyKineOdometryRobot.orientation = so::Matrix3(
-        mocapRobot.mbc().bodyPosW[mocapRobot.bodyIndexByName(forceSensor.parentBody())].rotation().transpose());
-    worldBodyKineOdometryRobot.linVel =
-        mocapRobot.mbc().bodyVelW[mocapRobot.bodyIndexByName(forceSensor.parentBody())].linear();
-    worldBodyKineOdometryRobot.angVel =
-        mocapRobot.mbc().bodyVelW[mocapRobot.bodyIndexByName(forceSensor.parentBody())].angular();
-    worldBodyKineOdometryRobot.linAcc =
-        worldBodyKineOdometryRobot.orientation.toMatrix3()
-        * mocapRobot.mbc().bodyAccB[mocapRobot.bodyIndexByName(forceSensor.parentBody())].linear();
-    worldBodyKineOdometryRobot.angAcc =
-        worldBodyKineOdometryRobot.orientation.toMatrix3()
-        * mocapRobot.mbc().bodyAccB[mocapRobot.bodyIndexByName(forceSensor.parentBody())].angular();
+      so::kine::Kinematics worldBodyKineOdometryRobot;
 
-    // std::cout << std::endl << "bodyNewContactKine" << std::endl << bodyNewContactKine << std::endl;
-    // std::cout << std::endl << "worldBodyKineOdometryRobot" << std::endl << worldBodyKineOdometryRobot << std::endl;
-    so::kine::Kinematics worldNewContactKineOdometryRobot = worldBodyKineOdometryRobot * bodyNewContactKine;
+      worldBodyKineOdometryRobot.position =
+          mocapRobot.mbc().bodyPosW[mocapRobot.bodyIndexByName(forceSensor.parentBody())].translation();
+      worldBodyKineOdometryRobot.orientation = so::Matrix3(
+          mocapRobot.mbc().bodyPosW[mocapRobot.bodyIndexByName(forceSensor.parentBody())].rotation().transpose());
+      worldBodyKineOdometryRobot.linVel =
+          mocapRobot.mbc().bodyVelW[mocapRobot.bodyIndexByName(forceSensor.parentBody())].linear();
+      worldBodyKineOdometryRobot.angVel =
+          mocapRobot.mbc().bodyVelW[mocapRobot.bodyIndexByName(forceSensor.parentBody())].angular();
+      worldBodyKineOdometryRobot.linAcc =
+          worldBodyKineOdometryRobot.orientation.toMatrix3()
+          * mocapRobot.mbc().bodyAccB[mocapRobot.bodyIndexByName(forceSensor.parentBody())].linear();
+      worldBodyKineOdometryRobot.angAcc =
+          worldBodyKineOdometryRobot.orientation.toMatrix3()
+          * mocapRobot.mbc().bodyAccB[mocapRobot.bodyIndexByName(forceSensor.parentBody())].angular();
 
-    contacts_.at(forceSensor.name()).worldRefKine_.position = worldNewContactKineOdometryRobot.position();
-    contacts_.at(forceSensor.name()).worldRefKine_.orientation = worldNewContactKineOdometryRobot.orientation;
-    contacts_.at(forceSensor.name()).quat_ = worldNewContactKineOdometryRobot.orientation.toQuaternion().inverse();
+      // std::cout << std::endl << "bodyNewContactKine" << std::endl << bodyNewContactKine << std::endl;
+      // std::cout << std::endl << "worldBodyKineOdometryRobot" << std::endl << worldBodyKineOdometryRobot << std::endl;
+      so::kine::Kinematics worldNewContactKineOdometryRobot = worldBodyKineOdometryRobot * bodyNewContactKine;
+
+      contacts_.at(forceSensor.name()).worldRefKine_.position = worldNewContactKineOdometryRobot.position();
+      contacts_.at(forceSensor.name()).worldRefKine_.orientation = worldNewContactKineOdometryRobot.orientation;
+      contacts_.at(forceSensor.name()).quat_ = worldNewContactKineOdometryRobot.orientation.toQuaternion().inverse();
+    }
+    else
+    {
+      sva::PTransformd surfaceKine = mocapRobot.surfacePose("LeftHandCloseContact");
+      contacts_.at(forceSensor.name()).worldRefKine_.position = surfaceKine.translation();
+      contacts_.at(forceSensor.name()).worldRefKine_.orientation = so::Matrix3(surfaceKine.rotation().transpose());
+      contacts_.at(forceSensor.name()).quat_ =
+          contacts_.at(forceSensor.name()).worldRefKine_.orientation.toQuaternion().inverse();
+    }
   }
 }
 ///////////////////////////////////////////////////////////////////////
