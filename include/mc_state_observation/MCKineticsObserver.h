@@ -50,7 +50,7 @@ namespace mc_state_observation
     {
       id_ = id;
       name_ = name;
-      gyroBias = so::Vector3::Zero();
+      gyroBias << 0.0, 0.0, 0.0;
     }
     ~IMU() {}
 

@@ -121,12 +121,7 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
 
   worldAnchorLinVel = 1.0 / estimator_.getSamplingTime() * (worldAnchorKine.position() - previousWorldAnchorePosition);
 
-  std::cout << std::endl
-            << worldAnchorKine.position() << "  |  " << previousWorldAnchorePosition << "  =  " << worldAnchorLinVel;
-
   worldAnchorLocalLinVel = worldAnchorKine.orientation.toMatrix3().transpose() * worldAnchorLinVel;
-
-  std::cout << std::endl << worldAnchorLocalLinVel;
 
   estimator_.setControlOriginVelocityInW(worldAnchorLocalLinVel);
 

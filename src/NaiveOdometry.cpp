@@ -659,6 +659,14 @@ void NaiveOdometry::addContactLogEntries(mc_rtc::Logger & logger, const std::str
       category_ + contactName + "_orientation",
       [this, contactName]() -> so::Quaternion
       { return mapContacts_.contactWithSensor(contactName).worldRefKine_.orientation.toQuaternion().inverse(); });
+  logger.addLogEntry(
+      category_ + contactName + "_orientation_RollPitchYaw",
+      [this, contactName]() -> so::Vector3
+      {
+        so::kine::Orientation ori;
+        return so::kine::rotationMatrixToRollPitchYaw(
+            mapContacts_.contactWithSensor(contactName).worldRefKine_.orientation.toMatrix3().transpose());
+      });
 }
 
 void NaiveOdometry::removeContactLogEntries(mc_rtc::Logger & logger, const std::string & contactName)

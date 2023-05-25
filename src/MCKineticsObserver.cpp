@@ -539,6 +539,8 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
 
   if(withDebugLogs_)
   {
+    /*
+
     for(auto & contactWithSensor : mapContacts_.contactsWithSensors())
     {
       ContactWithSensor & contact = contactWithSensor.second;
@@ -560,18 +562,12 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
         if(observer_.getContactWrench(contact.getID()).segment<int(observer_.sizeForce)>(0).norm()
            > contactDetectionThreshold_)
         {
-          std::cout << "3333333" << std::endl;
           logger.addLogEntry(category_ + "_debug_zmp_" + contact.getName(),
                              [this, &contact]() -> so::Vector3
                              { return mapContacts_.getZMPFromName(contact.getName()); });
           if(!contact.zmp.isSet())
           {
-            std::cout << "222222" << std::endl;
-            /*
-            logger.addLogEntry(category_ + "_debug_zmp_" + contact.getName(),
-                               [this, &contact]() -> so::Vector3
-                               { return mapContacts_.getZMPFromName(contact.getName()); });
-                               */
+
           }
           contact.zmp =
               (normalVector.cross(
@@ -582,12 +578,12 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
         }
         else
         {
-          std::cout << "3333333" << std::endl;
           contact.zmp.set(false);
           logger.removeLogEntry(category_ + "_debug_zmp_" + contact.getName());
         }
       }
     }
+
     for(auto & contactWithoutSensor : mapContacts_.contactsWithoutSensors())
     {
       ContactWithoutSensor & contact = contactWithoutSensor.second;
@@ -629,6 +625,7 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
         }
       }
     }
+    */
     MCKOrobotTilt_0 =
         robot.bodySensor(mapIMUs_.getNameFromNum(0)).X_b_s().rotation() * X_0_fb_.rotation() * so::cst::gravity;
     MCKOrobotTilt_1 =
@@ -1029,20 +1026,15 @@ void MCKineticsObserver::updateContact(const mc_control::MCController & ctl,
 
   so::kine::Kinematics worldBodyKineInputRobot;
 
-  worldBodyKineInputRobot.position =
-      inputRobot.mbc().bodyPosW[inputRobot.bodyIndexByName(forceSensor.parentBody())].translation();
-  worldBodyKineInputRobot.orientation = so::Matrix3(
-      inputRobot.mbc().bodyPosW[inputRobot.bodyIndexByName(forceSensor.parentBody())].rotation().transpose());
-  worldBodyKineInputRobot.linVel =
-      inputRobot.mbc().bodyVelW[inputRobot.bodyIndexByName(forceSensor.parentBody())].linear();
-  worldBodyKineInputRobot.angVel =
-      inputRobot.mbc().bodyVelW[inputRobot.bodyIndexByName(forceSensor.parentBody())].angular();
-  worldBodyKineInputRobot.linAcc =
-      worldBodyKineInputRobot.orientation.toMatrix3()
-      * inputRobot.mbc().bodyAccB[inputRobot.bodyIndexByName(forceSensor.parentBody())].linear();
-  worldBodyKineInputRobot.angAcc =
-      worldBodyKineInputRobot.orientation.toMatrix3()
-      * inputRobot.mbc().bodyAccB[inputRobot.bodyIndexByName(forceSensor.parentBody())].angular();
+  const sva::PTransform posWBody = inputRobot.mbc().bodyPosW[inputRobot.bodyIndexByName(forceSensor.parentBody())];
+  worldBodyKineInputRobot.position = posWBody.translation();
+  worldBodyKineInputRobot.orientation = so::Matrix3(posWBody.rotation().transpose());
+  const sva::MotionVecd velWBody = inputRobot.mbc().bodyVelW[inputRobot.bodyIndexByName(forceSensor.parentBody())];
+  worldBodyKineInputRobot.linVel = velWBody.linear();
+  worldBodyKineInputRobot.angVel = velWBody.angular();
+  const sva::MotionVecd locAccWBody = inputRobot.mbc().bodyAccB[inputRobot.bodyIndexByName(forceSensor.parentBody())];
+  worldBodyKineInputRobot.linAcc = worldBodyKineInputRobot.orientation.toMatrix3() * locAccWBody.linear();
+  worldBodyKineInputRobot.angAcc = worldBodyKineInputRobot.orientation.toMatrix3() * locAccWBody.angular();
 
   so::kine::Kinematics worldSensorKineInputRobot = worldBodyKineInputRobot * bodySensorKine;
 
@@ -2052,7 +2044,7 @@ void MCKineticsObserver::removeContactLogEntries(mc_rtc::Logger & logger, const 
   logger.removeLogEntry(category_ + "_debug_contactPose_" + contactName + "_inputUserContactKine_orientation");
   logger.removeLogEntry(category_ + "_debug_contactState_isExternalWrench_" + contactName);
   logger.removeLogEntry(category_ + "_debug_contactState_isSet_" + contactName);
-  logger.removeLogEntry(category_ + "_debug_zmp_" + contactName);
+  // logger.removeLogEntry(category_ + "_debug_zmp_" + contactName);
 }
 
 void MCKineticsObserver::removeContactMeasurementsLogEntries(mc_rtc::Logger & logger, const std::string & contactName)
