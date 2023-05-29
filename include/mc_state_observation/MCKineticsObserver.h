@@ -681,12 +681,8 @@ namespace mc_state_observation
     std::vector<std::string> surfacesForContactDetection_;
     // list of sensors that must not be used from the start of the observer
 
-    double gyroBiasStandardDeviation_ = 0.0;
     std::vector<std::string> contactsSensorDisabledInit_;
     // zero frame transformation
-
-    so::Vector3 totalForceCentroid_ = so::Vector3::Zero();
-    so::Vector3 totalTorqueCentroid_ = so::Vector3::Zero();
 
     sva::PTransformd zeroPose_;
     // zero velocity or acceleration
@@ -707,8 +703,6 @@ namespace mc_state_observation
 
     // state vector resulting from the Kinetics Observer esimation
     Eigen::VectorXd res_;
-    stateObservation::Vector6 contactWrenchVector_; // vector shared by all the contacts that allows to build a (force+torque) wrench vector 
-                                                  // from the ForceSensor.wrench() function which returns a (torque+force) wrench vector
 
     // vector shared by all the contacts that allows to build a (force+torque) wrench vector from the
     // ForceSensor.wrench() function which returns a (torque+force) wrench vector
@@ -726,7 +720,7 @@ namespace mc_state_observation
 
     bool debug_ = false;
     bool verbose_ = true;
-    
+
     double mass_ = 42; // [kg]
 
     // instance of the Kinetics Observer
@@ -747,13 +741,6 @@ namespace mc_state_observation
     /**< grouped inertia */
     sva::RBInertiad inertiaWaist_;
 
-    sva::PTransformd accPos_; /**< currently hanled accelerometer pos in body */
-    sva::PTransformd accContact_; /**< currently hanled contact pos in body */
-    sva::RBInertiad inertiaWaist_; /**< grouped inertia */
-
-    so::Vector3 additionalUserResultingForce_ = so::Vector3::Zero();
-    so::Vector3 additionalUserResultingMoment_ = so::Vector3::Zero();
-
     // total force measured by the sensors that are not associated to a currently set contact and expressed in the
     // floating base's frame. Used as an input for the Kinetics Observer.
     stateObservation::Vector3 additionalUserResultingForce_ = stateObservation::Vector3::Zero();
@@ -766,8 +753,6 @@ namespace mc_state_observation
     bool simStarted_ = false;
 
     /* Config variables */
-    so::Matrix3 linStiffness_;
-    so::Matrix3 linDamping_;
 
     // linear stiffness of contacts
     stateObservation::Matrix3 linStiffness_;
