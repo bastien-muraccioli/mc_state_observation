@@ -15,6 +15,7 @@
 #include <iostream>
 
 #include <mc_state_observation/kinematicsTools.h>
+
 namespace so = stateObservation;
 
 namespace mc_state_observation
@@ -1066,6 +1067,7 @@ void MCKineticsObserver::addToGUI(const mc_control::MCController &,
 void MCKineticsObserver::plotVariablesBeforeUpdate(const mc_control::MCController & ctl, mc_rtc::Logger & logger)
 {
   /* Plots of the updated state */
+  kinematicsTools::addToLogger(globalCentroidKinematics_, logger, category_ + "_globalWorldCentroidState");
   logger.addLogEntry(category_ + "_globalWorldCentroidState_positionW_",
                      [this]() -> Eigen::Vector3d { return globalCentroidKinematics_.position(); });
   logger.addLogEntry(category_ + "_globalWorldCentroidState_linVelW",
