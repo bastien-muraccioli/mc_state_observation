@@ -29,7 +29,7 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
   config("beta", beta_);
   config("gamma", gamma_);
   // anchorFrameFunction_ = config("anchorFrameFunction", name() + "::" + ctl.robot(robot_).name());
-  anchorFrameFunction_ = "KinematicAnchorFrame::" + ctl.robot(robot_).name();
+  // anchorFrameFunction_ = "KinematicAnchorFrame::" + ctl.robot(robot_).name();
   config("updateRobot", updateRobot_);
   config("updateRobotName", updateRobotName_);
   config("updateSensor", updateSensor_);
@@ -67,7 +67,7 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
 
   // Anchor frame defined w.r.t control robot
   // XXX what if the feet are being moved by the stabilizer?
-  X_0_C_ = ctl.datastore().call<sva::PTransformd>(anchorFrameFunction_, ctl.robot(robot_));
+  // X_0_C_ = ctl.datastore().call<sva::PTransformd>(anchorFrameFunction_, ctl.robot(robot_));
   // we want in this anchor frame:
   // - position of the IMU
   // - orientation of the IMU
@@ -96,8 +96,15 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
   so::kine::Kinematics worldBodyKine = kinematicsTools::poseAndVelFromSva(bodyW, v_0_imuParent, true);
 
   so::kine::Kinematics worldImuKine = worldBodyKine * bodyImuKine;
+  double leftFootRatio = robot.indirectSurfaceForceSensor("LeftFootCenter").force().z()
+                         / (robot.indirectSurfaceForceSensor("LeftFootCenter").force().z()
+                            + robot.indirectSurfaceForceSensor("RightFootCenter").force().z());
+  newWorldAnchorPose =
+      sva::interpolate(robot.surfacePose("RightFootCenter"), robot.surfacePose("LeftFootCenter"), leftFootRatio);
+
   so::kine::Kinematics newWorldAnchorKine =
       kinematicsTools::poseFromSva(newWorldAnchorPose, so::kine::Kinematics::Flags::pose);
+  worldAnchorKine.update(newWorldAnchorKine, ctl.timeStep, flagPoseVels_);
 
   // Pose of the imu in the control frame
   so::kine::Kinematics anchorImuKine = worldAnchorKine.getInverse() * worldImuKine;
@@ -110,14 +117,8 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
   estimator_.setSensorOrientationInC(anchorImuKine.orientation.toMatrix3());
   estimator_.setSensorLinearVelocityInC(anchorImuKine.linVel());
   estimator_.setSensorAngularVelocityInC(anchorImuKine.angVel());
-
-  worldAnchorLinVel = 1.0 / estimator_.getSamplingTime() * (worldAnchorKine.position() - previousWorldAnchorePosition);
-
-  worldAnchorLocalLinVel = worldAnchorKine.orientation.toMatrix3().transpose() * worldAnchorLinVel;
-
-  estimator_.setControlOriginVelocityInW(worldAnchorLocalLinVel);
-
-  previousWorldAnchorePosition = worldAnchorKine.position();
+  estimator_.setControlOriginVelocityInW(worldAnchorKine.orientation.toMatrix3().transpose()
+                                         * worldAnchorKine.linVel());
 
   auto k = estimator_.getCurrentTime();
 
@@ -184,13 +185,17 @@ void TiltObserver::addToLogger(const mc_control::MCController &, mc_rtc::Logger 
   logger.addLogEntry(category + "_imuVelC", [this]() -> const sva::MotionVecd & { return imuVelC_; });
   logger.addLogEntry(category + "_imuPoseC", [this]() -> const sva::PTransformd & { return X_C_IMU_; });
   logger.addLogEntry(category + "_imuEstRotW", [this]() { return Eigen::Quaterniond{estimatedRotationIMU_}; });
-  logger.addLogEntry(category + "_controlAnchorFrame", [this]() -> const sva::PTransformd & { return X_0_C_; });
+  logger.addLogEntry(category + "_controlAnchorFrame",
+                     [this]() -> const sva::PTransformd & { return newWorldAnchorPose; });
   logger.addLogEntry(category + "_displayedWorldFbPose",
                      [this]() -> const sva::PTransformd & { return poseForDisplay; });
   logger.addLogEntry(category + "_anchorFramelinVel_global",
-                     [this]() -> const so::Vector3 & { return worldAnchorLinVel; });
+                     [this]() -> const so::Vector3 & { return worldAnchorKine.linVel(); });
   logger.addLogEntry(category + "_anchorFramelinVel_local",
-                     [this]() -> const so::Vector3 & { return worldAnchorLocalLinVel; });
+                     [this]() -> so::Vector3
+                     { return worldAnchorKine.orientation.toMatrix3().transpose() * worldAnchorKine.linVel(); });
+  logger.addLogEntry(category + "_worldAnchorAngVel",
+                     [this]() -> const so::Vector3 & { return worldAnchorKine.angVel(); });
 }
 
 void TiltObserver::removeFromLogger(mc_rtc::Logger & logger, const std::string & category)

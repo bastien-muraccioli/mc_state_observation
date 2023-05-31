@@ -63,7 +63,7 @@ protected:
   double beta_ = 5;
   /// parameter related to the orthogonality
   double gamma_ = 15;
-  std::string anchorFrameFunction_;
+  // std::string anchorFrameFunction_;
   stateObservation::TiltEstimator estimator_;
   
   
@@ -73,9 +73,14 @@ protected:
   sva::PTransformd X_C_IMU_ = sva::PTransformd::Identity();
   sva::PTransformd X_0_C_ = sva::PTransformd::Identity(); // control anchor frame
 
-  stateObservation::Vector3 previousWorldAnchorePosition = stateObservation::Vector3::Zero();
-  stateObservation::Vector3 worldAnchorLinVel = stateObservation::Vector3::Zero();
-  stateObservation::Vector3 worldAnchorLocalLinVel = stateObservation::Vector3::Zero();
+  sva::PTransformd newWorldAnchorPose = sva::PTransformd::Identity(); // control anchor frame
+
+  stateObservation::kine::Kinematics::Flags::Byte flagPoseVels_ =
+      stateObservation::kine::Kinematics::Flags::position | stateObservation::kine::Kinematics::Flags::orientation
+      | stateObservation::kine::Kinematics::Flags::linVel | stateObservation::kine::Kinematics::Flags::angVel;
+
+  stateObservation::kine::Kinematics worldAnchorKine =
+      stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
 
   // result
   // The observed tilt of the sensor
