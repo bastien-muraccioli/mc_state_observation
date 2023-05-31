@@ -29,7 +29,7 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
   config("beta", beta_);
   config("gamma", gamma_);
   // anchorFrameFunction_ = config("anchorFrameFunction", name() + "::" + ctl.robot(robot_).name());
-  // anchorFrameFunction_ = "KinematicAnchorFrame::" + ctl.robot(robot_).name();
+  anchorFrameFunction_ = "KinematicAnchorFrame::" + ctl.robot(robot_).name();
   config("updateRobot", updateRobot_);
   config("updateRobotName", updateRobotName_);
   config("updateSensor", updateSensor_);

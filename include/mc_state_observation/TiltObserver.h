@@ -63,7 +63,7 @@ protected:
   double beta_ = 5;
   /// parameter related to the orthogonality
   double gamma_ = 15;
-  // std::string anchorFrameFunction_;
+  std::string anchorFrameFunction_;
   stateObservation::TiltEstimator estimator_;
   
   
