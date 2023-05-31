@@ -1,6 +1,8 @@
-#include <state-observation/dynamics-estimators/kinetics-observer.hpp>
-
+#include <mc_observers/api.h>
+#include <mc_rtc/gui/StateBuilder.h>
+#include <mc_rtc/log/Logger.h>
 #include <SpaceVecAlg/SpaceVecAlg>
+#include <state-observation/dynamics-estimators/kinetics-observer.hpp>
 
 /**
  * Conversion framework between the sva representation of kinematics (PTransform for pose, MotionVec for velocities and
@@ -16,13 +18,20 @@
  * Equivalences : PTransform = {position + Orientation}
  *                 MotionVec = {linVel + angVel} or {linAcc + angAcc}
  **/
-namespace svaKinematicsConversion
+namespace kinematicsTools
 {
+
+///////////////////////////////////////////////////////////////////////
+/// -------------------Sva to Kinematics conversion--------------------
+///////////////////////////////////////////////////////////////////////
 
 /// @brief Creates a Kinematics object from a PTransformd object that contains the position and the orientation of a
 /// frame within another.
 /// @param pTransform The pose of the frame within the other frame, stored as a sva PTransform object.
-stateObservation::kine::Kinematics poseFromSva(const sva::PTransformd & pTransform);
+/// @param zeroKine Defines the kinematic variables to initialize to zero. For example some compositions need to set a
+/// zero velocity to obtain the one of the resulting kinematic.
+stateObservation::kine::Kinematics poseFromSva(const sva::PTransformd & pTransform,
+                                               stateObservation::kine::Kinematics::Flags::Byte zeroKine);
 
 /// @brief Creates a Kinematics object from a PTransformd object that contains the position and the orientation of a
 /// frame A within another frame B, and from a MotionVecd object that contains the associated velocities.
@@ -86,4 +95,20 @@ stateObservation::kine::Kinematics & addVelsAndAccs(stateObservation::kine::Kine
                                                     bool velIsGlobal = true,
                                                     bool accIsGlobal = true);
 
-} // namespace svaKinematicsConversion
+///////////////////////////////////////////////////////////////////////
+/// -------------------------Logging functions-------------------------
+///////////////////////////////////////////////////////////////////////
+
+void addToLogger(const stateObservation::kine::Kinematics & kine, mc_rtc::Logger & logger, const std::string & prefix)
+{
+
+  logger.addLogEntry(prefix + "_position", [kine]() -> const stateObservation::Vector3 & { return kine.position(); });
+  logger.addLogEntry(prefix + "_linVel", [kine]() -> const stateObservation::Vector3 & { return kine.linVel(); });
+  logger.addLogEntry(prefix + "_linAcc", [kine]() -> const stateObservation::Vector3 & { return kine.linAcc(); });
+  logger.addLogEntry(prefix + "_ori",
+                     [kine]() -> Eigen::Quaterniond { return kine.orientation.inverse().toQuaternion(); });
+  logger.addLogEntry(prefix + "_angVel", [kine]() -> const stateObservation::Vector3 & { return kine.angVel(); });
+  logger.addLogEntry(prefix + "_angAcc", [kine]() -> const stateObservation::Vector3 & { return kine.angAcc(); });
+}
+
+} // namespace kinematicsTools

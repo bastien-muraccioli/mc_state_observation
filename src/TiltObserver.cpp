@@ -3,7 +3,7 @@
 #include <iostream>
 #include <mc_state_observation/TiltObserver.h>
 #include <mc_state_observation/gui_helpers.h>
-#include <mc_state_observation/svaKinematicsConversion.h>
+#include <mc_state_observation/kinematicsTools.h>
 
 namespace mc_state_observation
 {
@@ -75,29 +75,29 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
   // - angular velocity of the imu
   // - linear velocity of the anchor frame in the world of the control robot (derivative?)
 
-  so::kine::Kinematics worldAnchorKine = svaKinematicsConversion::poseFromSva(X_0_C_);
-
   const auto & robot = ctl.robot(robot_);
   const auto & imu = robot.bodySensor(imuSensor_);
   auto X_0_FB = robot.posW();
 
-  so::kine::Kinematics worldFBKine = svaKinematicsConversion::poseFromSva(X_0_FB);
+  so::kine::Kinematics worldFBKine =
+      kinematicsTools::poseFromSva(X_0_FB, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vels);
 
   const sva::PTransformd & imuXbs = imu.X_b_s();
-  so::kine::Kinematics bodyImuKine = svaKinematicsConversion::poseFromSva(imuXbs);
+  so::kine::Kinematics bodyImuKine =
+      kinematicsTools::poseFromSva(imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vels);
 
   const sva::PTransformd & bodyW = robot.bodyPosW(imu.parentBody());
-  so::kine::Kinematics worldBodyKine = svaKinematicsConversion::poseFromSva(bodyW);
 
   // auto RF = anchorFrame.oriention().transpose(); // orientation of the control anchor frame
   // auto RB = robot.posW().orientation().transpose(); // orientation of the control floating base
 
   // Compute velocity of the imu in the control frame
   auto v_0_imuParent = robot.mbc().bodyVelW[robot.bodyIndexByName(imu.parentBody())];
-  worldBodyKine.linVel = v_0_imuParent.linear();
-  worldBodyKine.angVel = v_0_imuParent.angular();
+  so::kine::Kinematics worldBodyKine = kinematicsTools::poseAndVelFromSva(bodyW, v_0_imuParent, true);
 
   so::kine::Kinematics worldImuKine = worldBodyKine * bodyImuKine;
+  so::kine::Kinematics newWorldAnchorKine =
+      kinematicsTools::poseFromSva(newWorldAnchorPose, so::kine::Kinematics::Flags::pose);
 
   // Pose of the imu in the control frame
   so::kine::Kinematics anchorImuKine = worldAnchorKine.getInverse() * worldImuKine;

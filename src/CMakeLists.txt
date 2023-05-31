@@ -1,4 +1,4 @@
-add_library(mc_state_observation SHARED svaKinematicsConversion.cpp)
+add_library(mc_state_observation SHARED kinematicsTools.cpp)
 target_link_libraries(mc_state_observation PUBLIC SpaceVecAlg::SpaceVecAlg state-observation::state-observation)
 install(TARGETS mc_state_observation EXPORT "${TARGETS_EXPORT_NAME}"   
         LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"

@@ -14,6 +14,7 @@
 
 #include <iostream>
 
+#include <mc_state_observation/kinematicsTools.h>
 namespace so = stateObservation;
 
 namespace mc_state_observation
@@ -526,9 +527,10 @@ void MCKineticsObserver::updateIMUs(const mc_rbdyn::Robot & measRobot, const mc_
     /** Position of accelerometer **/
 
     const sva::PTransformd & bodyImuPose = inputRobot.bodySensor(imu.name()).X_b_s();
-    so::kine::Kinematics bodyImuKine = svaKinematicsConversion::poseFromSva(bodyImuPose);
+    so::kine::Kinematics bodyImuKine = kinematicsTools::poseFromSva(
+        bodyImuPose, so::kine::Kinematics::Flags::vels | so::kine::Kinematics::Flags::accs);
 
-    so::kine::Kinematics worldBodyKine = svaKinematicsConversion::kinematicsFromSva(
+    so::kine::Kinematics worldBodyKine = kinematicsTools::kinematicsFromSva(
         inputRobot.mbc().bodyPosW[inputRobot.bodyIndexByName(imu.parentBody())],
         inputRobot.mbc().bodyVelW[inputRobot.bodyIndexByName(imu.parentBody())],
         inputRobot.mbc().bodyAccB[inputRobot.bodyIndexByName(imu.parentBody())], true, false);
@@ -748,7 +750,8 @@ void MCKineticsObserver::updateContact(const mc_control::MCController & ctl,
   // pose of the sensor within the frame of its parent body
   const sva::PTransformd & bodySensorPoseRobot = forceSensor.X_p_f();
   // kinematics of the sensor within the frame of its parent body
-  so::kine::Kinematics bodySensorKine = svaKinematicsConversion::poseFromSva(bodySensorPoseRobot);
+  so::kine::Kinematics bodySensorKine =
+      kinematicsTools::poseFromSva(bodySensorPoseRobot, so::kine::Kinematics::Flags::vels);
 
   // pose of the sensor's parent body in the input robot within the world / floating base's frame
   const sva::PTransform posWBody = inputRobot.mbc().bodyPosW[inputRobot.bodyIndexByName(forceSensor.parentBody())];
@@ -760,7 +763,7 @@ void MCKineticsObserver::updateContact(const mc_control::MCController & ctl,
 
   // kinematics of the sensor's parent body in the input robot within the world / floating base's frame
   so::kine::Kinematics worldBodyKineInputRobot =
-      svaKinematicsConversion::kinematicsFromSva(posWBody, velWBody, locAccWBody, true, false);
+      kinematicsTools::kinematicsFromSva(posWBody, velWBody, locAccWBody, true, false);
 
   // kinematics of the sensor in the input robot within the world / floating base's frame
   so::kine::Kinematics worldSensorKineInputRobot = worldBodyKineInputRobot * bodySensorKine;
@@ -780,9 +783,9 @@ void MCKineticsObserver::updateContact(const mc_control::MCController & ctl,
     // pose of the surface in the world / floating base's frame
     sva::PTransformd worldSurfacePoseInputRobot = inputRobot.surfacePose(contact.surface);
     // Kinematics of the surface in the world / floating base's frame
-    so::kine::Kinematics worldSurfaceKineInputRobot = svaKinematicsConversion::poseFromSva(worldSurfacePoseInputRobot);
+    so::kine::Kinematics worldSurfaceKineInputRobot =
+        kinematicsTools::poseFromSva(worldSurfacePoseInputRobot, so::kine::Kinematics::Flags::vels);
 
-    worldSurfaceKineInputRobot.orientation = so::Matrix3(worldSurfacePoseInputRobot.rotation().transpose());
     // the kinematics in the world of the sensor in the inputRobot are equal to the kinematics of the sensor in the
     // frame of the floating base.
     fbContactKineInputRobot = worldSurfaceKineInputRobot;
