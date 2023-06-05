@@ -134,8 +134,7 @@ bool LegacyFlexibilityObserver::run(const mc_control::MCController & ctl)
       stateObservation::kine::rotationMatrixToRotationVector(accPosW.rotation().transpose());
 
   /** Velocity of accelerometer **/
-  sva::MotionVecd velIMU =
-    accPos_ * robot.mbc().bodyVelW[robot.bodyIndexByName(robot.bodySensor().parentBody())];
+  sva::MotionVecd velIMU = accPos_ * robot.mbc().bodyVelW[robot.bodyIndexByName(robot.bodySensor().parentBody())];
 
   inputs_.segment<3>(Input::linVelIMU) = velIMU.linear();
   inputs_.segment<3>(Input::angVelIMU) = velIMU.angular();
@@ -143,8 +142,8 @@ bool LegacyFlexibilityObserver::run(const mc_control::MCController & ctl)
   /** Acceleration of accelerometer **/
   Eigen::Matrix3d E_p_0_r = X_0_p.rotation().transpose();
   sva::PTransformd E_p_0(E_p_0_r);
-    sva::MotionVecd accIMU =
-    accPos_ * E_p_0 * robot.mbc().bodyAccB[robot.bodyIndexByName(robot.bodySensor().parentBody())];
+  sva::MotionVecd accIMU =
+      accPos_ * E_p_0 * robot.mbc().bodyAccB[robot.bodyIndexByName(robot.bodySensor().parentBody())];
 
   /** Use material acceleration, not spatial **/
   inputs_.segment<3>(Input::linAccIMU) = accIMU.linear() + velIMU.angular().cross(velIMU.linear());
@@ -301,10 +300,10 @@ void LegacyFlexibilityObserver::setContacts(const mc_rbdyn::Robot & robot, std::
   for(const auto & contact : contacts)
   {
     /*
-    Correction of an error : the pose of the sensor in the body was used as an input but the input must be its pose in the world frame
-    This correction might not be optimal
+    Correction of an error : the pose of the sensor in the body was used as an input but the input must be its pose in
+    the world frame This correction might not be optimal
     */
-    const auto & fs = robot.indirectSurfaceForceSensor(contact); 
+    const auto & fs = robot.indirectSurfaceForceSensor(contact);
     sva::PTransformd contactPos_ = fs.X_p_f();
     sva::PTransformd X_0_p = robot.bodyPosW(fs.parentBody());
     sva::PTransformd contactPosW = contactPos_ * X_0_p;

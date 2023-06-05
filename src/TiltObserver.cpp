@@ -45,9 +45,9 @@ void TiltObserver::reset(const mc_control::MCController & ctl)
   my_robots_ = mc_rbdyn::Robots::make();
   my_robots_->robotCopy(robot, robot.name());
   my_robots_->robotCopy(realRobot, "inputRobot");
-  ctl.gui()->addElement(
-      {"Robots"},
-      mc_rtc::gui::Robot("TiltEstimator", [this]() -> const mc_rbdyn::Robot & { return my_robots_->robot(); }));
+  ctl.gui()->addElement({"Robots"}, mc_rtc::gui::Robot("TiltEstimator", [this]() -> const mc_rbdyn::Robot & {
+                          return my_robots_->robot();
+                        }));
 }
 
 bool TiltObserver::run(const mc_control::MCController & ctl)
@@ -191,9 +191,9 @@ void TiltObserver::addToLogger(const mc_control::MCController &, mc_rtc::Logger 
                      [this]() -> const sva::PTransformd & { return poseForDisplay; });
   logger.addLogEntry(category + "_anchorFramelinVel_global",
                      [this]() -> const so::Vector3 & { return worldAnchorKine.linVel(); });
-  logger.addLogEntry(category + "_anchorFramelinVel_local",
-                     [this]() -> so::Vector3
-                     { return worldAnchorKine.orientation.toMatrix3().transpose() * worldAnchorKine.linVel(); });
+  logger.addLogEntry(category + "_anchorFramelinVel_local", [this]() -> so::Vector3 {
+    return worldAnchorKine.orientation.toMatrix3().transpose() * worldAnchorKine.linVel();
+  });
   logger.addLogEntry(category + "_worldAnchorAngVel",
                      [this]() -> const so::Vector3 & { return worldAnchorKine.angVel(); });
 }
