@@ -19,6 +19,8 @@ struct TiltObserver : public mc_observers::Observer
 
   bool run(const mc_control::MCController & ctl) override;
 
+  void updatePoseAndVel(const mc_control::MCController & ctl, const stateObservation::Vector3 & localWorldImuLinVel, const stateObservation::Vector3 & localWorldImuAngVel);
+
   void update(mc_control::MCController & ctl) override;
 
 protected:
@@ -72,6 +74,8 @@ protected:
   sva::MotionVecd imuVelC_ = sva::MotionVecd::Zero();
   sva::PTransformd X_C_IMU_ = sva::PTransformd::Identity();
   sva::PTransformd X_0_C_ = sva::PTransformd::Identity(); // control anchor frame
+  sva::PTransformd X_0_C_real_ = sva::PTransformd::Identity(); // anchor frame updated by the other observers
+  sva::PTransformd X_0_C_real_previous_  = sva::PTransformd::Identity(); // previous real anchor frame
 
   sva::PTransformd newWorldAnchorPose = sva::PTransformd::Identity(); // control anchor frame
 
@@ -115,8 +119,18 @@ protected:
 
 private:
   std::shared_ptr<mc_rbdyn::Robots> my_robots_;
+
   Eigen::Matrix3d R_0_fb_; // estimated orientation of the floating base in the world frame
+  sva::PTransformd poseW_ = sva::PTransformd::Identity(); ///< Estimated pose of the floating-base in world frame */
+  sva::PTransformd prevPoseW_ = sva::PTransformd::Identity(); ///< Estimated pose of the floating-base in world frame */
+  sva::MotionVecd velW_ = sva::MotionVecd::Zero();
+
   sva::PTransformd poseForDisplay;
+  double maxAnchorFrameDiscontinuity_ =
+      0.01; ///< Threshold (norm) above wich the anchor frame is considered to have had a discontinuity
+  bool anchorFrameJumped_ = false; /** Detects whether the anchor frame had a discontinuity */
+  bool firstIter_ = true;
+  
 };
 
 } // namespace mc_state_observation
