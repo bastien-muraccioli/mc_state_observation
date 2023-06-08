@@ -10,7 +10,7 @@ namespace mc_state_observation
 struct TiltObserver : public mc_observers::Observer
 {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
- public:
+public:
   TiltObserver(const std::string & type, double dt);
 
   void configure(const mc_control::MCController & ctl, const mc_rtc::Configuration &) override;
@@ -19,7 +19,9 @@ struct TiltObserver : public mc_observers::Observer
 
   bool run(const mc_control::MCController & ctl) override;
 
-  void updatePoseAndVel(const mc_control::MCController & ctl, const stateObservation::Vector3 & localWorldImuLinVel, const stateObservation::Vector3 & localWorldImuAngVel);
+  void updatePoseAndVel(const mc_control::MCController & ctl,
+                        const stateObservation::Vector3 & localWorldImuLinVel,
+                        const stateObservation::Vector3 & localWorldImuAngVel);
 
   void update(mc_control::MCController & ctl) override;
 
@@ -49,7 +51,8 @@ protected:
   void addToGUI(const mc_control::MCController &,
                 mc_rtc::gui::StateBuilder &,
                 const std::vector<std::string> & /* category */) override;
-  protected:
+
+protected:
   std::string robot_;
   bool updateRobot_ = false;
   std::string updateRobotName_;
@@ -67,15 +70,14 @@ protected:
   double gamma_ = 15;
   std::string anchorFrameFunction_;
   stateObservation::TiltEstimator estimator_;
-  
-  
+
   // values used for computation
   stateObservation::kine::Kinematics fbImuKine_;
   sva::MotionVecd imuVelC_ = sva::MotionVecd::Zero();
   sva::PTransformd X_C_IMU_ = sva::PTransformd::Identity();
   sva::PTransformd X_0_C_ = sva::PTransformd::Identity(); // control anchor frame
   sva::PTransformd X_0_C_real_ = sva::PTransformd::Identity(); // anchor frame updated by the other observers
-  sva::PTransformd X_0_C_real_previous_  = sva::PTransformd::Identity(); // previous real anchor frame
+  sva::PTransformd X_0_C_real_previous_ = sva::PTransformd::Identity(); // previous real anchor frame
 
   sva::PTransformd newWorldAnchorPose = sva::PTransformd::Identity(); // control anchor frame
 
@@ -85,11 +87,20 @@ protected:
 
   stateObservation::kine::Kinematics worldAnchorKine =
       stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
+  stateObservation::kine::Kinematics worldAnchorKine_ =
+      stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
+  stateObservation::kine::Kinematics realWorldAnchorKine_ =
+      stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
+  stateObservation::kine::Kinematics worldFbKine_;
+  stateObservation::kine::Kinematics realWorldFbKine_;
+
+  stateObservation::Vector3 estimatedWorldImuLocalLinVel_;
+  stateObservation::Vector3 virtualMeasureWorldImuLocalLinVel_;
+  stateObservation::Vector3 realRobotWorldImuLocalLinVel_;
 
   // result
   // The observed tilt of the sensor
   Eigen::Matrix3d estimatedRotationIMU_;
-  
 
   // // The RPY angles for the estimated orientation of the waist ({B})
   // TimedOrientation3D m_rpyBEst;
@@ -110,7 +121,7 @@ protected:
   // // The observed tilt of the sensor ({S})
   // TimedOrientation3D m_rpyS;
   // OutPort<TimedOrientation3D> m_rpySOut;
-  
+
   stateObservation::Vector3 m_pF_prev;
   /// Instance of the Tilt Estimator
   stateObservation::Vector xk_;
@@ -130,7 +141,10 @@ private:
       0.01; ///< Threshold (norm) above wich the anchor frame is considered to have had a discontinuity
   bool anchorFrameJumped_ = false; /** Detects whether the anchor frame had a discontinuity */
   bool firstIter_ = true;
-  
+
+  stateObservation::kine::Kinematics oldRealRobotWorldAnchorKine_;
+  stateObservation::kine::Kinematics oldRealRobotBasedAnchorKine_;
+  stateObservation::Vector3 x1_;
 };
 
 } // namespace mc_state_observation
