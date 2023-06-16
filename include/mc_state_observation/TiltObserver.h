@@ -72,7 +72,7 @@ protected:
   stateObservation::TiltEstimator estimator_;
 
   // values used for computation
-  stateObservation::kine::Kinematics fbImuKine_;
+  stateObservation::kine::Kinematics realFbImuKine_;
   sva::MotionVecd imuVelC_ = sva::MotionVecd::Zero();
   sva::PTransformd X_C_IMU_ = sva::PTransformd::Identity();
   sva::PTransformd X_0_C_ = sva::PTransformd::Identity(); // control anchor frame
@@ -85,8 +85,6 @@ protected:
       stateObservation::kine::Kinematics::Flags::position | stateObservation::kine::Kinematics::Flags::orientation
       | stateObservation::kine::Kinematics::Flags::linVel | stateObservation::kine::Kinematics::Flags::angVel;
 
-  stateObservation::kine::Kinematics worldAnchorKine =
-      stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
   stateObservation::kine::Kinematics worldAnchorKine_ =
       stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
   stateObservation::kine::Kinematics realWorldAnchorKine_ =
@@ -97,30 +95,12 @@ protected:
   stateObservation::Vector3 estimatedWorldImuLocalLinVel_;
   stateObservation::Vector3 virtualMeasureWorldImuLocalLinVel_;
   stateObservation::Vector3 realRobotWorldImuLocalLinVel_;
+  stateObservation::Vector3 realRobotWorldImuLocalAngVel_;
 
   // result
   // The observed tilt of the sensor
   Eigen::Matrix3d estimatedRotationIMU_;
 
-  // // The RPY angles for the estimated orientation of the waist ({B})
-  // TimedOrientation3D m_rpyBEst;
-  // InPort<TimedOrientation3D> m_rpyBEstIn;
-
-  // // The estimated position of the waist ({B})
-  // TimedPoint3D m_pBEst;
-  // InPort<TimedPoint3D> m_pBEstIn;
-
-  // // The RPY angles for the estimated orientation of the control frame ({F})
-  // TimedOrientation3D m_rpyFEst;
-  // InPort<TimedOrientation3D> m_rpyFEstIn;
-
-  // // The estimated position of the control frame ({F})
-  // TimedPoint3D m_pFEst;
-  // InPort<TimedPoint3D> m_pFEstIn;
-
-  // // The observed tilt of the sensor ({S})
-  // TimedOrientation3D m_rpyS;
-  // OutPort<TimedOrientation3D> m_rpySOut;
 
   stateObservation::Vector3 m_pF_prev;
   /// Instance of the Tilt Estimator
@@ -142,9 +122,11 @@ private:
   bool anchorFrameJumped_ = false; /** Detects whether the anchor frame had a discontinuity */
   bool firstIter_ = true;
 
-  stateObservation::kine::Kinematics oldRealRobotWorldAnchorKine_;
-  stateObservation::kine::Kinematics oldRealRobotBasedAnchorKine_;
   stateObservation::Vector3 x1_;
+  stateObservation::kine::Kinematics realWorldImuKine_;
+  stateObservation::kine::Kinematics worldImuKine_;
+  stateObservation::kine::Kinematics realImuAnchorKine_;
+  stateObservation::kine::Kinematics realFbAnchorKine_;
 };
 
 } // namespace mc_state_observation
