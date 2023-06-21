@@ -1,7 +1,9 @@
-#include <mc_state_observation/kinematicsTools.h>
+#include <mc_state_observation/observersTools/kinematicsTools.h>
 
 namespace so = stateObservation;
 
+namespace mc_state_observation
+{
 namespace kinematicsTools
 {
 
@@ -123,3 +125,4 @@ so::kine::Kinematics & addVelsAndAccs(so::kine::Kinematics & kine,
 }
 
 } // namespace kinematicsTools
+} // namespace mc_state_observation

@@ -18,6 +18,9 @@
  * Equivalences : PTransform = {position + Orientation}
  *                 MotionVec = {linVel + angVel} or {linAcc + angAcc}
  **/
+
+namespace mc_state_observation
+{
 namespace kinematicsTools
 {
 
@@ -176,3 +179,4 @@ void addToLogger(const stateObservation::kine::Kinematics & kine, mc_rtc::Logger
 }
 
 } // namespace kinematicsTools
+}
