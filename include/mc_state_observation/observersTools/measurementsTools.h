@@ -27,11 +27,15 @@ protected:
   ~Sensor() {}
   Sensor(int id, std::string name) : id_(id), name_(name) {}
 
+  bool operator<(const Sensor & contact2)
+  {
+    return (getID() < contact2.id_);
+  }
+
 protected:
   int id_;
   std::string name_;
 };
-
 ///////////////////////////////////////////////////////////////////////
 /// --------------------------------IMUs-------------------------------
 ///////////////////////////////////////////////////////////////////////
@@ -65,9 +69,9 @@ public:
   /// @brief Get the name of the IMU given its index.
   /// @param num_ The index of the IMU
   /// @return const std::string &
-  inline const std::string & getNameFromNum(const int & num_)
+  inline const std::string & getNameFromNum(const int & num)
   {
-    return insertOrder_.at(num_);
+    return insertOrder_.at(num);
   }
 
   /// @brief Get the list of all the IMUs.
@@ -147,25 +151,26 @@ public:
     wasAlreadySet = false;
     isSet = false;
   }
+
+  /*// ! Not working yet
   inline const Eigen::Vector3d & getZMP()
   {
     return zmp;
   }
+  */
 
 public:
   bool isSet = false;
   bool wasAlreadySet = false;
-  Eigen::Vector3d zmp;
+  // Eigen::Vector3d zmp; // ! Not working yet
 };
 
 struct ContactWithSensor : public Contact
 {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 private:
-  
-
 public:
-ContactWithSensor() {}
+  ContactWithSensor() {}
   ContactWithSensor(int id, std::string name)
   {
     id_ = id;
@@ -184,9 +189,7 @@ ContactWithSensor() {}
 
 public:
   Eigen::Matrix<double, 6, 1> wrenchInCentroid = Eigen::Matrix<double, 6, 1>::Zero(); // for debug only
-  double normForce = 0.0; // for debug only
-  // the measurement of the sensor has to be considered as an input for the Kinetics Observer
-  bool isExternalWrench = true;
+  double forceNorm_ = 0.0; // for debug only
   // the sensor measurement have to be used in the correction by the Kinetics Observer
   bool sensorEnabled = true;
   // allows to know if the contact's measurements have to be added during the update
@@ -200,31 +203,42 @@ public:
   // surface of contact
   std::string surface;
 
-  /* Force filtering for the contact detection */
-  Eigen::Vector3d filteredForce = Eigen::Vector3d::Zero();
-  double lambda = 0.0;
+  /* Force filtering for the contact detection */ // ! Not working yet!
+  // Eigen::Vector3d filteredForce = Eigen::Vector3d::Zero();
+  // double lambda = 0.0;
 };
 
 struct ContactWithoutSensor : public Contact
 {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 public:
+  ContactWithoutSensor() {}
+  ~ContactWithoutSensor() {}
   ContactWithoutSensor(int id, std::string name)
   {
     id_ = id;
     name_ = name;
   }
-  ~ContactWithoutSensor() {}
 };
 
+template<typename ContactWithSensorT, typename ContactWithoutSensorT>
 struct MapContacts
 {
+public:
+  MapContacts()
+  {
+    BOOST_ASSERT((std::is_base_of<ContactWithSensor, ContactWithSensorT>::value)
+                 && "The template class for the contacts with sensors must inherit from the ContactWithSensor class");
+    BOOST_ASSERT((std::is_base_of<ContactWithoutSensor, ContactWithoutSensorT>::value)
+                 && "The template class for the contacts with sensors must inherit from the ContactWithSensor class");
+  }
+
 public:
   /// @brief Accessor for the a contact associated to a sensor contained in the map
   ///
   /// @param name The name of the contact to access
-  /// @return ContactWithSensor&
-  inline ContactWithSensor & contactWithSensor(const std::string & name)
+  /// @return contactsWithSensorT&
+  inline ContactWithSensorT & contactWithSensor(const std::string & name)
   {
     return mapContactsWithSensors_.at(name);
   }
@@ -232,38 +246,38 @@ public:
   ///
   /// @param num_ The index of the contact to access
   /// @return ContactWithSensor&
-  inline ContactWithSensor & contactWithSensor(const int & num_)
+  inline ContactWithSensorT & contactWithSensor(const int & num)
   {
-    return mapContactsWithSensors_.at(getNameFromNum(num_));
+    return mapContactsWithSensors_.at(getNameFromNum(num));
   }
 
   /// @brief Accessor for the a contact that is not associated to a sensor contained in the map
   /// @param name The name of the contact to access
   /// @return ContactWithoutSensor&
-  inline ContactWithoutSensor & contactWithoutSensor(const std::string & name)
+  inline ContactWithoutSensorT & contactWithoutSensor(const std::string & name)
   {
     return mapContactsWithoutSensors_.at(name);
   }
 
   /// @brief Accessor for the a contact that is not associated to a sensor contained in the map
   /// @param num_ The index of the contact to access
-  /// @return ContactWithoutSensor&
-  inline ContactWithoutSensor & contactWithoutSensor(const int & num_)
+  /// @return ContactWithoutSensorT&
+  inline ContactWithoutSensorT & contactWithoutSensor(const int & num)
   {
-    return mapContactsWithoutSensors_.at(getNameFromNum(num_));
+    return mapContactsWithoutSensors_.at(getNameFromNum(num));
   }
 
   /// @brief Get the map of all the contacts associated to a sensor
   ///
-  /// @return std::map<std::string, ContactWithSensor>&
-  inline std::map<std::string, ContactWithSensor> & contactsWithSensors()
+  /// @return std::map<std::string, contactsWithSensorT>&
+  inline std::map<std::string, ContactWithSensorT> & contactsWithSensors()
   {
     return mapContactsWithSensors_;
   }
   /// @brief Get the map of all the contacts that are not associated to a sensor
   ///
-  /// @return std::map<std::string, ContactWithSensor>&
-  inline std::map<std::string, ContactWithoutSensor> & contactsWithoutSensors()
+  /// @return std::map<std::string, ContactWithoutSensorT>&
+  inline std::map<std::string, ContactWithoutSensorT> & contactsWithoutSensors()
   {
     return mapContactsWithoutSensors_;
   }
@@ -290,9 +304,9 @@ public:
   ///
   /// @param num_ The index of the contact
   /// @return const std::string &
-  inline const std::string & getNameFromNum(const int & num_)
+  inline const std::string & getNameFromNum(const int & num)
   {
-    return insertOrder_.at(num_);
+    return insertOrder_.at(num);
   }
 
   /// @brief Get the index of a contact given its name
@@ -311,6 +325,7 @@ public:
     }
   }
 
+  /* // ! Not working yet
   /// @brief Get the measured zmp of a contact given its name
   ///
   /// @param name The name of the contact
@@ -326,6 +341,7 @@ public:
       return mapContactsWithoutSensors_.at(name).getZMP();
     }
   }
+  */
 
   /// @brief Checks if the given contact exists
   ///
@@ -360,12 +376,12 @@ private:
 
     if(hasSensor)
     {
-      mapContactsWithSensors_.insert(std::make_pair(name, ContactWithSensor(num_, name)));
+      mapContactsWithSensors_.insert(std::make_pair(name, ContactWithSensorT(num_, name)));
       hasSensor_.insert(std::make_pair(name, true));
     }
     else
     {
-      mapContactsWithoutSensors_.insert(std::make_pair(name, ContactWithoutSensor(num_, name)));
+      mapContactsWithoutSensors_.insert(std::make_pair(name, ContactWithoutSensorT(num_, name)));
       hasSensor_.insert(std::make_pair(name, true));
     }
   }
@@ -403,21 +419,39 @@ private:
   // map containing all the contacts and indicating if each sensor has a contact or not
   std::map<std::string, bool> hasSensor_;
   // map containing all the contacts associated to a sensor
-  std::map<std::string, ContactWithSensor> mapContactsWithSensors_;
+  std::map<std::string, ContactWithSensorT> mapContactsWithSensors_;
   // map containing all the contacts that are not associated to a sensor
-  std::map<std::string, ContactWithoutSensor> mapContactsWithoutSensors_;
+  std::map<std::string, ContactWithoutSensorT> mapContactsWithoutSensors_;
   // List of all the contacts
   std::vector<std::string> insertOrder_;
   // Index generator, incremented everytime a new contact is created
   int num_ = 0;
 };
 
+// the template allows to define other kinds of contacts and thus add custom parameters to them
+// ! Warning: this class has been tested only on contacts with sensors
+template<typename ContactWithSensorT, typename ContactWithoutSensorT, typename FoundContactsListType = std::string>
 struct ContactsManager
 {
 
 public:
-  ContactsManager() {}
+  ContactsManager()
+  {
+    BOOST_ASSERT((std::is_base_of<ContactWithSensor, ContactWithSensorT>::value)
+                 && "The template class for the contacts with sensors must inherit from the ContactWithSensor class");
+    BOOST_ASSERT((std::is_base_of<ContactWithoutSensor, ContactWithoutSensorT>::value)
+                 && "The template class for the contacts with sensors must inherit from the ContactWithSensor class");
+  }
   ~ContactsManager() {}
+
+  struct cmp
+  {
+    bool operator()(const FoundContactsListType & contact1, const FoundContactsListType & contact2) const
+    {
+      return contact1 < contact2;
+    }
+  };
+
   // initialization for a detection based on contact surfaces
   void init(const mc_control::MCController & ctl,
             const std::string & robotName,
@@ -435,39 +469,110 @@ public:
             std::vector<std::string> contactsSensorDisabledInit,
             const double contactDetectionThreshold);
 
-  const std::set<std::string> & findContacts(const mc_control::MCController & ctl, const std::string & robotName);
+  typedef std::set<FoundContactsListType, cmp> ContactsSet;
+  /// @brief Updates the list of currently set contacts and returns it.
+  /// @return std::set<FoundContactsListType> &
+  const ContactsSet & findContacts(const mc_control::MCController & ctl, const std::string & robotName);
   /// @brief Updates the list @contactsFound_ of currently set contacts directly from the controller.
   /// @details Called by \ref findContacts(const mc_control::MCController & ctl) if @contactsDetection_ is equal to
   /// "fromSolver". The contacts are given by the controller directly (then thresholded based on the measured force).
-  /// @return std::set<std::string> &
   void findContactsFromSolver(const mc_control::MCController & ctl, const std::string & robotName);
-  /// @brief Updates the list @contactsFound_ of currently set contacts from the surfaces given by the controller.
+  /// @brief Updates the list @contactsFound_ of currently set contacts from the surfaces given by the user.
   /// @details Called by \ref findContacts(const mc_control::MCController & ctl) if @contactsDetection_ is equal to
-  /// "fromSurfaces". The contacts are given by the controller directly from a surface (then thresholded based on the
-  /// measured force).
-  /// @return std::set<std::string> &
+  /// "fromSurfaces". The contacts are obtained by thresholded based the force measured by the associated force sensor).
   void findContactsFromSurfaces(const mc_control::MCController & ctl, const std::string & robotName);
   /// @brief Updates the list @contactsFound_ of currently set contacts from a thresholding of the measured forces.
   /// @details Called by \ref findContacts(const mc_control::MCController & ctl) if @contactsDetection_ is equal to
   /// "fromThreshold". The contacts are not required to be given by the controller (the detection is based on a
   /// thresholding of the measured force).
-  /// @return std::set<std::string> &
   void findContactsFromThreshold(const mc_control::MCController & ctl, const std::string & robotName);
+  void updateContacts();
+
   void (ContactsManager::*contactsFinder_)(const mc_control::MCController &, const std::string &) = 0;
 
+  /// @brief Accessor for the a contact associated to a sensor contained in the map
+  ///
+  /// @param name The name of the contact to access
+  /// @return contactsWithSensorT&
+  inline ContactWithSensorT & contactWithSensor(const std::string & name)
+  {
+    return mapContacts_.contactWithSensor(name);
+  }
+  /// @brief Accessor for the a contact associated to a sensor contained in the map
+  ///
+  /// @param num The index of the contact to access
+  /// @return ContactWithSensor&
+  inline ContactWithSensorT & contactWithSensor(const int & num)
+  {
+    return mapContacts_.contactWithSensor(num);
+  }
+
+  /// @brief Accessor for the a contact that is not associated to a sensor contained in the map
+  /// @param name The name of the contact to access
+  /// @return ContactWithoutSensor&
+  inline ContactWithoutSensorT & contactWithoutSensor(const std::string & name)
+  {
+    return mapContacts_.contactWithoutSensor(name);
+  }
+
+  /// @brief Accessor for the a contact that is not associated to a sensor contained in the map
+  /// @param num_ The index of the contact to access
+  /// @return ContactWithoutSensorT&
+  inline ContactWithoutSensorT & contactWithoutSensor(const int & num)
+  {
+    return mapContacts_.contactWithoutSensor(num);
+  }
+
+  /// @brief Get the map of all the contacts associated to a sensor
+  ///
+  /// @return std::map<std::string, contactsWithSensorT>&
+  inline std::map<std::string, ContactWithSensorT> & contactsWithSensors()
+  {
+    return mapContacts_.contactsWithSensors();
+  }
+  /// @brief Get the map of all the contacts that are not associated to a sensor
+  ///
+  /// @return std::map<std::string, ContactWithoutSensorT>&
+  inline std::map<std::string, ContactWithoutSensorT> & contactsWithoutSensors()
+  {
+    return mapContacts_.contactsWithoutSensors();
+  }
+
+  /// @brief Get the list of all the contacts.
+  /// @return const std::vector<std::string> &
+  inline const std::vector<std::string> & getList()
+  {
+    return mapContacts_.getList();
+  }
+
+  /// @brief Get the list of the currently set contacts.
+  /// @return const std::vector<std::string> &
+  inline const ContactsSet & contactsFound()
+  {
+    return contactsFound_;
+  }
+
 public:
-  MapContacts mapContacts_;
+  MapContacts<ContactWithSensorT, ContactWithoutSensorT> mapContacts_;
+
   // contacts found on each iteration
-  std::set<std::string> contactsFound_;
 
 protected:
   double contactDetectionThreshold_;
+  // list of the currently set contacts. The custom comparator is used to ensure that the sorting of contacts is
+  // consistent
+
+  ContactsSet contactsFound_;
+  ContactsSet oldContacts_;
 
   // list of surfaces used for contacts detection if @contactsDetection_ is set to "fromSurfaces"
   std::vector<std::string> surfacesForContactDetection_;
   // list of sensors that must not be used from the start of the observer
   std::vector<std::string> contactsSensorDisabledInit_;
+  std::string observerName_;
 };
 
 } // namespace measurements
 } // namespace mc_state_observation
+
+#include <mc_state_observation/observersTools/measurementsTools.hpp>
