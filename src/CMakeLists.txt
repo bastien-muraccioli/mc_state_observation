@@ -1,4 +1,4 @@
-add_library(mc_state_observation SHARED kinematicsTools.cpp)
+add_library(mc_state_observation SHARED observersTools/kinematicsTools.cpp observersTools/measurementsTools.cpp observersTools/leggedOdometryTools.cpp)
 target_link_libraries(mc_state_observation PUBLIC SpaceVecAlg::SpaceVecAlg state-observation::state-observation)
 install(TARGETS mc_state_observation EXPORT "${TARGETS_EXPORT_NAME}"   
         LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
@@ -29,8 +29,9 @@ endmacro()
 
 if(NOT BUILD_MCKINETICS_ONLY)
   add_so_observer(AttitudeObserver)
-  add_so_observer(LegacyFlexibilityObserver)
-  add_so_observer(TiltObserver)
+  #add_so_observer(LegacyFlexibilityObserver)
+  add_so_observer(NaiveOdometry)
+  #add_so_observer(TiltObserver)
 endif()
 add_so_observer(MCKineticsObserver)
 

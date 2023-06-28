@@ -73,6 +73,20 @@ void NaiveOdometry::configure(const mc_control::MCController & ctl, const mc_rtc
   zeroPose_.rotation().setIdentity();
   zeroMotion_.linear().setZero();
   zeroMotion_.angular().setZero();
+
+  double contactDetectionThreshold = mass_ * so::cst::gravityConstant * contactDetectionPropThreshold_;
+  std::vector<std::string> contactsSensorDisabledInit = config("contactsSensorDisabledInit");
+  if(contactsDetection_ == "fromSurfaces")
+  {
+    std::vector<std::string> surfacesForContactDetection = config("surfacesForContactDetection");
+    odometryManager_.init(ctl, robot_, "NaiveOdometry", true, true, contactsDetection_, surfacesForContactDetection,
+                          contactsSensorDisabledInit, contactDetectionThreshold);
+  }
+  else
+  {
+    odometryManager_.init(ctl, robot_, "NaiveOdometry", true, true, contactsDetection_, contactsSensorDisabledInit,
+                          contactDetectionThreshold);
+  }
 }
 
 void NaiveOdometry::reset(const mc_control::MCController & ctl)
@@ -108,41 +122,6 @@ void NaiveOdometry::reset(const mc_control::MCController & ctl)
     mergeMbg.mergeSubBodies(realRobotModule.mb.body(0).name(), joint, jointPosByName);
   }
 
-  for(auto forceSensor : realRobot.forceSensors())
-  {
-    if(contactsDetection_ == "fromThreshold")
-    {
-      for(auto forceSensor : realRobot.forceSensors())
-      {
-        const std::string & fsName = forceSensor.name();
-
-        mapContacts_.insertContact(forceSensor.name());
-      }
-    }
-    if(contactsDetection_ == "fromSurfaces")
-    {
-      for(const std::string & surface : surfacesForContactDetection_)
-      {
-        if(robot.surfaceHasForceSensor(surface))
-        {
-          const mc_rbdyn::ForceSensor & forceSensor = robot.surfaceForceSensor(surface);
-          const std::string & fsName = forceSensor.name();
-          mapContacts_.insertContact(forceSensor.name());
-          mapContacts_.contactWithSensor(fsName).surface = surface;
-        }
-        else
-        {
-          const mc_rbdyn::ForceSensor & forceSensor = robot.indirectSurfaceForceSensor(surface);
-          const std::string & fsName = forceSensor.name();
-
-          mapContacts_.insertContact(forceSensor.name());
-          mapContacts_.contactWithSensor(fsName).isAttachedToSurface = false;
-          mapContacts_.contactWithSensor(fsName).surface = surface;
-        }
-      }
-    }
-  }
-
   mass(ctl.realRobot(robot_).mass());
 
   my_robots_ = mc_rbdyn::Robots::make();
@@ -166,31 +145,43 @@ bool NaiveOdometry::run(const mc_control::MCController & ctl)
   odometryRobot.mbc() = realRobot.mbc();
   odometryRobot.mb() = realRobot.mb();
 
+  odometryRobot.posW(X_0_fb_);
+  // we use the velocities and accelerations of the real robot because they will be compensated anyway as we compute the
+  // successive poses in the local frame
   odometryRobot.velW(realRobot.velW());
   odometryRobot.accW(realRobot.accW());
 
-  findContacts(ctl); // retrieves the list of contacts and set simStarted to true once a contact is detected
+  odometryRobot.forwardKinematics();
 
   /** Contacts
    * Note that when we use force sensors, this should be the position of the force sensor!
    */
-  updateContacts(ctl, odometryRobot, contactsFound_, logger);
 
-  // X_0_fb_.rotation() = odometryRobot.posW().rotation();
-  //  X_0_fb_.translation() = mcko_K_0_fb.position();
+  odometryManager_.contactsManager().findContacts(ctl, robot_);
+  odometryManager_.updateContacts(ctl, odometryRobot, logger);
+  // updateContacts(ctl, odometryRobot, contactsManager_.findContacts(ctl, robot_), logger);
 
-  v_fb_0_.linear() =
-      odometryRobot.velW().linear(); //  X_0_fb_.rotation() = mcko_K_0_fb.orientation.toMatrix3().transpose()
-  v_fb_0_.angular() = odometryRobot.velW().angular();
+  X_0_fb_.rotation() = odometryRobot.posW().rotation();
+  X_0_fb_.translation() = odometryRobot.posW().translation();
 
-  a_fb_0_.linear() =
-      odometryRobot.accW().linear(); //  X_0_fb_.rotation() = mcko_K_0_fb.orientation.toMatrix3().transpose()
-  a_fb_0_.angular() = odometryRobot.accW().angular();
+  // realRobot.posW().rotation() is the transpose of R
+  so::Vector3 realLocalLinVel = realRobot.posW().rotation() * realRobot.velW().linear();
+  so::Vector3 realLocalAngVel = realRobot.posW().rotation() * realRobot.velW().angular();
+  so::Vector3 realLocalLinAcc = realRobot.posW().rotation() * realRobot.accW().linear();
+  so::Vector3 realLocalAngAcc = realRobot.posW().rotation() * realRobot.accW().angular();
+
+  // we express the velocities and accelerations computed by the previous obervers in our newly estimated frame
+
+  v_fb_0_.linear() = odometryRobot.posW().rotation().transpose() * realLocalLinVel;
+  v_fb_0_.angular() = odometryRobot.posW().rotation().transpose() * realLocalAngVel;
+
+  a_fb_0_.linear() = odometryRobot.posW().rotation().transpose() * realLocalLinAcc;
+  a_fb_0_.angular() = odometryRobot.posW().rotation().transpose() * realLocalAngAcc;
 
   /* Update of the visual representation (only a visual feature) of the observed robot */
   my_robots_->robot().mbc().q = ctl.realRobot().mbc().q;
-
   update(my_robots_->robot());
+
   return true;
 }
 
@@ -209,134 +200,10 @@ void NaiveOdometry::update(mc_rbdyn::Robot & robot)
 {
   robot.posW(X_0_fb_);
   robot.velW(v_fb_0_.vector());
+  robot.accW(a_fb_0_.vector());
 }
 
-const std::set<std::string> & NaiveOdometry::findContactsFromSolver(const mc_control::MCController & ctl)
-{
-  const auto & measRobot = ctl.robot(robot_);
-  auto & odometryRobot = my_robots_->robot("odometryRobot");
-
-  contactsFound_.clear();
-  for(const auto & contact : ctl.solver().contacts())
-  {
-    // std::cout << std::endl << contact.toStr() << std::endl;
-    if(ctl.robots().robot(contact.r1Index()).name() == measRobot.name())
-    {
-      if(ctl.robots().robot(contact.r2Index()).mb().joint(0).type() == rbd::Joint::Fixed)
-      {
-        const auto & ifs = measRobot.indirectSurfaceForceSensor(contact.r1Surface()->name());
-        if(ifs.wrenchWithoutGravity(measRobot).force().norm()
-           > measRobot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_)
-        {
-          contactsFound_.insert(ifs.name());
-        }
-      }
-    }
-    else if(ctl.robots().robot(contact.r2Index()).name() == measRobot.name())
-    {
-      if(ctl.robots().robot(contact.r1Index()).mb().joint(0).type() == rbd::Joint::Fixed)
-      {
-        const auto & ifs = measRobot.indirectSurfaceForceSensor(contact.r2Surface()->name());
-
-        if(ifs.wrenchWithoutGravity(measRobot).force().norm()
-           > measRobot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_)
-        {
-          contactsFound_.insert(ifs.name());
-        }
-      }
-    }
-  }
-}
-
-const std::set<std::string> & NaiveOdometry::findContactsFromSurfaces(const mc_control::MCController & ctl)
-{
-  const auto & measRobot = ctl.robot(robot_);
-  auto & odometryRobot = my_robots_->robot("odometryRobot");
-
-  contactsFound_.clear();
-
-  for(auto & contact : mapContacts_.contactsWithSensors())
-  {
-    const std::string & fsName = contact.first;
-
-    const mc_rbdyn::ForceSensor forceSensor = measRobot.forceSensor(fsName);
-
-    if(withFilteredForcesContactDetection_) // NOT WORKING FOR NOW
-    {
-      ContactWithSensor & contact = mapContacts_.contactWithSensor(fsName);
-      contact.filteredForce = (1 - ctl.timeStep * contact.lambda) * contact.filteredForce
-                              + contact.lambda * ctl.timeStep * forceSensor.wrenchWithoutGravity(measRobot).force();
-
-      if(contact.filteredForce.norm() > measRobot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_)
-      {
-        contactsFound_.insert(fsName);
-      }
-    }
-    else
-    {
-      if(forceSensor.wrenchWithoutGravity(measRobot).force().norm()
-         > measRobot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_)
-      {
-        contactsFound_.insert(fsName);
-      }
-    }
-  }
-}
-
-const std::set<std::string> & NaiveOdometry::findContactsFromThreshold(const mc_control::MCController & ctl)
-{
-  const auto & measRobot = ctl.robot(robot_);
-  auto & odometryRobot = my_robots_->robot("odometryRobot");
-
-  contactsFound_.clear();
-
-  for(auto & contact : mapContacts_.contactsWithSensors())
-  {
-    const std::string & fsName = contact.first;
-    const mc_rbdyn::ForceSensor forceSensor = measRobot.forceSensor(fsName);
-    if(withFilteredForcesContactDetection_) // NOT WORKING FOR NOW
-    {
-      ContactWithSensor & contact = mapContacts_.contactWithSensor(fsName);
-      contact.filteredForce = (1 - ctl.timeStep * contact.lambda) * contact.filteredForce
-                              + contact.lambda * ctl.timeStep * forceSensor.wrenchWithoutGravity(measRobot).force();
-
-      if(contact.filteredForce.norm() > measRobot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_)
-      {
-        contactsFound_.insert(fsName);
-      }
-    }
-    else
-    {
-      if(forceSensor.wrenchWithoutGravity(measRobot).force().norm()
-         > measRobot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_)
-      {
-        contactsFound_.insert(fsName);
-      }
-    }
-  }
-}
-
-const std::set<std::string> & NaiveOdometry::findContacts(const mc_control::MCController & ctl)
-{
-  const auto & measRobot = ctl.robot(robot_);
-  auto & odometryRobot = my_robots_->robot("odometryRobot");
-
-  if(contactsDetection_ == "fromSolver")
-  {
-    findContactsFromSolver(ctl);
-  }
-  if(contactsDetection_ == "fromThreshold")
-  {
-    findContactsFromThreshold(ctl);
-  }
-  if(contactsDetection_ == "fromSurfaces")
-  {
-    findContactsFromSurfaces(ctl);
-  }
-
-  return contactsFound_;
-}
-
+/*
 void NaiveOdometry::setNewContact(const mc_rbdyn::Robot & odometryRobot, const mc_rbdyn::ForceSensor forceSensor)
 {
 
@@ -393,7 +260,8 @@ void NaiveOdometry::setNewContact(const mc_rbdyn::Robot & odometryRobot, const m
     mapContacts_.contactWithSensor(forceSensor.name()).worldRefKine_.position()(2) = 0.0;
   }
 }
-
+*/
+/*
 void NaiveOdometry::updateContacts(const mc_control::MCController & ctl,
                                    mc_rbdyn::Robot & odometryRobot,
                                    std::set<std::string> updatedContacts,
@@ -402,7 +270,6 @@ void NaiveOdometry::updateContacts(const mc_control::MCController & ctl,
   const auto & robot = ctl.robot(robot_);
   const auto & realRobot = ctl.realRobot(robot_);
   odometryRobot.posW(X_0_fb_);
-  /** Debugging output **/
   if(verbose_ && updatedContacts != oldContacts_)
     mc_rtc::log::info("[{}] Contacts changed: {}", name(), mc_rtc::io::to_string(updatedContacts));
 
@@ -428,16 +295,17 @@ void NaiveOdometry::updateContacts(const mc_control::MCController & ctl,
            == 2) // this is to keep a list of at most two contacts in the case we use the
                  // naive yaw estimation as the expressions used impose this constraint
         {
-          std::string minForceContact = alreadySetContactsOrientationOdometry.begin()->first;
+          std::string minForceContact;
           double minForce = robot.forceSensor(alreadySetContactsOrientationOdometry.begin()->first)
                                 .wrenchWithoutGravity(odometryRobot)
                                 .force()
                                 .norm();
           for(auto & contact : alreadySetContactsOrientationOdometry)
           {
-            if(robot.forceSensor(contact.first).wrenchWithoutGravity(odometryRobot).force().norm() < minForce)
+            double force = robot.forceSensor(contact.first).wrenchWithoutGravity(odometryRobot).force().norm();
+            if(force < minForce)
             {
-              minForce = robot.forceSensor(contact.first).wrenchWithoutGravity(odometryRobot).force().norm();
+              minForce = force;
               minForceContact = contact.first;
             }
           }
@@ -626,7 +494,7 @@ void NaiveOdometry::updateContacts(const mc_control::MCController & ctl,
     if(alreadySetContactsPositionOdometry.find(updatedContact) == alreadySetContactsPositionOdometry.end())
     {
       const mc_rbdyn::ForceSensor & fs = robot.forceSensor(updatedContact);
-      mapContacts_.contactWithSensor(robot.forceSensor(updatedContact).name()).isSet = true;
+      mapContacts_.contactWithSensor(robot.forceSensor(updatedContact).name()).isSet_ = true;
       setNewContact(odometryRobot, fs);
       addContactLogEntries(logger, robot.forceSensor(updatedContact).name());
     }
@@ -638,7 +506,7 @@ void NaiveOdometry::updateContacts(const mc_control::MCController & ctl,
                       std::inserter(diffs, diffs.end()));
   for(const auto & diff : diffs)
   {
-    mapContacts_.contactWithSensor(robot.forceSensor(diff).name()).isSet = false;
+    mapContacts_.contactWithSensor(robot.forceSensor(diff).name()).isSet_ = false;
     removeContactLogEntries(logger, robot.forceSensor(diff).name());
   }
 
@@ -649,6 +517,8 @@ void NaiveOdometry::updateContacts(const mc_control::MCController & ctl,
     mc_rtc::log::info("nbContacts = {}", nbContacts);
   }
 }
+
+*/
 
 void NaiveOdometry::addContactLogEntries(mc_rtc::Logger & logger, const std::string & contactName)
 {

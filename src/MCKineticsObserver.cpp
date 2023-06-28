@@ -395,8 +395,8 @@ void MCKineticsObserver::inputAdditionalWrench(const mc_rbdyn::Robot & inputRobo
     measurements::ContactWithSensor & contact = contactWithSensor.second;
     const std::string & fsName = contactWithSensor.first;
 
-    if(!contact.isSet && contact.sensorEnabled) // if the contact is not set but we use the force sensor measurements,
-                                                // then we give the measured force as an input to the Kinetics Observer
+    if(!contact.isSet_ && contact.sensorEnabled) // if the contact is not set but we use the force sensor measurements,
+                                                 // then we give the measured force as an input to the Kinetics Observer
     {
       sva::ForceVecd measuredWrench = measRobot.forceSensor(fsName).worldWrenchWithoutGravity(inputRobot);
       additionalUserResultingForce_ += measuredWrench.force();
@@ -484,7 +484,7 @@ const measurements::ContactsManager<measurements::ContactWithSensor, measurement
 }
 
 void MCKineticsObserver::updateContact(const mc_control::MCController & ctl,
-                                       const std::string & name,
+                                       const int & contactIndex,
                                        mc_rtc::Logger & logger)
 {
   /*
@@ -497,9 +497,9 @@ void MCKineticsObserver::updateContact(const mc_control::MCController & ctl,
   auto & inputRobot = my_robots_->robot("inputRobot");
 
   const auto & robot = ctl.robot(robot_);
-  const mc_rbdyn::ForceSensor forceSensor = robot.forceSensor(name);
+  measurements::ContactWithSensor & contact = contactsManager_.contactWithSensor(contactIndex);
+  const mc_rbdyn::ForceSensor forceSensor = robot.forceSensor(contact.getName());
   const std::string & fsName = forceSensor.name();
-  measurements::ContactWithSensor & contact = contactsManager_.contactWithSensor(fsName);
 
   sva::ForceVecd measuredWrench = forceSensor.wrenchWithoutGravity(robot);
 
@@ -556,7 +556,7 @@ void MCKineticsObserver::updateContact(const mc_control::MCController & ctl,
                                          + surfaceSensorKine.position().cross(contactWrenchVector_.segment<3>(0));
   }
 
-  if(contact.wasAlreadySet) // checks if the contact already exists, if yes, it is updated
+  if(contact.wasAlreadySet_) // checks if the contact already exists, if yes, it is updated
   {
     if(contact.sensorEnabled) // the force sensor attached to the contact is used in the correction by the Kinetics
                               // Observer.
@@ -724,48 +724,27 @@ void MCKineticsObserver::updateContact(const mc_control::MCController & ctl,
 void MCKineticsObserver::updateContacts(
     const mc_control::MCController & ctl,
     const measurements::ContactsManager<measurements::ContactWithSensor,
-                                        measurements::ContactWithoutSensor>::ContactsSet & updatedContacts,
+                                        measurements::ContactWithoutSensor>::ContactsSet & updatedContactsIndexes,
     mc_rtc::Logger & logger)
 {
-  /** Debugging output **/
-  if(verbose_ && updatedContacts != oldContacts_)
-    mc_rtc::log::info("[{}] Contacts changed: {}", name(), mc_rtc::io::to_string(updatedContacts));
-
-  for(const auto & updatedContact : updatedContacts)
+  for(const auto & updatedContactIndex : updatedContactsIndexes)
   {
-    if(oldContacts_.find(updatedContact)
-       != oldContacts_.end()) // checks if the contact was already set on the last iteration
-    {
-      contactsManager_.contactWithSensor(updatedContact).wasAlreadySet = true;
-    }
-    else // the contact was not set on the last iteration
-    {
-      contactsManager_.contactWithSensor(updatedContact).wasAlreadySet = false;
-      contactsManager_.contactWithSensor(updatedContact).isSet = true;
-    }
-
-    updateContact(ctl, updatedContact, logger);
+    updateContact(ctl, updatedContactIndex, logger);
   }
   // List of the contact that were set on last iteration but are not set anymore on the current one
-  std::set<std::string> diffs;
-  std::set_difference(oldContacts_.begin(), oldContacts_.end(), updatedContacts.begin(), updatedContacts.end(),
-                      std::inserter(diffs, diffs.end()));
-  for(const auto & diff : diffs)
+  for(const int & removedContactIndex : contactsManager_.removedContacts())
   {
-    const int & numDiff = contactsManager_.mapContacts_.getNumFromName(diff);
-    observer_.removeContact(numDiff);
-    contactsManager_.contactWithSensor(diff).resetContact();
+    observer_.removeContact(removedContactIndex);
 
     if(withDebugLogs_)
     {
-      removeContactLogEntries(logger, diff);
-      removeContactMeasurementsLogEntries(logger, diff);
+      const std::string & contactName = contactsManager_.mapContacts_.getNameFromNum(removedContactIndex);
+      removeContactLogEntries(logger, contactName);
+      removeContactMeasurementsLogEntries(logger, contactName);
     }
   }
-  // update the list of previously set contacts
-  oldContacts_ = updatedContacts;
 
-  unsigned nbContacts = static_cast<unsigned>(updatedContacts.size());
+  unsigned nbContacts = static_cast<unsigned>(updatedContactsIndexes.size());
   if(debug_)
   {
     mc_rtc::log::info("nbContacts = {}", nbContacts);
@@ -817,8 +796,7 @@ void MCKineticsObserver::addToGUI(const mc_control::MCController &,
   gui.addElement(category,
     mc_state_observation::gui::make_input_element("Accel Covariance", acceleroSensorCovariance_(0,0)),
     mc_state_observation::gui::make_input_element("Force Covariance", contactSensorCovariance_(0,0)),
-    mc_state_observation::gui::make_input_element("Gyro Covariance", gyroSensorCovariance_(0,0)),
-    Label("contacts", [this]() { return mc_rtc::io::to_string(oldContacts_); }));
+    mc_state_observation::gui::make_input_element("Gyro Covariance", gyroSensorCovariance_(0,0)));
   // clang-format on
 }
 
@@ -1323,7 +1301,7 @@ void MCKineticsObserver::addContactLogEntries(mc_rtc::Logger & logger, const std
                        { return observer_.getUserContactInputPose(numContact).orientation.inverse().toQuaternion(); });
     logger.addLogEntry(category_ + "_debug_contactState_isSet_" + contactName,
                        [this, numContact]() -> int
-                       { return int(contactsManager_.contactWithSensor(numContact).isSet); });
+                       { return int(contactsManager_.contactWithSensor(numContact).isSet_); });
   }
 }
 

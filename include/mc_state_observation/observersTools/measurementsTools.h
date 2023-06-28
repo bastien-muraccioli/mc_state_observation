@@ -1,3 +1,5 @@
+#pragma once
+
 #include <mc_control/MCController.h>
 #include <mc_observers/Observer.h>
 #include <mc_rbdyn/Robot.h>
@@ -13,11 +15,11 @@ namespace measurements
 struct Sensor
 {
 public:
-  inline const int & getID()
+  inline const int & getID() const
   {
     return id_;
   }
-  inline const std::string & getName()
+  inline const std::string & getName() const
   {
     return name_;
   }
@@ -27,7 +29,7 @@ protected:
   ~Sensor() {}
   Sensor(int id, std::string name) : id_(id), name_(name) {}
 
-  bool operator<(const Sensor & contact2)
+  bool operator<(const Sensor & contact2) const
   {
     return (getID() < contact2.id_);
   }
@@ -148,8 +150,8 @@ protected:
 public:
   inline void resetContact()
   {
-    wasAlreadySet = false;
-    isSet = false;
+    wasAlreadySet_ = false;
+    isSet_ = false;
   }
 
   /*// ! Not working yet
@@ -160,8 +162,8 @@ public:
   */
 
 public:
-  bool isSet = false;
-  bool wasAlreadySet = false;
+  bool isSet_ = false;
+  bool wasAlreadySet_ = false;
   // Eigen::Vector3d zmp; // ! Not working yet
 };
 
@@ -180,8 +182,8 @@ public:
   ~ContactWithSensor() {}
   inline void resetContact()
   {
-    wasAlreadySet = false;
-    isSet = false;
+    wasAlreadySet_ = false;
+    isSet_ = false;
     sensorWasEnabled = false;
 
     // also filtered force? see when this feature will be corrected
@@ -218,6 +220,7 @@ public:
   {
     id_ = id;
     name_ = name;
+    resetContact();
   }
 };
 
@@ -430,7 +433,7 @@ private:
 
 // the template allows to define other kinds of contacts and thus add custom parameters to them
 // ! Warning: this class has been tested only on contacts with sensors
-template<typename ContactWithSensorT, typename ContactWithoutSensorT, typename FoundContactsListType = std::string>
+template<typename ContactWithSensorT, typename ContactWithoutSensorT>
 struct ContactsManager
 {
 
@@ -444,14 +447,6 @@ public:
   }
   ~ContactsManager() {}
 
-  struct cmp
-  {
-    bool operator()(const FoundContactsListType & contact1, const FoundContactsListType & contact2) const
-    {
-      return contact1 < contact2;
-    }
-  };
-
   // initialization for a detection based on contact surfaces
   void init(const mc_control::MCController & ctl,
             const std::string & robotName,
@@ -459,7 +454,8 @@ public:
             const std::string contactsDetection,
             std::vector<std::string> surfacesForContactDetection,
             std::vector<std::string> contactsSensorDisabledInit,
-            const double contactDetectionThreshold);
+            const double contactDetectionThreshold,
+            const bool verbose = true);
   // initialization for a detection based on a threshold on the measured contact forces or for contacts given by the
   // controller
   void init(const mc_control::MCController & ctl,
@@ -467,9 +463,28 @@ public:
             const std::string & observerName,
             const std::string contactsDetection,
             std::vector<std::string> contactsSensorDisabledInit,
-            const double contactDetectionThreshold);
+            const double contactDetectionThreshold,
+            const bool verbose = true);
 
-  typedef std::set<FoundContactsListType, cmp> ContactsSet;
+  typedef std::set<int> ContactsSet;
+  std::string to_string(const ContactsSet & contactSet)
+  {
+    if(contactSet.cbegin() == contactSet.cend())
+    {
+      return "";
+    }
+    std::ostringstream out;
+    out.precision(std::numeric_limits<int>::digits10);
+    out << std::fixed << mapContacts_.getNameFromNum(*contactSet.cbegin());
+
+    for(auto it = std::next(contactSet.cbegin()); it != contactSet.cend(); ++it)
+    {
+      out << ", ";
+      out << std::fixed << mapContacts_.getNameFromNum(*it);
+    }
+    return out.str();
+  }
+
   /// @brief Updates the list of currently set contacts and returns it.
   /// @return std::set<FoundContactsListType> &
   const ContactsSet & findContacts(const mc_control::MCController & ctl, const std::string & robotName);
@@ -498,6 +513,7 @@ public:
   {
     return mapContacts_.contactWithSensor(name);
   }
+
   /// @brief Accessor for the a contact associated to a sensor contained in the map
   ///
   /// @param num The index of the contact to access
@@ -505,6 +521,15 @@ public:
   inline ContactWithSensorT & contactWithSensor(const int & num)
   {
     return mapContacts_.contactWithSensor(num);
+  }
+
+  /// @brief Accessor for the a contact associated to a sensor contained in the map
+  ///
+  /// @param num The contact itself.
+  /// @return ContactWithSensor&
+  inline ContactWithSensorT & contactWithSensor(ContactWithSensorT & contact)
+  {
+    return contact;
   }
 
   /// @brief Accessor for the a contact that is not associated to a sensor contained in the map
@@ -521,6 +546,14 @@ public:
   inline ContactWithoutSensorT & contactWithoutSensor(const int & num)
   {
     return mapContacts_.contactWithoutSensor(num);
+  }
+
+  /// @brief Accessor for the a contact that is not associated to a sensor contained in the map
+  /// @param name The contact itself.
+  /// @return ContactWithoutSensor&
+  inline ContactWithoutSensorT & contactWithoutSensor(const ContactWithoutSensorT & contact)
+  {
+    return contact;
   }
 
   /// @brief Get the map of all the contacts associated to a sensor
@@ -552,6 +585,11 @@ public:
     return contactsFound_;
   }
 
+  inline const ContactsSet & removedContacts()
+  {
+    return removedContacts_;
+  }
+
 public:
   MapContacts<ContactWithSensorT, ContactWithoutSensorT> mapContacts_;
 
@@ -564,12 +602,14 @@ protected:
 
   ContactsSet contactsFound_;
   ContactsSet oldContacts_;
+  ContactsSet removedContacts_;
 
   // list of surfaces used for contacts detection if @contactsDetection_ is set to "fromSurfaces"
   std::vector<std::string> surfacesForContactDetection_;
   // list of sensors that must not be used from the start of the observer
   std::vector<std::string> contactsSensorDisabledInit_;
   std::string observerName_;
+  bool verbose_ = true;
 };
 
 } // namespace measurements

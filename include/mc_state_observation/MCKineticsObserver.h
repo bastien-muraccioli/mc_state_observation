@@ -122,7 +122,7 @@ protected:
   /// @details Called by \ref updateContacts(const mc_control::MCController & ctl, std::set<std::string> contacts,
   /// mc_rtc::Logger & logger).
   /// @param name The name of the contact to update.
-  void updateContact(const mc_control::MCController & ctl, const std::string & name, mc_rtc::Logger & logger);
+  void updateContact(const mc_control::MCController & ctl, const int & contactIndex, mc_rtc::Logger & logger);
 
 protected:
   std::string robot_ = "";
@@ -304,10 +304,6 @@ private:
 
   // instance of the Kinetics Observer
   stateObservation::KineticsObserver observer_;
-
-  // List of previously set contacts
-  measurements::ContactsManager<measurements::ContactWithSensor, measurements::ContactWithoutSensor>::ContactsSet
-      oldContacts_;
 
   // velocity of the floating base within the world frame (real one, not the one of the control robot)
   sva::MotionVecd v_fb_0_ = sva::MotionVecd::Zero();
