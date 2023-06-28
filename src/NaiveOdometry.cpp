@@ -158,7 +158,7 @@ bool NaiveOdometry::run(const mc_control::MCController & ctl)
    */
 
   odometryManager_.contactsManager().findContacts(ctl, robot_);
-  odometryManager_.updateContacts(ctl, odometryRobot, logger);
+  odometryManager_.updateContacts(ctl, logger);
   // updateContacts(ctl, odometryRobot, contactsManager_.findContacts(ctl, robot_), logger);
 
   X_0_fb_.rotation() = odometryRobot.posW().rotation();

@@ -17,8 +17,7 @@ namespace leggedOdometry
 /// -------------------------Legged Odometry---------------------------
 ///////////////////////////////////////////////////////////////////////
 
-void LeggedOdometryManager::setNewContact(const mc_rbdyn::Robot & odometryRobot,
-                                          const mc_rbdyn::ForceSensor forceSensor)
+void LeggedOdometryManager::setNewContact(const mc_rbdyn::ForceSensor forceSensor)
 {
 
   if(contactsManager().contactWithSensor(forceSensor.name()).sensorAttachedToSurface)
@@ -37,20 +36,24 @@ void LeggedOdometryManager::setNewContact(const mc_rbdyn::Robot & odometryRobot,
     so::kine::Kinematics worldBodyKineOdometryRobot;
 
     worldBodyKineOdometryRobot.position =
-        odometryRobot.mbc().bodyPosW[odometryRobot.bodyIndexByName(forceSensor.parentBody())].translation();
-    worldBodyKineOdometryRobot.orientation = so::Matrix3(
-        odometryRobot.mbc().bodyPosW[odometryRobot.bodyIndexByName(forceSensor.parentBody())].rotation().transpose());
+        odometryRobot().mbc().bodyPosW[odometryRobot().bodyIndexByName(forceSensor.parentBody())].translation();
+    worldBodyKineOdometryRobot.orientation =
+        so::Matrix3(odometryRobot()
+                        .mbc()
+                        .bodyPosW[odometryRobot().bodyIndexByName(forceSensor.parentBody())]
+                        .rotation()
+                        .transpose());
     /*
 worldBodyKineOdometryRobot.linVel =
-    odometryRobot.mbc().bodyVelW[odometryRobot.bodyIndexByName(forceSensor.parentBody())].linear();
+    odometryRobot().mbc().bodyVelW[odometryRobot().bodyIndexByName(forceSensor.parentBody())].linear();
 worldBodyKineOdometryRobot.angVel =
-    odometryRobot.mbc().bodyVelW[odometryRobot.bodyIndexByName(forceSensor.parentBody())].angular();
+    odometryRobot().mbc().bodyVelW[odometryRobot().bodyIndexByName(forceSensor.parentBody())].angular();
 worldBodyKineOdometryRobot.linAcc =
     worldBodyKineOdometryRobot.orientation.toMatrix3()
-    * odometryRobot.mbc().bodyAccB[odometryRobot.bodyIndexByName(forceSensor.parentBody())].linear();
+    * odometryRobot().mbc().bodyAccB[odometryRobot().bodyIndexByName(forceSensor.parentBody())].linear();
 worldBodyKineOdometryRobot.angAcc =
     worldBodyKineOdometryRobot.orientation.toMatrix3()
-    * odometryRobot.mbc().bodyAccB[odometryRobot.bodyIndexByName(forceSensor.parentBody())].angular();
+    * odometryRobot().mbc().bodyAccB[odometryRobot().bodyIndexByName(forceSensor.parentBody())].angular();
     */
 
     worldNewContactKineOdometryRobot = worldBodyKineOdometryRobot * bodyNewContactKine;
@@ -63,7 +66,7 @@ worldBodyKineOdometryRobot.angAcc =
   else
   {
     sva::PTransformd worldSurfacePoseOdometryRobot =
-        odometryRobot.surfacePose(contactsManager().contactWithSensor(forceSensor.name()).surface);
+        odometryRobot().surfacePose(contactsManager().contactWithSensor(forceSensor.name()).surface);
 
     contactsManager().contactWithSensor(forceSensor.name()).worldRefKine_.position =
         worldSurfacePoseOdometryRobot.translation();
@@ -77,9 +80,7 @@ worldBodyKineOdometryRobot.angAcc =
   }
 }
 
-void LeggedOdometryManager::updateContacts(const mc_control::MCController & ctl,
-                                           mc_rbdyn::Robot & odometryRobot,
-                                           mc_rtc::Logger & logger)
+void LeggedOdometryManager::updateContacts(const mc_control::MCController & ctl, mc_rtc::Logger & logger)
 {
   const auto & robot = ctl.robot(robotName_);
   const auto & realRobot = ctl.realRobot(robotName_);
@@ -102,9 +103,9 @@ void LeggedOdometryManager::updateContacts(const mc_control::MCController & ctl,
       positionUpdatable = true;
 
       LoContactWithSensor & setContact = contactsManager_.contactWithSensor(setContactIndex);
-      so::kine::Kinematics worldContactKineOdometryRobot = getContactKinematics(setContact, robot, odometryRobot);
+      so::kine::Kinematics worldContactKineOdometryRobot = getContactKinematics(setContact, robot);
 
-      const so::Vector3 & worldFbPositionOdometryRobot = odometryRobot.posW().translation();
+      const so::Vector3 & worldFbPositionOdometryRobot = odometryRobot().posW().translation();
 
       so::Vector3 worldFbPositionOdometry = setContact.worldRefKine_.position()
                                             + (worldFbPositionOdometryRobot - worldContactKineOdometryRobot.position());
@@ -119,7 +120,7 @@ void LeggedOdometryManager::updateContacts(const mc_control::MCController & ctl,
         setContact.currentWorldOrientation_ =
             so::Matrix3(setContact.worldRefKine_.orientation.toMatrix3()
                         * worldContactKineOdometryRobot.orientation.toMatrix3().transpose()
-                        * odometryRobot.posW().rotation().transpose());
+                        * odometryRobot().posW().rotation().transpose());
 
         sumForces_orientation += setContact.forceNorm_;
       }
@@ -130,7 +131,7 @@ void LeggedOdometryManager::updateContacts(const mc_control::MCController & ctl,
   // they are updated, else we keep the previous estimation
   if(positionUpdatable)
   {
-    X_0_fb_.translation() = totalFbPosition / sumForces_position;
+    fbPose_.translation() = totalFbPosition / sumForces_position;
     if(withNaiveYawEstimation_)
     {
       if(orientationUpdatable)
@@ -139,7 +140,7 @@ void LeggedOdometryManager::updateContacts(const mc_control::MCController & ctl,
         {
           const so::Matrix3 & realRobotOri = realRobot.posW().rotation().transpose();
           // We merge the obtained yaw with the tilt estimated by the previous observers
-          X_0_fb_.rotation() =
+          fbPose_.rotation() =
               so::kine::mergeRoll1Pitch1WithYaw2AxisAgnostic(
                   realRobotOri, contactsManager_.oriOdometryContacts_.begin()->get().currentWorldOrientation_)
                   .transpose();
@@ -168,16 +169,16 @@ void LeggedOdometryManager::updateContacts(const mc_control::MCController & ctl,
           so::Matrix3 meanOri = R1 * diffRotMatrix;
 
           const so::Matrix3 & realRobotOri =
-              realRobot.posW().rotation().transpose(); // the odometryRobot's orientation is overwritten by the
+              realRobot.posW().rotation().transpose(); // the odometryRobot()'s orientation is overwritten by the
                                                        // realRobot's one on every iteration
-          X_0_fb_.rotation() = so::kine::mergeRoll1Pitch1WithYaw2AxisAgnostic(realRobotOri, meanOri).transpose();
+          fbPose_.rotation() = so::kine::mergeRoll1Pitch1WithYaw2AxisAgnostic(realRobotOri, meanOri).transpose();
         }
       }
     }
   }
 
-  odometryRobot.posW(X_0_fb_);
-  odometryRobot.forwardKinematics();
+  odometryRobot().posW(fbPose_);
+  odometryRobot().forwardKinematics();
   for(const int & foundContactIndex : contactsManager().contactsFound())
   {
     if(!contactsManager().contactWithSensor(foundContactIndex).wasAlreadySet_) // the contact was not set so we will
@@ -187,7 +188,7 @@ void LeggedOdometryManager::updateContacts(const mc_control::MCController & ctl,
       const mc_rbdyn::ForceSensor & fs = robot.forceSensor(foundContact.getName());
       foundContact.isSet_ = true;
 
-      setNewContact(odometryRobot, fs);
+      setNewContact(fs);
       addContactLogEntries(logger, fs.name());
     }
   }
@@ -201,8 +202,7 @@ void LeggedOdometryManager::updateContacts(const mc_control::MCController & ctl,
 }
 
 so::kine::Kinematics LeggedOdometryManager::getContactKinematics(LoContactWithSensor & contact,
-                                                                 const mc_rbdyn::Robot & robot,
-                                                                 const mc_rbdyn::Robot & odometryRobot)
+                                                                 const mc_rbdyn::Robot & robot)
 {
   // robot is necessary because odometry robot doesn't have the copy of the force measurements
   const mc_rbdyn::ForceSensor & fs = robot.forceSensor(contact.getName());
@@ -211,10 +211,15 @@ so::kine::Kinematics LeggedOdometryManager::getContactKinematics(LoContactWithSe
       kinematicsTools::poseFromSva(bodyContactSensorPose, so::kine::Kinematics::Flags::vels);
 
   // kinematics of the sensor's parent body in the world
+  so::kine::Kinematics worldBodyKineOdometryRobot =
+      kinematicsTools::poseFromSva(odometryRobot().mbc().bodyPosW[odometryRobot().bodyIndexByName(fs.parentBody())],
+                                   so::kine::Kinematics::Flags::pose);
+  /*
   so::kine::Kinematics worldBodyKineOdometryRobot = kinematicsTools::kinematicsFromSva(
-      odometryRobot.mbc().bodyPosW[odometryRobot.bodyIndexByName(fs.parentBody())],
-      odometryRobot.mbc().bodyVelW[odometryRobot.bodyIndexByName(fs.parentBody())],
-      odometryRobot.mbc().bodyAccB[odometryRobot.bodyIndexByName(fs.parentBody())], true, false);
+      odometryRobot().mbc().bodyPosW[odometryRobot().bodyIndexByName(fs.parentBody())],
+      odometryRobot().mbc().bodyVelW[odometryRobot().bodyIndexByName(fs.parentBody())],
+      odometryRobot().mbc().bodyAccB[odometryRobot().bodyIndexByName(fs.parentBody())], true, false);
+      */
 
   so::kine::Kinematics worldSensorKineOdometryRobot = worldBodyKineOdometryRobot * bodyContactSensorKine;
   if(contact.sensorAttachedToSurface)
@@ -227,13 +232,13 @@ so::kine::Kinematics LeggedOdometryManager::getContactKinematics(LoContactWithSe
   else
   {
     // the kinematics of the contacts are the ones of the surface, but we must transport the measured wrench
-    sva::PTransformd worldSurfacePoseOdometryRobot = odometryRobot.surfacePose(contact.surface);
+    sva::PTransformd worldSurfacePoseOdometryRobot = odometryRobot().surfacePose(contact.surface);
     so::kine::Kinematics worldContactKineOdometryRobot =
         kinematicsTools::poseFromSva(worldSurfacePoseOdometryRobot, so::kine::Kinematics::Flags::pose);
 
     so::kine::Kinematics contactSensorKine = worldContactKineOdometryRobot.getInverse() * worldSensorKineOdometryRobot;
     // expressing the force measurement in the frame of the surface
-    contact.forceNorm_ = (contactSensorKine.orientation * fs.wrenchWithoutGravity(odometryRobot).force()).norm();
+    contact.forceNorm_ = (contactSensorKine.orientation * fs.wrenchWithoutGravity(odometryRobot()).force()).norm();
 
     return worldContactKineOdometryRobot;
   }

@@ -91,8 +91,12 @@ public:
     withNaiveYawEstimation_ = withNaiveYawEstimation;
     odometryName_ = odometryName;
     const auto & realRobot = ctl.realRobot(robotName);
-    X_0_fb_.translation() = realRobot.posW().translation();
-    X_0_fb_.rotation() = realRobot.posW().rotation();
+    odometryRobot_ = mc_rbdyn::Robots::make();
+    odometryRobot_->robotCopy(realRobot, "odometryRobot");
+    fbPose_.translation() = realRobot.posW().translation();
+    fbPose_.rotation() = realRobot.posW().rotation();
+    fbPose_.translation() = realRobot.posW().translation();
+    fbPose_.rotation() = realRobot.posW().rotation();
     contactsManager_.init(ctl, robotName, odometryName_, contactsDetection, surfacesForContactDetection,
                           contactsSensorDisabledInit, contactDetectionThreshold);
   }
@@ -111,21 +115,28 @@ public:
     withNaiveYawEstimation_ = withNaiveYawEstimation;
     odometryName_ = odometryName;
     const auto & realRobot = ctl.realRobot(robotName);
-    X_0_fb_.translation() = realRobot.posW().translation();
-    X_0_fb_.rotation() = realRobot.posW().rotation();
+    odometryRobot_ = mc_rbdyn::Robots::make();
+    odometryRobot_->robotCopy(realRobot, "odometryRobot");
+    fbPose_.translation() = realRobot.posW().translation();
+    fbPose_.rotation() = realRobot.posW().rotation();
+    fbPose_.translation() = realRobot.posW().translation();
+    fbPose_.rotation() = realRobot.posW().rotation();
     contactsManager_.init(ctl, robotName, odometryName_, contactsDetection, contactsSensorDisabledInit,
                           contactDetectionThreshold);
   }
 
-  void setNewContact(const mc_rbdyn::Robot & odometryRobot, const mc_rbdyn::ForceSensor forceSensor);
-  void updateContacts(const mc_control::MCController & ctl, mc_rbdyn::Robot & odometryRobot, mc_rtc::Logger & logger);
+  void setNewContact(const mc_rbdyn::ForceSensor forceSensor);
+  void updateContacts(const mc_control::MCController & ctl, mc_rtc::Logger & logger);
 
-  stateObservation::kine::Kinematics getContactKinematics(LoContactWithSensor & contact,
-                                                          const mc_rbdyn::Robot & robot,
-                                                          const mc_rbdyn::Robot & odometryRobot);
+  stateObservation::kine::Kinematics getContactKinematics(LoContactWithSensor & contact, const mc_rbdyn::Robot & robot);
   void selectForOrientationOdometry();
   void addContactLogEntries(mc_rtc::Logger & logger, const std::string & contactName);
   void removeContactLogEntries(mc_rtc::Logger & logger, const std::string & contactName);
+
+  mc_rbdyn::Robot & odometryRobot()
+  {
+    return odometryRobot_->robot("odometryRobot");
+  }
 
   LeggedOdometryContactsManager & contactsManager()
   {
@@ -138,10 +149,11 @@ protected:
   bool odometry6d_;
   bool withNaiveYawEstimation_;
   // tracked pose of the floating base
-  sva::PTransformd X_0_fb_ = sva::PTransformd::Identity();
+  sva::PTransformd fbPose_ = sva::PTransformd::Identity();
 
 private:
   LeggedOdometryContactsManager contactsManager_;
+  std::shared_ptr<mc_rbdyn::Robots> odometryRobot_;
 };
 
 LeggedOdometryManager odometryManager_;
