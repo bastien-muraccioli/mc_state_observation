@@ -70,22 +70,22 @@ protected:
   void plotVariablesAfterUpdate(mc_rtc::Logger & logger);
 
   /// @brief Add the logs of the desired contact.
-  /// @param contactName The name of the contact.
+  /// @param contactIndex The index of the contact.
   /// @param logger
-  void addContactLogEntries(mc_rtc::Logger & logger, const std::string & contactName);
+  void addContactLogEntries(mc_rtc::Logger & logger, const int & contactIndex);
   /// @brief Remove the logs of the desired contact.
-  /// @param contactName The name of the contact.
+  /// @param contactIndex The index of the contact.
   /// @param logger
-  void removeContactLogEntries(mc_rtc::Logger & logger, const std::string & contactName);
+  void removeContactLogEntries(mc_rtc::Logger & logger, const int & contactIndex);
 
   /// @brief Add the measurements logs of the desired contact.
-  /// @param contactName The name of the contact.
+  /// @param contactIndex The index of the contact.
   /// @param logger
-  void addContactMeasurementsLogEntries(mc_rtc::Logger & logger, const std::string & contactName);
+  void addContactMeasurementsLogEntries(mc_rtc::Logger & logger, const int & contactIndex);
   /// @brief Remove the measurements logs of the desired contact.
-  /// @param contactName The name of the contact.
+  /// @param contactIndex The index of the contact.
   /// @param logger
-  void removeContactMeasurementsLogEntries(mc_rtc::Logger & logger, const std::string & contactName);
+  void removeContactMeasurementsLogEntries(mc_rtc::Logger & logger, const int & contactIndex);
 
   void addToLogger(const mc_control::MCController &, mc_rtc::Logger &, const std::string & category) override;
 

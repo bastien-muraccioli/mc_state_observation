@@ -37,11 +37,27 @@ private:
     LoContactWithSensor() {}
 
   public:
-    LoContactWithSensor(int id, std::string name)
+    LoContactWithSensor(int id, std::string forceSensorName)
     {
       id_ = id;
-      name_ = name;
+      name_ = forceSensorName;
+      forceSensorName_ = forceSensorName;
+
       resetContact();
+    }
+
+    LoContactWithSensor(int id,
+                        const std::string & forceSensorName,
+                        const std::string & surfaceName,
+                        bool sensorAttachedToSurface)
+    {
+      id_ = id;
+      name_ = forceSensorName;
+      resetContact();
+
+      surface_ = surfaceName;
+      forceSensorName_ = forceSensorName;
+      sensorAttachedToSurface_ = sensorAttachedToSurface;
     }
 
   public:
@@ -165,7 +181,7 @@ public:
 
   /// @brief Computes the reference kinematics of the newly set contact in the world.
   /// @param forceSensor The force sensor attached to the contact
-  void setNewContact(const mc_rbdyn::ForceSensor forceSensor);
+  void setNewContact(LoContactWithSensor & contact, const mc_rbdyn::Robot & measurementsRobot);
 
   /// @brief Computes the kinematics of the contact attached to the odometry robot in the world frame.
   /// @param contact Contact of which we want to compute the kinematics
@@ -182,12 +198,12 @@ public:
   /// @brief Add the log entries corresponding to the contact.
   /// @param logger
   /// @param contactName
-  void addContactLogEntries(mc_rtc::Logger & logger, const std::string & contactName);
+  void addContactLogEntries(mc_rtc::Logger & logger, const LoContactWithSensor & contact);
 
   /// @brief Remove the log entries corresponding to the contact.
   /// @param logger
   /// @param contactName
-  void removeContactLogEntries(mc_rtc::Logger & logger, const std::string & contactName);
+  void removeContactLogEntries(mc_rtc::Logger & logger, const LoContactWithSensor & contact);
 
   /// @brief Getter for the odometry robot used for the estimation.
   mc_rbdyn::Robot & odometryRobot()

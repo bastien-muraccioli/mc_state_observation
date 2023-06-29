@@ -64,21 +64,20 @@ void ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::init(
         const mc_rbdyn::ForceSensor & forceSensor = robot.surfaceForceSensor(surface);
         const std::string & fsName = forceSensor.name();
         mapContacts_.insertContact(fsName, surface, true);
-
         ctl.gui()->addElement(
             {observerName, "Contacts"},
             mc_rtc::gui::Checkbox(
-                fsName + " : "
-                    + (mapContacts_.contactWithSensor(fsName).isSet_ ? "Contact is set" : "Contact is not set")
+                surface + " : "
+                    + (mapContacts_.contactWithSensor(surface).isSet_ ? "Contact is set" : "Contact is not set")
                     + ": Use wrench sensor: ",
-                [this, fsName]() { return mapContacts_.contactWithSensor(fsName).sensorEnabled; },
-                [this, fsName]()
+                [this, surface]() { return mapContacts_.contactWithSensor(surface).sensorEnabled_; },
+                [this, surface]()
                 {
-                  mapContacts_.contactWithSensor(fsName).sensorEnabled =
-                      !mapContacts_.contactWithSensor(fsName).sensorEnabled;
+                  mapContacts_.contactWithSensor(surface).sensorEnabled_ =
+                      !mapContacts_.contactWithSensor(surface).sensorEnabled_;
                   std::cout << std::endl
-                            << "Enable / disable :" + fsName + " "
-                                   + std::to_string(mapContacts_.contactWithSensor(fsName).sensorEnabled)
+                            << "Enable / disable :" + surface + " "
+                                   + std::to_string(mapContacts_.contactWithSensor(surface).sensorEnabled_)
                             << std::endl;
                 }));
       }
@@ -87,22 +86,22 @@ void ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::init(
       {
         const mc_rbdyn::ForceSensor & forceSensor = robot.indirectSurfaceForceSensor(surface);
         const std::string & fsName = forceSensor.name();
-        mapContacts_.insertContact(forceSensor.name(), surface, false);
+        mapContacts_.insertContact(fsName, surface, false);
 
         ctl.gui()->addElement(
             {observerName, "Contacts"},
             mc_rtc::gui::Checkbox(
-                fsName + " : "
-                    + (mapContacts_.contactWithSensor(fsName).isSet_ ? "Contact is set" : "Contact is not set")
+                surface + " : "
+                    + (mapContacts_.contactWithSensor(surface).isSet_ ? "Contact is set" : "Contact is not set")
                     + ": Use wrench sensor: ",
-                [this, fsName]() { return mapContacts_.contactWithSensor(fsName).sensorEnabled; },
-                [this, fsName]()
+                [this, surface]() { return mapContacts_.contactWithSensor(surface).sensorEnabled_; },
+                [this, surface]()
                 {
-                  mapContacts_.contactWithSensor(fsName).sensorEnabled =
-                      !mapContacts_.contactWithSensor(fsName).sensorEnabled;
+                  mapContacts_.contactWithSensor(surface).sensorEnabled_ =
+                      !mapContacts_.contactWithSensor(surface).sensorEnabled_;
                   std::cout << std::endl
-                            << "Enable / disable :" + fsName + " "
-                                   + std::to_string(mapContacts_.contactWithSensor(fsName).sensorEnabled)
+                            << "Enable / disable :" + surface + " "
+                                   + std::to_string(mapContacts_.contactWithSensor(surface).sensorEnabled_)
                             << std::endl;
                 }));
       }
@@ -112,7 +111,7 @@ void ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::init(
   for(auto const & contactSensorDisabledInit : contactsSensorDisabledInit)
   {
     BOOST_ASSERT(mapContacts_.hasElement(contactSensorDisabledInit) && "This sensor is not attached to the robot");
-    mapContacts_.contactWithSensor(contactSensorDisabledInit).sensorEnabled = false;
+    mapContacts_.contactWithSensor(contactSensorDisabledInit).sensorEnabled_ = false;
   }
 }
 
@@ -168,10 +167,10 @@ void ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::init(
           mc_rtc::gui::Checkbox(
               fsName + " : " + (mapContacts_.contactWithSensor(fsName).isSet_ ? "Contact is set" : "Contact is not set")
                   + ": Use wrench sensor: ",
-              [this, fsName]() { return mapContacts_.contactWithSensor(fsName).sensorEnabled; },
+              [this, fsName]() { return mapContacts_.contactWithSensor(fsName).sensorEnabled_; },
               [this, fsName]() {
-                mapContacts_.contactWithSensor(fsName).sensorEnabled =
-                    !mapContacts_.contactWithSensor(fsName).sensorEnabled;
+                mapContacts_.contactWithSensor(fsName).sensorEnabled_ =
+                    !mapContacts_.contactWithSensor(fsName).sensorEnabled_;
               }));
     }
   }
@@ -179,7 +178,7 @@ void ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::init(
   for(auto const & contactSensorDisabledInit : contactsSensorDisabledInit)
   {
     BOOST_ASSERT(mapContacts_.hasElement(contactSensorDisabledInit) && "This sensor is not attached to the robot");
-    mapContacts_.contactWithSensor(contactSensorDisabledInit).sensorEnabled = false;
+    mapContacts_.contactWithSensor(contactSensorDisabledInit).sensorEnabled_ = false;
   }
 }
 
@@ -211,11 +210,12 @@ void ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::findContactsFro
     {
       if(ctl.robots().robot(contact.r2Index()).mb().joint(0).type() == rbd::Joint::Fixed)
       {
+        const std::string & surfaceName = contact.r1Surface()->name();
         if(measRobot.surfaceHasForceSensor(contact.r1Surface()->name()))
         {
-          const auto & fs = measRobot.surfaceForceSensor(contact.r1Surface()->name());
-          mapContacts_.insertContact(fs.name(), contact.r1Surface()->name(), true);
-          ContactWithSensor & contactWS = mapContacts_.contactWithSensor(fs.name());
+          const auto & fs = measRobot.surfaceForceSensor(surfaceName);
+          mapContacts_.insertContact(fs.name(), surfaceName, true);
+          ContactWithSensor & contactWS = mapContacts_.contactWithSensor(surfaceName);
           contactWS.forceNorm_ = fs.wrenchWithoutGravity(measRobot).force().norm();
           if(contactWS.forceNorm_ > contactDetectionThreshold_)
           {
@@ -225,9 +225,9 @@ void ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::findContactsFro
         }
         else
         {
-          const auto & ifs = measRobot.indirectSurfaceForceSensor(contact.r1Surface()->name());
-          mapContacts_.insertContact(ifs.name(), contact.r1Surface()->name(), false);
-          ContactWithSensor & contactWS = mapContacts_.contactWithSensor(ifs.name());
+          const auto & ifs = measRobot.indirectSurfaceForceSensor(surfaceName);
+          mapContacts_.insertContact(ifs.name(), surfaceName, false);
+          ContactWithSensor & contactWS = mapContacts_.contactWithSensor(surfaceName);
           contactWS.forceNorm_ = ifs.wrenchWithoutGravity(measRobot).force().norm();
           if(contactWS.forceNorm_ > contactDetectionThreshold_)
           {
@@ -242,11 +242,12 @@ void ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::findContactsFro
     {
       if(ctl.robots().robot(contact.r1Index()).mb().joint(0).type() == rbd::Joint::Fixed)
       {
+        const std::string & surfaceName = contact.r2Surface()->name();
         if(measRobot.surfaceHasForceSensor(contact.r2Surface()->name()))
         {
-          const auto & fs = measRobot.surfaceForceSensor(contact.r2Surface()->name());
-          mapContacts_.insertContact(fs.name(), contact.r2Surface()->name(), true);
-          ContactWithSensor & contactWS = mapContacts_.contactWithSensor(fs.name());
+          const auto & fs = measRobot.surfaceForceSensor(surfaceName);
+          mapContacts_.insertContact(fs.name(), surfaceName, true);
+          ContactWithSensor & contactWS = mapContacts_.contactWithSensor(surfaceName);
           contactWS.forceNorm_ = fs.wrenchWithoutGravity(measRobot).force().norm();
           if(contactWS.forceNorm_ > contactDetectionThreshold_)
           {
@@ -257,9 +258,9 @@ void ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::findContactsFro
         }
         else
         {
-          const auto & ifs = measRobot.indirectSurfaceForceSensor(contact.r2Surface()->name());
-          mapContacts_.insertContact(ifs.name(), contact.r2Surface()->name(), false);
-          ContactWithSensor & contactWS = mapContacts_.contactWithSensor(ifs.name());
+          const auto & ifs = measRobot.indirectSurfaceForceSensor(surfaceName);
+          mapContacts_.insertContact(ifs.name(), surfaceName, false);
+          ContactWithSensor & contactWS = mapContacts_.contactWithSensor(surfaceName);
           contactWS.forceNorm_ = ifs.wrenchWithoutGravity(measRobot).force().norm();
           if(contactWS.forceNorm_ > contactDetectionThreshold_)
           {
@@ -284,7 +285,7 @@ void ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::findContactsFro
 
   for(auto & contact : mapContacts_.contactsWithSensors())
   {
-    const std::string & fsName = contact.first;
+    const std::string & fsName = contact.second.forceSensorName();
     const mc_rbdyn::ForceSensor forceSensor = measRobot.forceSensor(fsName);
 
     contact.second.forceNorm_ = forceSensor.wrenchWithoutGravity(measRobot).force().norm();
@@ -307,7 +308,7 @@ void ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::findContactsFro
 
   for(auto & contact : mapContacts_.contactsWithSensors())
   {
-    const std::string & fsName = contact.first;
+    const std::string & fsName = contact.second.forceSensorName();
     const mc_rbdyn::ForceSensor forceSensor = measRobot.forceSensor(fsName);
     contact.second.forceNorm_ = forceSensor.wrenchWithoutGravity(measRobot).force().norm();
     if(contact.second.forceNorm_ > contactDetectionThreshold_)

@@ -209,11 +209,9 @@ void LeggedOdometryManager::updateContacts(const mc_control::MCController & ctl,
                                                                                // compute its kinematics
     {
       LoContactWithSensor & foundContact = contactsManager_.contactWithSensor(foundContactIndex);
-      const mc_rbdyn::ForceSensor & fs = robot.forceSensor(foundContact.getName());
-      foundContact.isSet_ = true;
 
-      setNewContact(fs);
-      addContactLogEntries(logger, fs.name());
+      setNewContact(foundContact, robot);
+      addContactLogEntries(logger, foundContact);
     }
   }
 
@@ -221,7 +219,7 @@ void LeggedOdometryManager::updateContacts(const mc_control::MCController & ctl,
   {
     LoContactWithSensor & removedContact = contactsManager_.contactWithSensor(removedContactIndex);
 
-    removeContactLogEntries(logger, removedContact.getName());
+    removeContactLogEntries(logger, removedContact);
   }
 }
 
@@ -250,8 +248,9 @@ void LeggedOdometryManager::updateFbKinematics(const mc_control::MCController & 
   accs.angular() = odometryRobot().posW().rotation().transpose() * realLocalAngAcc;
 }
 
-void LeggedOdometryManager::setNewContact(const mc_rbdyn::ForceSensor forceSensor)
+void LeggedOdometryManager::setNewContact(LoContactWithSensor & contact, const mc_rbdyn::Robot & measurementsRobot)
 {
+  const mc_rbdyn::ForceSensor & forceSensor = measurementsRobot.forceSensor(contact.forceSensorName());
   // If the contact is not detected using surfaces, we must consider that the frame of the sensor is the one of the
   // surface).
   if(detectionFromThreshold_)
@@ -280,25 +279,20 @@ void LeggedOdometryManager::setNewContact(const mc_rbdyn::ForceSensor forceSenso
 
     worldNewContactKineOdometryRobot = worldBodyKineOdometryRobot * bodyNewContactKine;
 
-    contactsManager().contactWithSensor(forceSensor.name()).worldRefKine_.position =
-        worldNewContactKineOdometryRobot.position();
-    contactsManager().contactWithSensor(forceSensor.name()).worldRefKine_.orientation =
-        worldNewContactKineOdometryRobot.orientation;
+    contact.worldRefKine_.position = worldNewContactKineOdometryRobot.position();
+    contact.worldRefKine_.orientation = worldNewContactKineOdometryRobot.orientation;
   }
   else // the kinematics of the contact are directly the ones of the surface
   {
-    sva::PTransformd worldSurfacePoseOdometryRobot =
-        odometryRobot().surfacePose(contactsManager().contactWithSensor(forceSensor.name()).surface);
+    sva::PTransformd worldSurfacePoseOdometryRobot = odometryRobot().surfacePose(contact.surfaceName());
 
-    contactsManager().contactWithSensor(forceSensor.name()).worldRefKine_.position =
-        worldSurfacePoseOdometryRobot.translation();
-    contactsManager().contactWithSensor(forceSensor.name()).worldRefKine_.orientation =
-        so::Matrix3(worldSurfacePoseOdometryRobot.rotation().transpose());
+    contact.worldRefKine_.position = worldSurfacePoseOdometryRobot.translation();
+    contact.worldRefKine_.orientation = so::Matrix3(worldSurfacePoseOdometryRobot.rotation().transpose());
   }
 
   if(!odometry6d_)
   {
-    contactsManager().contactWithSensor(forceSensor.name()).worldRefKine_.position()(2) = 0.0;
+    contact.worldRefKine_.position()(2) = 0.0;
   }
 }
 
@@ -327,7 +321,7 @@ so::kine::Kinematics LeggedOdometryManager::getContactKinematics(LoContactWithSe
   else // the kinematics of the contact are the ones of the associated surface
   {
     // the kinematics of the contacts are the ones of the surface, but we must transport the measured wrench
-    sva::PTransformd worldSurfacePoseOdometryRobot = odometryRobot().surfacePose(contact.surface);
+    sva::PTransformd worldSurfacePoseOdometryRobot = odometryRobot().surfacePose(contact.surfaceName());
     so::kine::Kinematics worldContactKineOdometryRobot =
         kinematicsTools::poseFromSva(worldSurfacePoseOdometryRobot, so::kine::Kinematics::Flags::pose);
 
@@ -359,27 +353,26 @@ void LeggedOdometryManager::selectForOrientationOdometry()
   }
 }
 
-void LeggedOdometryManager::addContactLogEntries(mc_rtc::Logger & logger, const std::string & contactName)
+void LeggedOdometryManager::addContactLogEntries(mc_rtc::Logger & logger, const LoContactWithSensor & contact)
 {
+  const std::string & contactName = contact.getName();
   logger.addLogEntry(odometryName_ + "_" + contactName + "_ref_position",
-                     [this, contactName]() -> Eigen::Vector3d
-                     { return contactsManager_.contactWithSensor(contactName).worldRefKine_.position(); });
-  logger.addLogEntry(
-      odometryName_ + "_" + contactName + "_ref_orientation",
-      [this, contactName]() -> so::Quaternion
-      { return contactsManager_.contactWithSensor(contactName).worldRefKine_.orientation.toQuaternion().inverse(); });
-  logger.addLogEntry(
-      odometryName_ + "_" + contactName + "_ref_orientation_RollPitchYaw",
-      [this, contactName]() -> so::Vector3
-      {
-        so::kine::Orientation ori;
-        return so::kine::rotationMatrixToRollPitchYaw(
-            contactsManager_.contactWithSensor(contactName).worldRefKine_.orientation.toMatrix3().transpose());
-      });
+                     [this, contact]() -> Eigen::Vector3d { return contact.worldRefKine_.position(); });
+  logger.addLogEntry(odometryName_ + "_" + contactName + "_ref_orientation",
+                     [this, contact]() -> so::Quaternion
+                     { return contact.worldRefKine_.orientation.toQuaternion().inverse(); });
+  logger.addLogEntry(odometryName_ + "_" + contactName + "_ref_orientation_RollPitchYaw",
+                     [this, contact]() -> so::Vector3
+                     {
+                       so::kine::Orientation ori;
+                       return so::kine::rotationMatrixToRollPitchYaw(
+                           contact.worldRefKine_.orientation.toMatrix3().transpose());
+                     });
 }
 
-void LeggedOdometryManager::removeContactLogEntries(mc_rtc::Logger & logger, const std::string & contactName)
+void LeggedOdometryManager::removeContactLogEntries(mc_rtc::Logger & logger, const LoContactWithSensor & contact)
 {
+  const std::string & contactName = contact.getName();
   logger.removeLogEntry(odometryName_ + "_" + contactName + "_ref_position");
   logger.removeLogEntry(odometryName_ + "_" + contactName + "_ref_orientation");
   logger.removeLogEntry(odometryName_ + "_" + contactName + "_ref_orientation_RollPitchYaw");

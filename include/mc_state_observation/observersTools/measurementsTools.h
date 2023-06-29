@@ -9,6 +9,10 @@ namespace mc_state_observation
 namespace measurements
 {
 
+/**
+ * Sensors manager for observers implemented in mc_rtc.
+ **/
+
 ///////////////////////////////////////////////////////////////////////
 /// -----------------------------Sensors-------------------------------
 ///////////////////////////////////////////////////////////////////////
@@ -132,6 +136,13 @@ private:
 /// ------------------------------Contacts-----------------------------
 ///////////////////////////////////////////////////////////////////////
 
+/**
+ * Contacts manager for observers implemented in mc_rtc.
+ * This contact manager handles the detection of contacts with three different methods, using contact surfaces, contacts
+ * directly given by the controller, or a thresholding on the measured contact force.
+ * On each iteration, the manager updates the list of current contacts and of removed contacts.
+ **/
+
 /* Contains the important variables associated to the contact */
 
 struct Contact : public Sensor
@@ -140,11 +151,18 @@ struct Contact : public Sensor
 protected:
   Contact() {}
   ~Contact() {}
+  // constructor if the contact is not associated to a surface
   Contact(int id, std::string name)
   {
     id_ = id;
     name_ = name;
     resetContact();
+  }
+  // constructor if the contact is associated to a surface
+  Contact(int id, std::string name, std::string surface)
+  {
+    Contact(id, name);
+    surfaceName(surface);
   }
 
 public:
@@ -152,6 +170,16 @@ public:
   {
     wasAlreadySet_ = false;
     isSet_ = false;
+  }
+
+  void surfaceName(std::string surfaceName)
+  {
+    surface_ = surfaceName;
+  }
+  const std::string & surfaceName() const
+  {
+    BOOST_ASSERT(!surface_.empty() && "The contact was created without a surface.");
+    return surface_;
   }
 
   /*// ! Not working yet
@@ -165,45 +193,77 @@ public:
   bool isSet_ = false;
   bool wasAlreadySet_ = false;
   // Eigen::Vector3d zmp; // ! Not working yet
+protected:
+  std::string surface_;
 };
 
+/**
+ * Structure of contacts with sensors. If the contact is detected using a thresholding on the contact force, the
+ *contact force cannot be obtained and the name of the contact will be the one of the force sensor. Otherwise the name
+ *of the contact surface is used, allowing the creation of contacts associated to a same sensor but a different
+ *surface.
+ **/
 struct ContactWithSensor : public Contact
 {
+
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-private:
 public:
   ContactWithSensor() {}
-  ContactWithSensor(int id, std::string name)
+  // constructor if the contact is not associated to a surface
+  ContactWithSensor(int id, std::string forceSensorName)
   {
     id_ = id;
-    name_ = name;
+    name_ = forceSensorName;
+    forceSensorName_ = forceSensorName;
+
     resetContact();
+  }
+
+  // constructor if the contact is associated to a surface
+  ContactWithSensor(int id,
+                    const std::string & forceSensorName,
+                    const std::string & surfaceName,
+                    bool sensorAttachedToSurface)
+  {
+    id_ = id;
+    name_ = surfaceName;
+    resetContact();
+
+    surface_ = surfaceName;
+    forceSensorName_ = forceSensorName;
+    sensorAttachedToSurface_ = sensorAttachedToSurface;
   }
   ~ContactWithSensor() {}
   inline void resetContact()
   {
     wasAlreadySet_ = false;
     isSet_ = false;
-    sensorWasEnabled = false;
+    sensorWasEnabled_ = false;
 
     // also filtered force? see when this feature will be corrected
   }
 
+  std::string & forceSensorName()
+  {
+    return forceSensorName_;
+  }
+
 public:
-  Eigen::Matrix<double, 6, 1> wrenchInCentroid = Eigen::Matrix<double, 6, 1>::Zero(); // for debug only
+  Eigen::Matrix<double, 6, 1> wrenchInCentroid_ = Eigen::Matrix<double, 6, 1>::Zero(); // for debug only
   double forceNorm_ = 0.0; // for debug only
-  // the sensor measurement have to be used in the correction by the Kinetics Observer
-  bool sensorEnabled = true;
+  // the sensor measurement have to be used by the observer
+  bool sensorEnabled_ = true;
   // allows to know if the contact's measurements have to be added during the update
-  bool sensorWasEnabled = false;
+  bool sensorWasEnabled_ = false;
 
   // indicates if the sensor is directly attached to a surface (true) or not (false). Default is true because in the
   // case of detection of contacts by thresholding the measured force (@contactsDetection_ = fromThreshold), we cannot
   // know precisely the surface of contact, so we will consider that the kinematics of the contact surface are the
   // ones of the sensor
-  bool sensorAttachedToSurface = true;
+  bool sensorAttachedToSurface_ = true;
   // surface of contact
-  std::string surface;
+protected:
+  std::string forceSensorName_;
 
   /* Force filtering for the contact detection */ // ! Not working yet!
   // Eigen::Vector3d filteredForce = Eigen::Vector3d::Zero();
@@ -220,6 +280,7 @@ public:
   {
     id_ = id;
     name_ = name;
+    surfaceName(name);
     resetContact();
   }
 };
@@ -243,6 +304,8 @@ public:
   /// @return contactsWithSensorT&
   inline ContactWithSensorT & contactWithSensor(const std::string & name)
   {
+
+    BOOST_ASSERT(checkAlreadyExists(name, true) && "The requested sensor doesn't exist");
     return mapContactsWithSensors_.at(name);
   }
   /// @brief Accessor for the a contact associated to a sensor contained in the map
@@ -251,6 +314,8 @@ public:
   /// @return ContactWithSensor&
   inline ContactWithSensorT & contactWithSensor(const int & num)
   {
+    BOOST_ASSERT((num >= 0 && num < num_) && "The requested sensor doesn't exist");
+    BOOST_ASSERT(checkAlreadyExists(getNameFromNum(num), true) && "The requested sensor doesn't exist");
     return mapContactsWithSensors_.at(getNameFromNum(num));
   }
 
@@ -259,6 +324,7 @@ public:
   /// @return ContactWithoutSensor&
   inline ContactWithoutSensorT & contactWithoutSensor(const std::string & name)
   {
+    BOOST_ASSERT(checkAlreadyExists(name, false) && "The requested sensor doesn't exist");
     return mapContactsWithoutSensors_.at(name);
   }
 
@@ -267,6 +333,8 @@ public:
   /// @return ContactWithoutSensorT&
   inline ContactWithoutSensorT & contactWithoutSensor(const int & num)
   {
+    BOOST_ASSERT((num >= 0 && num < num_) && "The requested sensor doesn't exist");
+    BOOST_ASSERT(checkAlreadyExists(getNameFromNum(num), true) && "The requested sensor doesn't exist");
     return mapContactsWithoutSensors_.at(getNameFromNum(num));
   }
 
@@ -357,8 +425,9 @@ public:
 
   /// @brief Check that a contact still does not exist, if so, insert a contact to the map of contacts. The contact
   /// can either be associated to a sensor or not.
-  ///
-  /// @param element The name of the contact
+  /// @details Version for contacts that are either associated to a surface or to a force sensor.
+  /// @param element The name of the contact. If the contact has a sensor, its name is the one of the sensor, else, its
+  /// name is the one of the surface.
   /// @param hasSensor True if the contact is attached to a sensor.
   inline void insertContact(const std::string & name, const bool & hasSensor)
   {
@@ -368,32 +437,43 @@ public:
     num_++;
   }
 
-  inline void insertContact(const std::string & name, const std::string surface, const bool & sensorAttachedToSurface)
+  /// @brief Check that a contact still does not exist, if so, insert a contact to the map of contacts.
+  /// @details Version for contacts that are associated to both a force sensor and a contact surface. The contact will
+  /// be named with the name of the surface.
+  /// @param forceSensorName The name of the force sensor.
+  /// @param surface The name of the surface that will be used also to name the contact.
+  /// @param sensorAttachedToSurface True if the sensor is attached to the surface.
+  inline void insertContact(const std::string & forceSensorName,
+                            const std::string surface,
+                            const bool & sensorAttachedToSurface)
   {
-    if(checkAlreadyExists(name, surface, sensorAttachedToSurface)) return;
-    insertElement(name, surface, sensorAttachedToSurface);
+    if(checkAlreadyExists(sensorAttachedToSurface, surface)) return;
+    insertElement(forceSensorName, surface, sensorAttachedToSurface);
 
     num_++;
   }
 
 private:
   /// @brief Insert a contact to the map of contacts. The contact can either be associated to a sensor or not.
-  /// @details Version for contacts whose surface is known (for @contactsDetection_ equal to
-  /// "fromThreshold")
-  /// @param element The name of the contact
-  /// @param hasSensor True if the contact is attached to a sensor.
-  inline void insertElement(const std::string & name, const std::string surface, const bool & sensorAttachedToSurface)
+  /// @details Version for contacts that are associated to both a force sensor and a contact surface. The contact will
+  /// be named with the name of the surface.
+  /// @param forceSensorName The name of the force sensor.
+  /// @param surface The name of the surface that will be used also to name the contact.
+  /// @param sensorAttachedToSurface True if the sensor is attached to the surface.
+  inline void insertElement(const std::string & forceSensorName,
+                            const std::string surface,
+                            const bool sensorAttachedToSurface)
   {
-    insertOrder_.push_back(name);
+    insertOrder_.push_back(surface);
 
-    mapContactsWithSensors_.insert(std::make_pair(name, ContactWithSensorT(num_, name)));
-    contactWithSensor(name).surface = surface;
-    contactWithSensor(name).sensorAttachedToSurface = sensorAttachedToSurface;
-    hasSensor_.insert(std::make_pair(name, true));
+    mapContactsWithSensors_.insert(
+        std::make_pair(surface, ContactWithSensorT(num_, forceSensorName, surface, sensorAttachedToSurface)));
+    hasSensor_.insert(std::make_pair(surface, true));
   }
   /// @brief Insert a contact to the map of contacts. The contact can either be associated to a sensor or not.
-  /// @details Version for contacts whose surface is unknown.
-  /// @param element The name of the contact
+  /// @details Version for contacts that are either associated to a surface or to a force sensor.
+  /// @param name The name of the contact. If hasSensor is true, the name is the one of the forceSensor, else, the name
+  /// is the one of the surface.
   /// @param hasSensor True if the contact is attached to a sensor.
   inline void insertElement(const std::string & name, const bool & hasSensor)
   {
@@ -411,19 +491,19 @@ private:
     }
   }
 
-  inline bool checkAlreadyExists(const std::string & name,
-                                 const std::string & surface,
-                                 const bool & sensorAttachedToSurface)
+  /// @brief Check if a contact already exists in the list. If it already exists, checks that the contact remained
+  /// unchanged.
+  ///
+  /// @param name The name of the contact
+  /// @param hasSensor True if the contact is attached to a sensor.
+  /// @return bool
+  inline bool checkAlreadyExists(const std::string & name, const bool hasSensor)
   {
-    if(std::binary_search(insertOrder_.begin(), insertOrder_.end(), name)) // the contact already exists
+    if(std::find(insertOrder_.begin(), insertOrder_.end(), name) != insertOrder_.end()) // the contact already exists
     {
-      BOOST_ASSERT((hasSensor_.at(name)) && "The contact already exists and was associated to no sensor");
-      /* We should allow to have two contacts sharing the same sensor but with different surfaces
-      BOOST_ASSERT((contactWithSensor(name).surface != surface)
-                   && "The contact already exists but was associated to another surface");
-                   */
-      BOOST_ASSERT((contactWithSensor(name).sensorAttachedToSurface == sensorAttachedToSurface)
-                   && "You previously said that the contact sensor was not attached to the contact surface");
+      BOOST_ASSERT_MSG(hasSensor_.at(name) == hasSensor,
+                       "The association / non-association to a force sensor must be preserved.");
+
       return true;
     }
     else
@@ -432,19 +512,24 @@ private:
     }
   }
 
-  /// @brief Check if a contact already exists in the list. If it already exists, checks that the association to a
-  /// sensor remained unchanged.
+  /// @brief Check if a contact already exists in the list. If it already exists, checks that the contact remained
+  /// unchanged.
   ///
-  /// @param element The name of the contact
+  /// @param name The name of the contact
   /// @param hasSensor True if the contact is attached to a sensor.
+  /// @param sensorAttachedToSurface True if the sensor is attached to the surface.
   /// @return bool
-  inline bool checkAlreadyExists(const std::string & name, const bool & hasSensor)
+  inline bool checkAlreadyExists(bool sensorAttachedToSurface, const std::string & name)
   {
-    if(std::binary_search(insertOrder_.begin(), insertOrder_.end(), name)) // the contact already exists
+    if(std::find(insertOrder_.begin(), insertOrder_.end(), name) != insertOrder_.end()) // the contact already exists
     {
-      BOOST_ASSERT_MSG(hasSensor_.at(name) && !hasSensor, "The contact already exists and was associated to a sensor");
-      BOOST_ASSERT_MSG(!hasSensor_.at(name) && hasSensor, "The contact already exists and was associated to no sensor");
-
+      BOOST_ASSERT_MSG(hasSensor_.at(name), "The contact already exists and was associated to no sensor");
+      /* We should allow to have two contacts sharing the same sensor but with different surfaces
+      BOOST_ASSERT((contactWithSensor(name).surface != surface)
+                   && "The contact already exists but was associated to another surface");
+                   */
+      BOOST_ASSERT((contactWithSensor(name).sensorAttachedToSurface_ == sensorAttachedToSurface)
+                   && "You previously said that the contact sensor was not attached to the contact surface");
       return true;
     }
     else
