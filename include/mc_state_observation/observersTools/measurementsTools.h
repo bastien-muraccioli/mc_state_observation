@@ -368,7 +368,24 @@ public:
     num_++;
   }
 
+  inline void insertContact(const std::string & name, const std::string surface, const bool & sensorAttachedToSurface)
+  {
+    if(checkAlreadyExists(name, surface, sensorAttachedToSurface)) return;
+    insertElement(name, surface, sensorAttachedToSurface);
+
+    num_++;
+  }
+
 private:
+  inline void insertElement(const std::string & name, const std::string surface, const bool & sensorAttachedToSurface)
+  {
+    insertOrder_.push_back(name);
+
+    mapContactsWithSensors_.insert(std::make_pair(name, ContactWithSensorT(num_, name)));
+    contactWithSensor(name).surface = surface;
+    contactWithSensor(name).sensorAttachedToSurface = sensorAttachedToSurface;
+    hasSensor_.insert(std::make_pair(name, true));
+  }
   /// @brief Insert a contact to the map of contacts. The contact can either be associated to a sensor or not.
   ///
   /// @param element The name of the contact
@@ -389,28 +406,39 @@ private:
     }
   }
 
+  inline bool checkAlreadyExists(const std::string & name,
+                                 const std::string & surface,
+                                 const bool & sensorAttachedToSurface)
+  {
+    if(std::binary_search(insertOrder_.begin(), insertOrder_.end(), name)) // the contact already exists
+    {
+      BOOST_ASSERT((!hasSensor(name)) && "The contact already exists and was associated to no sensor");
+      BOOST_ASSERT((contactWithSensor(name).surface != surface)
+                   && "The contact already exists but was associated to another surface");
+      BOOST_ASSERT((contactWithSensor(name).sensorAttachedToSurface != sensorAttachedToSurface)
+                   && "You previously said that the contact sensor was not attached to the contact surface");
+      return true;
+    }
+    else
+    {
+      return false;
+    }
+  }
+
   /// @brief Check if a contact already exists in the list. If it already exists, checks that the association to a
   /// sensor remained unchanged.
   ///
   /// @param element The name of the contact
   /// @param hasSensor True if the contact is attached to a sensor.
   /// @return bool
-  inline bool checkAlreadyExists(const std::string & name, const bool & hasContact)
+  inline bool checkAlreadyExists(const std::string & name, const bool & hasSensor)
   {
-    if(hasSensor_.find(name) != hasSensor_.end())
+    if(std::binary_search(insertOrder_.begin(), insertOrder_.end(), name)) // the contact already exists
     {
-      if(hasContact)
-      {
-        BOOST_ASSERT((mapContactsWithoutSensors_.find(name) == mapContactsWithoutSensors_.end())
-                     && "The contact already exists but was associated to no sensor");
-        return true;
-      }
-      else
-      {
-        BOOST_ASSERT((mapContactsWithSensors_.find(name) == mapContactsWithSensors_.end())
-                     && "The contact already exists but was associated to a sensor");
-        return true;
-      }
+      BOOST_ASSERT((hasSensor(name) && !hasSensor) && "The contact already exists and was associated to a sensor");
+      BOOST_ASSERT((!hasSensor(name) && hasSensor) && "The contact already exists and was associated to no sensor");
+
+      return true;
     }
     else
     {
@@ -501,6 +529,7 @@ public:
   /// "fromThreshold". The contacts are not required to be given by the controller (the detection is based on a
   /// thresholding of the measured force).
   void findContactsFromThreshold(const mc_control::MCController & ctl, const std::string & robotName);
+  /// @brief Updates the detected and removed contacts.
   void updateContacts();
 
   void (ContactsManager::*contactsFinder_)(const mc_control::MCController &, const std::string &) = 0;

@@ -63,8 +63,7 @@ void ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::init(
       {
         const mc_rbdyn::ForceSensor & forceSensor = robot.surfaceForceSensor(surface);
         const std::string & fsName = forceSensor.name();
-        mapContacts_.insertContact(fsName, true);
-        mapContacts_.contactWithSensor(fsName).surface = surface;
+        mapContacts_.insertContact(fsName, surface, true);
 
         ctl.gui()->addElement(
             {observerName, "Contacts"},
@@ -88,9 +87,7 @@ void ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::init(
       {
         const mc_rbdyn::ForceSensor & forceSensor = robot.indirectSurfaceForceSensor(surface);
         const std::string & fsName = forceSensor.name();
-        mapContacts_.insertContact(forceSensor.name(), true);
-        mapContacts_.contactWithSensor(fsName).sensorAttachedToSurface = false;
-        mapContacts_.contactWithSensor(fsName).surface = surface;
+        mapContacts_.insertContact(forceSensor.name(), surface, false);
 
         ctl.gui()->addElement(
             {observerName, "Contacts"},
@@ -203,6 +200,7 @@ void ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::findContactsFro
     const mc_control::MCController & ctl,
     const std::string & robotName)
 {
+  mc_rtc::log::warning("This mode has not been tested, there might be issues with the contacts surfaces and names");
   const auto & measRobot = ctl.robot(robotName);
 
   contactsFound_.clear();
@@ -212,13 +210,29 @@ void ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::findContactsFro
     {
       if(ctl.robots().robot(contact.r2Index()).mb().joint(0).type() == rbd::Joint::Fixed)
       {
-        const auto & ifs = measRobot.indirectSurfaceForceSensor(contact.r1Surface()->name());
-        ContactWithSensor & contactWS = mapContacts_.contactWithSensor(ifs.name());
-        contactWS.forceNorm_ = ifs.wrenchWithoutGravity(measRobot).force().norm();
-        if(contactWS.forceNorm_ > contactDetectionThreshold_)
+        if(measRobot.surfaceHasForceSensor(contact.r1Surface()->name()))
         {
-          // the contact is added to the map of contacts using the name of the associated sensor
-          contactsFound_.insert(contactWS.getID());
+          const auto & fs = measRobot.surfaceForceSensor(contact.r1Surface()->name());
+          ContactWithSensor & contactWS = mapContacts_.contactWithSensor(fs.name());
+          contactWS.forceNorm_ = fs.wrenchWithoutGravity(measRobot).force().norm();
+          if(contactWS.forceNorm_ > contactDetectionThreshold_)
+          {
+            // the contact is added to the map of contacts using the name of the associated sensor
+            mapContacts_.insertContact(fs.name(), contact.r1Surface()->name(), true);
+            contactsFound_.insert(contactWS.getID());
+          }
+        }
+        else
+        {
+          const auto & ifs = measRobot.indirectSurfaceForceSensor(contact.r1Surface()->name());
+          ContactWithSensor & contactWS = mapContacts_.contactWithSensor(ifs.name());
+          contactWS.forceNorm_ = ifs.wrenchWithoutGravity(measRobot).force().norm();
+          if(contactWS.forceNorm_ > contactDetectionThreshold_)
+          {
+            // the contact is added to the map of contacts using the name of the associated sensor
+            mapContacts_.insertContact(ifs.name(), contact.r1Surface()->name(), false);
+            contactsFound_.insert(contactWS.getID());
+          }
         }
       }
     }
@@ -226,13 +240,29 @@ void ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::findContactsFro
     {
       if(ctl.robots().robot(contact.r1Index()).mb().joint(0).type() == rbd::Joint::Fixed)
       {
-        const auto & ifs = measRobot.indirectSurfaceForceSensor(contact.r2Surface()->name());
-        ContactWithSensor & contactWS = mapContacts_.contactWithSensor(ifs.name());
-        contactWS.forceNorm_ = ifs.wrenchWithoutGravity(measRobot).force().norm();
-        if(contactWS.forceNorm_ > contactDetectionThreshold_)
+        if(measRobot.surfaceHasForceSensor(contact.r2Surface()->name()))
         {
-          // the contact is added to the map of contacts using the name of the associated surface
-          contactsFound_.insert(contactWS.getID());
+          const auto & fs = measRobot.surfaceForceSensor(contact.r2Surface()->name());
+          ContactWithSensor & contactWS = mapContacts_.contactWithSensor(fs.name());
+          contactWS.forceNorm_ = fs.wrenchWithoutGravity(measRobot).force().norm();
+          if(contactWS.forceNorm_ > contactDetectionThreshold_)
+          {
+            mapContacts_.insertContact(fs.name(), contact.r2Surface()->name(), true);
+            // the contact is added to the map of contacts using the name of the associated surface
+            contactsFound_.insert(contactWS.getID());
+          }
+        }
+        else
+        {
+          const auto & ifs = measRobot.indirectSurfaceForceSensor(contact.r2Surface()->name());
+          ContactWithSensor & contactWS = mapContacts_.contactWithSensor(ifs.name());
+          contactWS.forceNorm_ = ifs.wrenchWithoutGravity(measRobot).force().norm();
+          if(contactWS.forceNorm_ > contactDetectionThreshold_)
+          {
+            // the contact is added to the map of contacts using the name of the associated sensor
+            mapContacts_.insertContact(ifs.name(), contact.r2Surface()->name(), false);
+            contactsFound_.insert(contactWS.getID());
+          }
         }
       }
     }
