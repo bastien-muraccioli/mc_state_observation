@@ -377,6 +377,11 @@ public:
   }
 
 private:
+  /// @brief Insert a contact to the map of contacts. The contact can either be associated to a sensor or not.
+  /// @details Version for contacts whose surface is known (for @contactsDetection_ equal to
+  /// "fromThreshold")
+  /// @param element The name of the contact
+  /// @param hasSensor True if the contact is attached to a sensor.
   inline void insertElement(const std::string & name, const std::string surface, const bool & sensorAttachedToSurface)
   {
     insertOrder_.push_back(name);
@@ -387,7 +392,7 @@ private:
     hasSensor_.insert(std::make_pair(name, true));
   }
   /// @brief Insert a contact to the map of contacts. The contact can either be associated to a sensor or not.
-  ///
+  /// @details Version for contacts whose surface is unknown.
   /// @param element The name of the contact
   /// @param hasSensor True if the contact is attached to a sensor.
   inline void insertElement(const std::string & name, const bool & hasSensor)
@@ -412,10 +417,12 @@ private:
   {
     if(std::binary_search(insertOrder_.begin(), insertOrder_.end(), name)) // the contact already exists
     {
-      BOOST_ASSERT((!hasSensor_.at(name)) && "The contact already exists and was associated to no sensor");
+      BOOST_ASSERT((hasSensor_.at(name)) && "The contact already exists and was associated to no sensor");
+      /* We should allow to have two contacts sharing the same sensor but with different surfaces
       BOOST_ASSERT((contactWithSensor(name).surface != surface)
                    && "The contact already exists but was associated to another surface");
-      BOOST_ASSERT((contactWithSensor(name).sensorAttachedToSurface != sensorAttachedToSurface)
+                   */
+      BOOST_ASSERT((contactWithSensor(name).sensorAttachedToSurface == sensorAttachedToSurface)
                    && "You previously said that the contact sensor was not attached to the contact surface");
       return true;
     }
