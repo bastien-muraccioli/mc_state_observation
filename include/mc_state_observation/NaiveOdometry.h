@@ -223,7 +223,7 @@ public:
   }
   inline virtual bool hasElement(const std::string & name)
   {
-    checkAlreadyExists(name);
+    return checkAlreadyExists(name);
   }
 
   inline void insertIMU(std::string name)
@@ -370,17 +370,9 @@ public:
   }
 
 private:
-  so::Vector6 contactWrenchVector_;
-  std::string contactsDetection_;
-  std::vector<std::string> surfacesForContactDetection_;
-  sva::PTransformd zeroPose_;
-  sva::MotionVecd zeroMotion_;
-
   std::string category_ = "NaiveOdometry_";
   /* custom list of robots to display */
   std::shared_ptr<mc_rbdyn::Robots> my_robots_;
-
-  std::set<std::string> contactsFound_; // contacts found on each iteration
 
   bool debug_ = false;
   bool verbose_ = true;
@@ -396,10 +388,6 @@ private:
   sva::PTransformd X_0_fb_ = sva::PTransformd::Identity();
   sva::MotionVecd a_fb_0_ = sva::MotionVecd::Zero();
 
-  bool withFlatOdometry_ = false;
-  bool withNaiveYawEstimation_ = true;
-  bool withContactsDetection_ = true;
-  bool withFilteredForcesContactDetection_ = false;
   leggedOdometry::LeggedOdometryManager odometryManager_;
 };
 

@@ -25,18 +25,20 @@ NaiveOdometry::NaiveOdometry(const std::string & type, double dt) : mc_observers
 void NaiveOdometry::configure(const mc_control::MCController & ctl, const mc_rtc::Configuration & config)
 {
   robot_ = config("robot", ctl.robot().name());
+  std::string contactsDetection;
+  std::string odometryType = static_cast<std::string>(config("odometryType"));
+  bool with6dOdometry = true;
+  std::vector<std::string> surfacesForContactDetection;
+  config("surfacesForContactDetection", surfacesForContactDetection);
+
   config("debug", debug_);
   config("verbose", verbose_);
 
-  config("withContactsDetection", withContactsDetection_);
-  config("withNaiveYawEstimation", withNaiveYawEstimation_);
   config("contactDetectionPropThreshold", contactDetectionPropThreshold_);
-  config("withFilteredForcesContactDetection", withFilteredForcesContactDetection_);
 
-  std::string odometryType = static_cast<std::string>(config("odometryType"));
   if(odometryType == "flatOdometry")
   {
-    withFlatOdometry_ = true;
+    with6dOdometry = false;
   }
   else if(odometryType != "6dOdometry")
   {
@@ -44,25 +46,23 @@ void NaiveOdometry::configure(const mc_control::MCController & ctl, const mc_rtc
         "Odometry type not allowed. Please pick among : [flatOdometry, 6dOdometry]");
   }
 
-  contactsDetection_ = static_cast<std::string>(config("contactsDetection"));
-  if(contactsDetection_ != "fromSolver" && contactsDetection_ != "fromThreshold"
-     && contactsDetection_ != "fromSurfaces")
+  contactsDetection = static_cast<std::string>(config("contactsDetection"));
+  if(contactsDetection != "fromSolver" && contactsDetection != "fromThreshold" && contactsDetection != "fromSurfaces")
   {
     mc_rtc::log::error_and_throw<std::runtime_error>(
         "Contacts detection type not allowed. Please pick among : [fromSolver, fromThreshold, fromSurfaces] or "
         "initialize a list of surfaces with the variable surfacesForContactDetection");
   }
-  config("surfacesForContactDetection", surfacesForContactDetection_);
-  if(surfacesForContactDetection_.size() > 0)
+  if(surfacesForContactDetection.size() > 0)
   {
-    if(contactsDetection_ != "fromSurfaces")
+    if(contactsDetection != "fromSurfaces")
     {
       mc_rtc::log::error_and_throw<std::runtime_error>(
           "Another type of contacts detection is currently used, please change it to 'fromSurfaces' or empty the "
           "surfacesForContactDetection variable");
     }
   }
-  else if(contactsDetection_ == "fromSurfaces")
+  else if(contactsDetection == "fromSurfaces")
   {
     mc_rtc::log::error_and_throw<std::runtime_error>(
         "You selected the contacts detection using surfaces but didn't add the list of surfaces, please add it usign "
@@ -71,16 +71,15 @@ void NaiveOdometry::configure(const mc_control::MCController & ctl, const mc_rtc
 
   double contactDetectionThreshold = mass_ * so::cst::gravityConstant * contactDetectionPropThreshold_;
   std::vector<std::string> contactsSensorDisabledInit = config("contactsSensorDisabledInit");
-  if(contactsDetection_ == "fromSurfaces")
+  if(contactsDetection == "fromSurfaces")
   {
-    std::vector<std::string> surfacesForContactDetection = config("surfacesForContactDetection");
-    odometryManager_.init(ctl, robot_, "NaiveOdometry", true, true, contactsDetection_, surfacesForContactDetection,
-                          contactsSensorDisabledInit, contactDetectionThreshold);
+    odometryManager_.init(ctl, robot_, "NaiveOdometry", with6dOdometry, true, contactsDetection,
+                          surfacesForContactDetection, contactsSensorDisabledInit, contactDetectionThreshold);
   }
   else
   {
-    odometryManager_.init(ctl, robot_, "NaiveOdometry", true, true, contactsDetection_, contactsSensorDisabledInit,
-                          contactDetectionThreshold);
+    odometryManager_.init(ctl, robot_, "NaiveOdometry", with6dOdometry, true, contactsDetection,
+                          contactsSensorDisabledInit, contactDetectionThreshold);
   }
 }
 
@@ -131,9 +130,6 @@ void NaiveOdometry::reset(const mc_control::MCController & ctl)
 
 bool NaiveOdometry::run(const mc_control::MCController & ctl)
 {
-  const auto & robot = ctl.robot(robot_);
-  const auto & realRobot = ctl.realRobot(robot_);
-  auto & odometryRobot = odometryManager_.odometryRobot();
   auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
 
   odometryManager_.run(ctl, logger, X_0_fb_, v_fb_0_, a_fb_0_);
@@ -179,8 +175,7 @@ void NaiveOdometry::addToLogger(const mc_control::MCController &, mc_rtc::Logger
   logger.addLogEntry(category + "_naive_fb_accW", [this]() -> const sva::MotionVecd & { return a_fb_0_; });
 
   logger.addLogEntry(category + "_naive_fb_yaw",
-                     [this]() -> const double
-                     { return -so::kine::rotationMatrixToYawAxisAgnostic(X_0_fb_.rotation()); });
+                     [this]() -> double { return -so::kine::rotationMatrixToYawAxisAgnostic(X_0_fb_.rotation()); });
 
   logger.addLogEntry(category + "_constants_forceThreshold",
                      [this]() -> double { return mass_ * so::cst::gravityConstant * contactDetectionPropThreshold_; });
@@ -200,6 +195,9 @@ void NaiveOdometry::addToGUI(const mc_control::MCController &,
                              const std::vector<std::string> & category)
 {
   using namespace mc_rtc::gui;
+  // unused variables
+  (void)gui;
+  (void)category;
   // clang-format off
 
   // clang-format on

@@ -63,6 +63,8 @@ private:
     loContactWithoutSensor(int id, std::string name)
     {
       BOOST_ASSERT(false && "The legged odometry requires to use only contacts with sensors.");
+      id_ = id;
+      name_ = name;
     }
 
   private:

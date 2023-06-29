@@ -412,7 +412,7 @@ private:
   {
     if(std::binary_search(insertOrder_.begin(), insertOrder_.end(), name)) // the contact already exists
     {
-      BOOST_ASSERT((!hasSensor(name)) && "The contact already exists and was associated to no sensor");
+      BOOST_ASSERT((!hasSensor_.at(name)) && "The contact already exists and was associated to no sensor");
       BOOST_ASSERT((contactWithSensor(name).surface != surface)
                    && "The contact already exists but was associated to another surface");
       BOOST_ASSERT((contactWithSensor(name).sensorAttachedToSurface != sensorAttachedToSurface)
@@ -435,8 +435,8 @@ private:
   {
     if(std::binary_search(insertOrder_.begin(), insertOrder_.end(), name)) // the contact already exists
     {
-      BOOST_ASSERT((hasSensor(name) && !hasSensor) && "The contact already exists and was associated to a sensor");
-      BOOST_ASSERT((!hasSensor(name) && hasSensor) && "The contact already exists and was associated to no sensor");
+      BOOST_ASSERT_MSG(hasSensor_.at(name) && !hasSensor, "The contact already exists and was associated to a sensor");
+      BOOST_ASSERT_MSG(!hasSensor_.at(name) && hasSensor, "The contact already exists and was associated to no sensor");
 
       return true;
     }
