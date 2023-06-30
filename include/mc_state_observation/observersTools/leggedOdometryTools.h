@@ -118,7 +118,7 @@ public:
   /// @param robotName Name of the robot
   /// @param odometryName Name of the odometry, used in logs and in the gui.
   /// @param odometry6d Indicates if the desired odometry must be a flat or a 6D odometry.
-  /// @param withNaiveYawEstimation Indicates if the orientation must be estimated by this odometry.
+  /// @param withYawEstimation Indicates if the orientation must be estimated by this odometry.
   /// @param contactsDetection Desired contacts detection method.
   /// @param surfacesForContactDetection Admissible surfaces for the contacts detection.
   /// @param contactsSensorDisabledInit Contacts that must not be enabled since the beginning (faulty one for example).
@@ -127,7 +127,7 @@ public:
             const std::string robotName,
             const std::string & odometryName,
             const bool odometry6d,
-            const bool withNaiveYawEstimation,
+            const bool withYawEstimation,
             const std::string contactsDetection,
             std::vector<std::string> surfacesForContactDetection,
             std::vector<std::string> contactsSensorDisabledInit,
@@ -140,7 +140,7 @@ public:
   /// @param robotName Name of the robot
   /// @param odometryName Name of the odometry, used in logs and in the gui.
   /// @param odometry6d Indicates if the desired odometry must be a flat or a 6D odometry.
-  /// @param withNaiveYawEstimation Indicates if the orientation must be estimated by this odometry.
+  /// @param withYawEstimation Indicates if the orientation must be estimated by this odometry.
   /// @param contactsDetection Desired contacts detection method.
   /// @param contactsSensorDisabledInit Contacts that must not be enabled since the beginning (faulty one for example).
   /// @param contactDetectionThreshold Threshold used for the contact detection
@@ -148,7 +148,7 @@ public:
             const std::string robotName,
             const std::string & odometryName,
             const bool odometry6d,
-            const bool withNaiveYawEstimation,
+            const bool withYawEstimation,
             const std::string contactsDetection,
             std::vector<std::string> contactsSensorDisabledInit,
             const double contactDetectionThreshold);
@@ -164,20 +164,65 @@ public:
            sva::MotionVecd & vels,
            sva::MotionVecd & accs);
 
+  /// @brief Core function runing the odometry.
+  /// @param ctl Controller
+  /// @param pose The pose of the floating base in the world that we want to update
+  /// @param vels The velocities of the floating base in the world that we want to update
+  void run(const mc_control::MCController & ctl,
+           mc_rtc::Logger & logger,
+           sva::PTransformd & pose,
+           sva::MotionVecd & vels);
+
+  /// @brief Core function runing the odometry.
+  /// @param ctl Controller
+  /// @param pose The pose of the floating base in the world that we want to update
+  void run(const mc_control::MCController & ctl, mc_rtc::Logger & logger, sva::PTransformd & pose);
+
   /// @brief Updates the pose of the contacts and estimates the floating base from them.
   /// @param ctl Controller.
   /// @param logger Logger.
   void updateContacts(const mc_control::MCController & ctl, mc_rtc::Logger & logger);
 
-  /// @brief Updates the floating base kinematics given as argument by the observer.
+  /// @brief Updates the pose of the contacts and estimates the floating base from them. Beware, only the pose is
+  /// updated by the odometry, the velocities and accelerations update only performs a transformation from the real
+  /// robot to our newly estimated robot. If you want to update the velocities and accelerations of the floating base,
+  /// you need to add an observer computing them beforehand.
+  /// @param ctl Controller.
+  /// @param updateVels If true, the velocity of the floating base of the odometry robot is updated from the one of the
+  /// real robot. This velocity must be computed by an upstream observer.
+  /// @param updateAccs If true, the acceleration of the floating base of the odometry robot is updated from the one of
+  /// the real robot. This acceleration must be computed by an upstream observer..
+  void updateOdometryRobot(const mc_control::MCController & ctl, const bool updateVels, const bool updateAccs);
+
+  /// @brief Updates the floating base kinematics given as argument by the observer. Beware, only the pose is updated by
+  /// the odometry, the velocities and accelerations update only performs a transformation from the real robot to our
+  /// newly estimated robot. If you want to update the velocities and accelerations of the floating base, you need to
+  /// add an observer computing them beforehand.
   /// @param ctl Controller
   /// @param pose The pose of the floating base in the world that we want to update
-  /// @param vels The velocities of the floating base in the world that we want to update
-  /// @param accs The accelerations of the floating base in the world that we want to update
+  /// @param vels The velocities of the floating base in the world that we want to update. This velocity must come from
+  /// an upstream observer.
+  /// @param accs The accelerations of the floating base in the world that we want to update. This acceleration must
+  /// come from an upstream observer.
   void updateFbKinematics(const mc_control::MCController & ctl,
                           sva::PTransformd & pose,
                           sva::MotionVecd & vels,
                           sva::MotionVecd & accs);
+
+  /// @brief Updates the floating base kinematics given as argument by the observer. Beware, only the pose is updated by
+  /// the odometry, the velocities update only performs a transformation from the real robot to our newly estimated
+  /// robot. If you want to update the velocities of the floating base, you need to add an observer computing them
+  /// beforehand.
+  /// @param ctl Controller
+  /// @param pose The pose of the floating base in the world that we want to update
+  /// @param vels The velocities of the floating base in the world that we want to update. This velocity must come from
+  /// an upstream observer.
+  void updateFbKinematics(const mc_control::MCController & ctl, sva::PTransformd & pose, sva::MotionVecd & vels);
+
+  /// @brief Updates the floating base kinematics given as argument by the observer.
+  /// @param ctl Controller
+  /// @param pose The pose of the floating base in the world that we want to update
+  void updateFbKinematics(const mc_control::MCController & ctl, sva::PTransformd & pose);
 
   /// @brief Computes the reference kinematics of the newly set contact in the world.
   /// @param forceSensor The force sensor attached to the contact
@@ -225,7 +270,7 @@ protected:
   // Indicates if the desired odometry must be a flat or a 6D odometry.
   bool odometry6d_;
   // Indicates if the orientation must be estimated by this odometry.
-  bool withNaiveYawEstimation_;
+  bool withYawEstimation_;
   // tracked pose of the floating base
   sva::PTransformd fbPose_ = sva::PTransformd::Identity();
 
