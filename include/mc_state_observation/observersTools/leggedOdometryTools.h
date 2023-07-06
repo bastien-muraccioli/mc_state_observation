@@ -19,12 +19,6 @@ namespace leggedOdometry
  * mc_rtc::Logger & logger, sva::PTransformd & pose, sva::MotionVecd & vels, sva::MotionVecd & accs).
  **/
 
-struct LeggedOdometryManager
-{
-public:
-  LeggedOdometryManager() {}
-
-private:
   ///////////////////////////////////////////////////////////////////////
   /// ------------------------------Contacts-----------------------------
   ///////////////////////////////////////////////////////////////////////
@@ -33,7 +27,7 @@ private:
   class LoContactWithSensor : public measurements::ContactWithSensor
   {
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-  private:
+protected:
     LoContactWithSensor() {}
 
   public:
@@ -67,38 +61,46 @@ private:
     bool useForOrientation_ = false;
     // norm of the force measured by the sensor
     double forceNorm_ = 0.0;
-    // currently estimated orientation of the contact in the world
-    stateObservation::kine::Orientation currentWorldOrientation_;
+  // current estimation of the real orientation of the floating base in the world from the contact kinematics
+  stateObservation::kine::Orientation currentWorldFbOrientation_;
+  // current estimation of the kinematics of the contact in the world
+  stateObservation::kine::Kinematics currentWorldKine_;
   };
 
-  class loContactWithoutSensor : public measurements::ContactWithoutSensor
+class LoContactWithoutSensor : public measurements::ContactWithoutSensor
   {
     // the legged odometry requires the use of contacts associated to force sensors, this class must therefore not be
     // implemented
   public:
-    loContactWithoutSensor(int id, std::string name)
+  LoContactWithoutSensor(int id, std::string name)
     {
       BOOST_ASSERT(false && "The legged odometry requires to use only contacts with sensors.");
       id_ = id;
       name_ = name;
     }
 
-  private:
-    loContactWithoutSensor()
+protected:
+  LoContactWithoutSensor()
     {
       BOOST_ASSERT(false && "The legged odometry requires to use only contacts with sensors.");
     }
   };
 
+class LeggedOdometryManager
+{
+public:
+  LeggedOdometryManager() {}
+
+protected:
   ///////////////////////////////////////////////////////////////////////
   /// ------------------------Contacts Manager---------------------------
   ///////////////////////////////////////////////////////////////////////
 
-  typedef measurements::ContactsManager<LoContactWithSensor, loContactWithoutSensor> ContactsManager;
+  typedef measurements::ContactsManager<LoContactWithSensor, LoContactWithoutSensor> ContactsManager;
 
   class LeggedOdometryContactsManager : public ContactsManager
   {
-  private:
+  protected:
     struct sortByForce
     {
       inline bool operator()(const LoContactWithSensor & contact1, const LoContactWithSensor & contact2) const
@@ -181,7 +183,7 @@ public:
   /// @brief Updates the pose of the contacts and estimates the floating base from them.
   /// @param ctl Controller.
   /// @param logger Logger.
-  void updateContacts(const mc_control::MCController & ctl, mc_rtc::Logger & logger);
+  virtual void updateContacts(const mc_control::MCController & ctl, mc_rtc::Logger & logger);
 
   /// @brief Updates the pose of the contacts and estimates the floating base from them. Beware, only the pose is
   /// updated by the odometry, the velocities and accelerations update only performs a transformation from the real
@@ -231,14 +233,16 @@ public:
   /// @brief Computes the kinematics of the contact attached to the odometry robot in the world frame.
   /// @param contact Contact of which we want to compute the kinematics
   /// @param measurementsRobot Robot used only to obtain the sensors measurements.
-  /// @return stateObservation::kine::Kinematics
-  stateObservation::kine::Kinematics getContactKinematics(LoContactWithSensor & contact,
-                                                          const mc_rbdyn::Robot & measurementsRobot);
+  /// @return stateObservation::kine::Kinematics &
+  const stateObservation::kine::Kinematics & getContactKinematics(LoContactWithSensor & contact,
+                                                                  const mc_rbdyn::ForceSensor & fs);
 
   /// @brief Select which contacts to use for the orientation odometry
   /// @details The two contacts with the highest measured force are selected. The contacts at hands are ignored because
   /// their orientation is less trustable.
   void selectForOrientationOdometry();
+
+  stateObservation::kine::Kinematics & getAnchorFramePose(const mc_control::MCController & ctl);
 
   /// @brief Add the log entries corresponding to the contact.
   /// @param logger
@@ -274,10 +278,11 @@ protected:
   // tracked pose of the floating base
   sva::PTransformd fbPose_ = sva::PTransformd::Identity();
 
-private:
+protected:
   LeggedOdometryContactsManager contactsManager_;
   std::shared_ptr<mc_rbdyn::Robots> odometryRobot_;
   bool detectionFromThreshold_ = false;
+  stateObservation::kine::Kinematics worldAnchorFramePose_;
 };
 
 } // namespace leggedOdometry

@@ -199,8 +199,10 @@ void ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::findContactsFro
     const mc_control::MCController & ctl,
     const std::string & robotName)
 {
-  mc_rtc::log::warning(
-      "This mode has not been tested deeply, there might be issues with the contacts surfaces and names");
+  mc_rtc::log::warning("This mode has not been tested deeply, there might be issues with the contacts surfaces and "
+                       "names. There seems to be an issue when the robot turns in LipmWalking using legged odometry. "
+                       "This issue doesn't occur with the other detection methods so there must be a problem with the "
+                       "contacts list or the contacts kinematics not turning? To check");
   const auto & measRobot = ctl.robot(robotName);
 
   contactsFound_.clear();

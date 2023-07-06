@@ -1,6 +1,7 @@
 #pragma once
 
 #include <mc_observers/Observer.h>
+#include <mc_state_observation/observersTools/leggedOdometryTools.h>
 #include <state-observation/observer/tilt-estimator.hpp>
 #include <state-observation/tools/rigid-body-kinematics.hpp>
 
@@ -19,9 +20,16 @@ public:
 
   bool run(const mc_control::MCController & ctl) override;
 
+  void updateAnchorFrame(const mc_control::MCController & ctl);
+
+  void updateAnchorFrameOdometry(const mc_control::MCController & ctl);
+  void updateAnchorFrameNoOdometry(const mc_control::MCController & ctl);
+
   void updatePoseAndVel(const mc_control::MCController & ctl,
                         const stateObservation::Vector3 & localWorldImuLinVel,
                         const stateObservation::Vector3 & localWorldImuAngVel);
+
+  void runTiltEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & realRobot);
 
   void update(mc_control::MCController & ctl) override;
 
@@ -122,11 +130,17 @@ private:
   bool anchorFrameJumped_ = false; /** Detects whether the anchor frame had a discontinuity */
   bool firstIter_ = true;
 
+  bool withOdometry_ = false;
+
   stateObservation::Vector3 x1_;
   stateObservation::kine::Kinematics realWorldImuKine_;
   stateObservation::kine::Kinematics worldImuKine_;
   stateObservation::kine::Kinematics realImuAnchorKine_;
   stateObservation::kine::Kinematics realFbAnchorKine_;
+
+  double contactDetectionPropThreshold_ = 0.11;
+
+  leggedOdometry::LeggedOdometryManager odometryManager_;
 };
 
 } // namespace mc_state_observation

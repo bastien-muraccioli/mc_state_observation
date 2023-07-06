@@ -3,7 +3,7 @@
 #include <iostream>
 #include <mc_state_observation/TiltObserver.h>
 #include <mc_state_observation/gui_helpers.h>
-#include <mc_state_observation/kinematicsTools.h>
+#include <mc_state_observation/observersTools/kinematicsTools.h>
 
 namespace mc_state_observation
 {
@@ -22,6 +22,29 @@ TiltObserver::TiltObserver(const std::string & type, double dt)
 void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc::Configuration & config)
 {
   robot_ = config("robot", ctl.robot().name());
+
+  std::string odometryType = static_cast<std::string>(config("odometryType"));
+  bool odometry6d;
+
+  withOdometry_ = config("withOdometry");
+
+  if(odometryType != "None")
+  {
+    if(odometryType == "flatOdometry")
+    {
+      odometry6d = false;
+    }
+    else if(odometryType == "6dOdometry")
+    {
+      odometry6d = true;
+    }
+    else
+    {
+      mc_rtc::log::error_and_throw<std::runtime_error>(
+          "Odometry type not allowed. Please pick among : [None, flatOdometry, 6dOdometry]");
+    }
+  }
+
   updateRobotName_ = robot_;
   imuSensor_ = config("imuSensor", ctl.robot().bodySensor().name());
   updateSensorName_ = imuSensor_;
@@ -36,6 +59,52 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
   config("updateSensor", updateSensor_);
   config("updateSensorName", updateSensorName_);
   desc_ = fmt::format("{}", name_);
+
+  if(withOdometry_)
+  {
+    std::vector<std::string> surfacesForContactDetection = config("surfacesForContactDetection");
+    double contactDetectionPropThreshold = config("contactDetectionPropThreshold");
+    bool withYawEstimation = config("withYawEstimation");
+    std::vector<std::string> contactsSensorsDisabledInit = config("contactsSensorDisabledInit");
+
+    std::string contactsDetection = static_cast<std::string>(config("contactsDetection"));
+
+    if(contactsDetection != "fromSolver" && contactsDetection != "fromThreshold" && contactsDetection != "fromSurfaces")
+    {
+      mc_rtc::log::error_and_throw<std::runtime_error>(
+          "Contacts detection type not allowed. Please pick among : [fromSolver, fromThreshold, fromSurfaces] or "
+          "initialize a list of surfaces with the variable surfacesForContactDetection");
+    }
+    if(surfacesForContactDetection.size() > 0)
+    {
+      if(contactsDetection != "fromSurfaces")
+      {
+        mc_rtc::log::error_and_throw<std::runtime_error>(
+            "Another type of contacts detection is currently used, please change it to 'fromSurfaces' or empty the "
+            "surfacesForContactDetection variable");
+      }
+    }
+    else if(contactsDetection == "fromSurfaces")
+    {
+      mc_rtc::log::error_and_throw<std::runtime_error>(
+          "You selected the contacts detection using surfaces but didn't add the list of surfaces, please add it usign "
+          "the variable surfacesForContactDetection");
+    }
+
+    const auto & robot = ctl.robot(robot_);
+    double contactDetectionThreshold = robot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_;
+    std::vector<std::string> contactsSensorDisabledInit = config("contactsSensorDisabledInit");
+    if(contactsDetection == "fromSurfaces")
+    {
+      odometryManager_.init(ctl, robot_, "TiltObserver", odometry6d, withYawEstimation, contactsDetection,
+                            surfacesForContactDetection, contactsSensorDisabledInit, contactDetectionThreshold);
+    }
+    else
+    {
+      odometryManager_.init(ctl, robot_, "TiltObserver", odometry6d, withYawEstimation, contactsDetection,
+                            contactsSensorDisabledInit, contactDetectionThreshold);
+    }
+  }
 }
 
 void TiltObserver::reset(const mc_control::MCController & ctl)
@@ -53,14 +122,36 @@ void TiltObserver::reset(const mc_control::MCController & ctl)
   velW_ = ctl.realRobot(robot_).velW();
 }
 
-bool TiltObserver::run(const mc_control::MCController & ctl)
+void TiltObserver::updateAnchorFrame(const mc_control::MCController & ctl)
+{
+  if(withOdometry_)
+  {
+    updateAnchorFrameOdometry(ctl);
+  }
+  else
+  {
+    updateAnchorFrameNoOdometry(ctl);
+  }
+}
+
+void TiltObserver::updateAnchorFrameOdometry(const mc_control::MCController & ctl)
+{
+  auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
+
+  odometryManager_.run(ctl, logger, poseW_);
+
+  so::kine::Kinematics worldAnchorKine = odometryManager_.getAnchorFramePose(ctl);
+  X_0_C_.translation() = worldAnchorKine.position();
+  X_0_C_.rotation() = worldAnchorKine.orientation.toMatrix3().transpose();
+  X_0_C_real_ = X_0_C_;
+}
+
+void TiltObserver::updateAnchorFrameNoOdometry(const mc_control::MCController & ctl)
 {
   const auto & robot = ctl.robot(robot_);
   const auto & realRobot = ctl.realRobot(robot_);
 
-  estimator_.setAlpha(alpha_);
-  estimator_.setBeta(beta_);
-  estimator_.setGamma(gamma_);
+  anchorFrameJumped_ = false;
 
   if(!ctl.datastore().has(anchorFrameFunction_))
   {
@@ -68,12 +159,7 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
         "Observer {} requires a \"{}\" function in the datastore to provide the observer's kinematic anchor frame.\n"
         "Please refer to https://jrl-umi3218.github.io/mc_rtc/tutorials/recipes/observers.html for further details.",
         name(), anchorFrameFunction_);
-    return false;
-  }
 
-  anchorFrameJumped_ = false;
-
-  /* If the anchor frame is troublesome, one can use this
   double leftFootRatio = robot.indirectSurfaceForceSensor("LeftFootCenter").force().z()
                          / (robot.indirectSurfaceForceSensor("LeftFootCenter").force().z()
                             + robot.indirectSurfaceForceSensor("RightFootCenter").force().z());
@@ -81,10 +167,12 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
   X_0_C_ = sva::interpolate(robot.surfacePose("RightFootCenter"), robot.surfacePose("LeftFootCenter"), leftFootRatio);
   X_0_C_real_ = sva::interpolate(realRobot.surfacePose("RightFootCenter"), realRobot.surfacePose("LeftFootCenter"),
   leftFootRatio);
-  */
-
+  }
+  else
+  {
   X_0_C_ = ctl.datastore().call<sva::PTransformd>(anchorFrameFunction_, ctl.robot(robot_));
   X_0_C_real_ = ctl.datastore().call<sva::PTransformd>(anchorFrameFunction_, ctl.realRobot(robot_));
+  }
 
   if(firstIter_)
   { // Ignore anchor frame check on first iteration
@@ -112,6 +200,17 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
   }
 
   X_0_C_real_previous_ = X_0_C_real_;
+}
+
+void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & realRobot)
+{
+  const auto & robot = ctl.robot(robot_);
+
+  estimator_.setAlpha(alpha_);
+  estimator_.setBeta(beta_);
+  estimator_.setGamma(gamma_);
+
+  updateAnchorFrame(ctl);
 
   // Anchor frame defined w.r.t control robot
   // XXX what if the feet are being moved by the stabilizer?
@@ -159,9 +258,14 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
   realWorldImuKine_ = realWorldParentKine * realParentImuKine;
 
   so::kine::Kinematics newWorldAnchorKine = kinematicsTools::poseFromSva(X_0_C_, so::kine::Kinematics::Flags::pose);
+
+  so::kine::Kinematics newRealWorldAnchorKine =
+      kinematicsTools::poseFromSva(X_0_C_real_, so::kine::Kinematics::Flags::pose);
+
   worldAnchorKine_.update(newWorldAnchorKine, ctl.timeStep, flagPoseVels_);
 
-  realWorldAnchorKine_.update(newWorldAnchorKine, ctl.timeStep, flagPoseVels_);
+  realWorldAnchorKine_.update(newRealWorldAnchorKine, ctl.timeStep,
+                              flagPoseVels_); // this is not the real robot's anchor frame
 
   // Pose of the imu in the control frame
   so::kine::Kinematics realAnchorImuKine = realWorldAnchorKine_.getInverse() * realWorldImuKine_;
@@ -179,10 +283,23 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
 
   auto k = estimator_.getCurrentTime();
 
+  /*
   x1_ = realWorldImuKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.linVel() - realImuAnchorKine_.linVel()
         - (imu.angularVelocity()).cross(realImuAnchorKine_.position());
+  */
+
+  x1_ = (realWorldImuKine_.orientation.toMatrix3().transpose() * realWorldImuKine_.angVel())
+            .cross(worldImuKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.position()
+                   + realAnchorImuKine.orientation.toMatrix3().transpose() * realAnchorImuKine.position())
+        + worldImuKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.linVel()
+        - (realAnchorImuKine.orientation.toMatrix3().transpose() * realAnchorImuKine.angVel())
+              .cross(realAnchorImuKine.orientation.toMatrix3().transpose() * realAnchorImuKine.position())
+        + realAnchorImuKine.orientation.toMatrix3().transpose() * realAnchorImuKine.linVel()
+        - (worldImuKine_.orientation.toMatrix3().transpose() * worldImuKine_.angVel())
+              .cross(worldImuKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.position());
+
   estimator_.setMeasurement(imu.linearAcceleration(), imu.angularVelocity(), k + 1);
-  estimator_.setExplicitX1(x1_); // we directly give the virtual measurement of the velocity by the IMU
+  // estimator_.setExplicitX1(x1_); // we directly give the virtual measurement of the velocity by the IMU
 
   xk_ = estimator_.getEstimatedState(k + 1);
 
@@ -214,6 +331,20 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
   virtualMeasureWorldImuLocalLinVel_ = estimator_.getVirtualLocalVelocityMeasurement();
   realRobotWorldImuLocalLinVel_ = realWorldImuKine_.orientation.toMatrix3().transpose() * realWorldImuKine_.linVel();
   realRobotWorldImuLocalAngVel_ = realWorldImuKine_.orientation.toMatrix3().transpose() * realWorldImuKine_.angVel();
+}
+
+bool TiltObserver::run(const mc_control::MCController & ctl)
+{
+  if(!withOdometry_)
+  {
+    const auto & realRobot = ctl.realRobot(robot_);
+    runTiltEstimator(ctl, realRobot);
+  }
+  else
+  {
+    odometryManager_.updateOdometryRobot(ctl, true, false);
+    runTiltEstimator(ctl, odometryManager_.odometryRobot());
+  }
 
   return true;
 }
@@ -222,15 +353,21 @@ void TiltObserver::updatePoseAndVel(const mc_control::MCController & ctl,
                                     const so::Vector3 & localWorldImuLinVel,
                                     const so::Vector3 & localWorldImuAngVel)
 {
+  if(withOdometry_)
+  {
+  }
+  else
+  {
   poseW_.rotation() = R_0_fb_.transpose();
 
   realWorldFbKine_.orientation = R_0_fb_; // we take into account the newly estimated orientation
 
   realFbAnchorKine_ = realWorldFbKine_.getInverse() * realWorldAnchorKine_;
 
-  poseW_.translation() =
-      R_0_fb_
-      * (worldFbKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.position() - realFbAnchorKine_.position());
+    poseW_.translation() = R_0_fb_
+                           * (worldFbKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.position()
+                              - realFbAnchorKine_.position());
+  }
 
   if(!anchorFrameJumped_)
   {
@@ -299,6 +436,10 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
   logger.addLogEntry(category + "_IMU_world_localLinVel", [this]() -> so::Vector3 { return xk_.head(3); });
   logger.addLogEntry(category + "_IMU_AnchorFrame_pose", [this]() -> const sva::PTransformd & { return X_C_IMU_; });
   logger.addLogEntry(category + "_IMU_AnchorFrame_linVel", [this]() -> const sva::MotionVecd & { return imuVelC_; });
+  logger.addLogEntry(category + "_AnchorFrame_world_position",
+                     [this]() -> so::Vector3 { return worldAnchorKine_.position(); });
+  logger.addLogEntry(category + "_AnchorFrame_world_orientation",
+                     [this]() -> so::Vector3 { return worldAnchorKine_.orientation.toRotationVector(); });
   logger.addLogEntry(category + "_AnchorFrame_world_linVel_global",
                      [this]() -> so::Vector3 { return worldAnchorKine_.linVel(); });
   logger.addLogEntry(category + "_AnchorFrame_world_linVel_local",

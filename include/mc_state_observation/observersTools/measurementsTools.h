@@ -127,7 +127,7 @@ private:
   // list of all the IMUs.
   std::vector<std::string> insertOrder_;
   // map associating all the IMUs to their names.
-  std::map<std::string, IMU> mapIMUs_;
+  std::unordered_map<std::string, IMU> mapIMUs_;
   // Index generator, incremented everytime a new IMU is added
   int num_ = 0;
 };
@@ -340,15 +340,15 @@ public:
 
   /// @brief Get the map of all the contacts associated to a sensor
   ///
-  /// @return std::map<std::string, contactsWithSensorT>&
-  inline std::map<std::string, ContactWithSensorT> & contactsWithSensors()
+  /// @return std::unordered_map<std::string, contactsWithSensorT>&
+  inline std::unordered_map<std::string, ContactWithSensorT> & contactsWithSensors()
   {
     return mapContactsWithSensors_;
   }
   /// @brief Get the map of all the contacts that are not associated to a sensor
   ///
-  /// @return std::map<std::string, ContactWithoutSensorT>&
-  inline std::map<std::string, ContactWithoutSensorT> & contactsWithoutSensors()
+  /// @return std::unordered_map<std::string, ContactWithoutSensorT>&
+  inline std::unordered_map<std::string, ContactWithoutSensorT> & contactsWithoutSensors()
   {
     return mapContactsWithoutSensors_;
   }
@@ -540,11 +540,11 @@ private:
 
 private:
   // map containing all the contacts and indicating if each sensor has a contact or not
-  std::map<std::string, bool> hasSensor_;
+  std::unordered_map<std::string, bool> hasSensor_;
   // map containing all the contacts associated to a sensor
-  std::map<std::string, ContactWithSensorT> mapContactsWithSensors_;
+  std::unordered_map<std::string, ContactWithSensorT> mapContactsWithSensors_;
   // map containing all the contacts that are not associated to a sensor
-  std::map<std::string, ContactWithoutSensorT> mapContactsWithoutSensors_;
+  std::unordered_map<std::string, ContactWithoutSensorT> mapContactsWithoutSensors_;
   // List of all the contacts
   std::vector<std::string> insertOrder_;
   // Index generator, incremented everytime a new contact is created
@@ -679,15 +679,15 @@ public:
 
   /// @brief Get the map of all the contacts associated to a sensor
   ///
-  /// @return std::map<std::string, contactsWithSensorT>&
-  inline std::map<std::string, ContactWithSensorT> & contactsWithSensors()
+  /// @return std::unordered_map<std::string, contactsWithSensorT>&
+  inline std::unordered_map<std::string, ContactWithSensorT> & contactsWithSensors()
   {
     return mapContacts_.contactsWithSensors();
   }
   /// @brief Get the map of all the contacts that are not associated to a sensor
   ///
-  /// @return std::map<std::string, ContactWithoutSensorT>&
-  inline std::map<std::string, ContactWithoutSensorT> & contactsWithoutSensors()
+  /// @return std::unordered_map<std::string, ContactWithoutSensorT>&
+  inline std::unordered_map<std::string, ContactWithoutSensorT> & contactsWithoutSensors()
   {
     return mapContacts_.contactsWithoutSensors();
   }
