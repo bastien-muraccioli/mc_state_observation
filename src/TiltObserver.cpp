@@ -45,6 +45,17 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
     }
   }
 
+  // if(ctl.datastore().has("KoBackupInterval"))
+  if(true)
+  {
+    auto & datastore = (const_cast<mc_control::MCController &>(ctl)).datastore();
+    // int backupInterval = ctl.datastore().get<int>("KoBackupInterval");
+    int backupInterval = 1;
+    backupIterInterval_ = backupInterval / ctl.timeStep;
+    ctl.gui()->addElement({"OdometryReplay"}, mc_rtc::gui::Button("OdometryReplay", [this, &ctl]() { replay(ctl); }));
+    datastore.make<TiltObserver *>("TiltObserverRef", this);
+  }
+
   updateRobotName_ = robot_;
   imuSensor_ = config("imuSensor", ctl.robot().bodySensor().name());
   updateSensorName_ = imuSensor_;
@@ -160,18 +171,18 @@ void TiltObserver::updateAnchorFrameNoOdometry(const mc_control::MCController & 
         "Please refer to https://jrl-umi3218.github.io/mc_rtc/tutorials/recipes/observers.html for further details.",
         name(), anchorFrameFunction_);
 
-  double leftFootRatio = robot.indirectSurfaceForceSensor("LeftFootCenter").force().z()
-                         / (robot.indirectSurfaceForceSensor("LeftFootCenter").force().z()
-                            + robot.indirectSurfaceForceSensor("RightFootCenter").force().z());
+    double leftFootRatio = robot.indirectSurfaceForceSensor("LeftFootCenter").force().z()
+                           / (robot.indirectSurfaceForceSensor("LeftFootCenter").force().z()
+                              + robot.indirectSurfaceForceSensor("RightFootCenter").force().z());
 
-  X_0_C_ = sva::interpolate(robot.surfacePose("RightFootCenter"), robot.surfacePose("LeftFootCenter"), leftFootRatio);
-  X_0_C_real_ = sva::interpolate(realRobot.surfacePose("RightFootCenter"), realRobot.surfacePose("LeftFootCenter"),
-  leftFootRatio);
+    X_0_C_ = sva::interpolate(robot.surfacePose("RightFootCenter"), robot.surfacePose("LeftFootCenter"), leftFootRatio);
+    X_0_C_real_ = sva::interpolate(realRobot.surfacePose("RightFootCenter"), realRobot.surfacePose("LeftFootCenter"),
+                                   leftFootRatio);
   }
   else
   {
-  X_0_C_ = ctl.datastore().call<sva::PTransformd>(anchorFrameFunction_, ctl.robot(robot_));
-  X_0_C_real_ = ctl.datastore().call<sva::PTransformd>(anchorFrameFunction_, ctl.realRobot(robot_));
+    X_0_C_ = ctl.datastore().call<sva::PTransformd>(anchorFrameFunction_, ctl.robot(robot_));
+    X_0_C_real_ = ctl.datastore().call<sva::PTransformd>(anchorFrameFunction_, ctl.realRobot(robot_));
   }
 
   if(firstIter_)
@@ -346,6 +357,12 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
     runTiltEstimator(ctl, odometryManager_.odometryRobot());
   }
 
+  backupFbKinematics_.push(odometryManager_.odometryRobot().posW());
+  if(backupFbKinematics_.size() > backupIterInterval_)
+  {
+    backupFbKinematics_.pop();
+  }
+
   return true;
 }
 
@@ -358,11 +375,11 @@ void TiltObserver::updatePoseAndVel(const mc_control::MCController & ctl,
   }
   else
   {
-  poseW_.rotation() = R_0_fb_.transpose();
+    poseW_.rotation() = R_0_fb_.transpose();
 
-  realWorldFbKine_.orientation = R_0_fb_; // we take into account the newly estimated orientation
+    realWorldFbKine_.orientation = R_0_fb_; // we take into account the newly estimated orientation
 
-  realFbAnchorKine_ = realWorldFbKine_.getInverse() * realWorldAnchorKine_;
+    realFbAnchorKine_ = realWorldFbKine_.getInverse() * realWorldAnchorKine_;
 
     poseW_.translation() = R_0_fb_
                            * (worldFbKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.position()
@@ -423,6 +440,83 @@ void TiltObserver::update(mc_rbdyn::Robot & robot, const mc_control::MCControlle
 {
   robot.posW(poseW_);
   robot.velW(velW_);
+}
+
+so::kine::Kinematics TiltObserver::replay(const mc_control::MCController & ctl)
+{
+  auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
+  if(logger.t() / ctl.timeStep < backupIterInterval_)
+  {
+    mc_rtc::log::warning("The backup function was called before the required time was ellapsed. The backup will be "
+                         "performed using the last {} seconds",
+                         logger.t());
+  }
+
+  if(logger.t() / ctl.timeStep - lastBackupIter_ < backupIterInterval_)
+  {
+    mc_rtc::log::warning("The backup function was called again too quickly. The backup will be "
+                         "performed using the last {} seconds",
+                         logger.t() - lastBackupIter_ * ctl.timeStep);
+  }
+
+  // sva::PTransformd zeroPose;
+  // zeroPose.translation().setZero();
+  // zeroPose.rotation() = so::kine::Orientation::zeroRotation();
+
+  // odometryManager_.odometryRobot().posW(zeroPose);
+
+  // new initial pose of the floating base
+  /*
+  std::queue<stateObservation::kine::Kinematics> * KoBackupFbKinematics =
+      ctl.datastore().get<std::queue<stateObservation::kine::Kinematics> *>("KoBackupFbKinematics");
+      so::kine::Kinematics worldResetKine = KoBackupFbKinematics->front();
+      */
+
+  so::kine::Kinematics worldResetKine = so::kine::Kinematics::zeroKinematics(so::kine::Kinematics::Flags::pose);
+
+  // original initial pose of the floating base
+  so::kine::Kinematics worldFbInitBackup =
+      kinematicsTools::poseFromSva(backupFbKinematics_.front(), so::kine::Kinematics::Flags::pose);
+
+  // original final pose of the floating base
+  so::kine::Kinematics worldFbFinalBackup =
+      kinematicsTools::poseFromSva(odometryManager_.odometryRobot().posW(), so::kine::Kinematics::Flags::pose);
+
+  // transformation between the initial and the final pose during the backup interval
+  so::kine::Kinematics initFinal =
+      worldFbInitBackup.getInverse() * worldFbFinalBackup; // transformation from the initial pose to the final pose
+
+  // new initial pose of the floating base in the frame of the original initial pose
+  so::kine::Kinematics initReset = worldFbInitBackup.getInverse() * worldResetKine;
+
+  // new final pose of the floating base in the world
+  so::kine::Kinematics newWorldFbFinalKine = worldResetKine * initFinal;
+
+  // new final pose of the floating base in the original final pose of the floating base. Used also for contacts as the
+  // transformation affects the entire robot.
+  so::kine::Kinematics finalFinal2 = worldFbFinalBackup.getInverse() * newWorldFbFinalKine;
+
+  for(const int & contactIndex : odometryManager_.contactsManager().contactsFound())
+  {
+    odometryManager_.contactsManager().contactWithSensor(contactIndex).worldRefKine_ =
+        odometryManager_.contactsManager().contactWithSensor(contactIndex).worldRefKine_ * finalFinal2;
+  }
+
+  sva::PTransformd newFbPose;
+  newFbPose.translation() = newWorldFbFinalKine.position();
+  newFbPose.rotation() = newWorldFbFinalKine.orientation.toMatrix3().transpose();
+
+  odometryManager_.odometryRobot().posW(newFbPose);
+
+  std::queue<sva::PTransformd> emptyQueue;
+  std::swap(backupFbKinematics_, emptyQueue);
+
+  // std::queue<so::kine::Kinematics> emptyKineQueue;
+  // std::swap(*KoBackupFbKinematics, emptyKineQueue);
+
+  lastBackupIter_ = logger.t() / ctl.timeStep;
+
+  return newWorldFbFinalKine;
 }
 
 void TiltObserver::addToLogger(const mc_control::MCController & ctl,

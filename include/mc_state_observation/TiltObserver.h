@@ -2,6 +2,7 @@
 
 #include <mc_observers/Observer.h>
 #include <mc_state_observation/observersTools/leggedOdometryTools.h>
+#include <queue>
 #include <state-observation/observer/tilt-estimator.hpp>
 #include <state-observation/tools/rigid-body-kinematics.hpp>
 
@@ -33,6 +34,8 @@ public:
 
   void update(mc_control::MCController & ctl) override;
 
+  stateObservation::kine::Kinematics replay(const mc_control::MCController & ctl);
+
 protected:
   /*! \brief update the robot pose in the world only for visualization purpose
    *
@@ -40,6 +43,7 @@ protected:
    */
 
   void update(mc_rbdyn::Robot & robot, const mc_control::MCController & ctl);
+
   /*! \brief Add observer from logger
    *
    * @param category Category in which to log this observer
@@ -109,7 +113,6 @@ protected:
   // The observed tilt of the sensor
   Eigen::Matrix3d estimatedRotationIMU_;
 
-
   stateObservation::Vector3 m_pF_prev;
   /// Instance of the Tilt Estimator
   stateObservation::Vector xk_;
@@ -140,6 +143,10 @@ private:
 
   double contactDetectionPropThreshold_ = 0.11;
 
+  int lastBackupIter_ = 0;
+  int backupIterInterval_ = 0;
+
+  std::queue<sva::PTransformd> backupFbKinematics_;
   leggedOdometry::LeggedOdometryManager odometryManager_;
 };
 

@@ -19,74 +19,74 @@ namespace leggedOdometry
  * mc_rtc::Logger & logger, sva::PTransformd & pose, sva::MotionVecd & vels, sva::MotionVecd & accs).
  **/
 
-  ///////////////////////////////////////////////////////////////////////
-  /// ------------------------------Contacts-----------------------------
-  ///////////////////////////////////////////////////////////////////////
-  // Enhancement of the class ContactWithSensor with the reference of the contact in the world and the force measured by
-  // the associated sensor
-  class LoContactWithSensor : public measurements::ContactWithSensor
-  {
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+///////////////////////////////////////////////////////////////////////
+/// ------------------------------Contacts-----------------------------
+///////////////////////////////////////////////////////////////////////
+// Enhancement of the class ContactWithSensor with the reference of the contact in the world and the force measured by
+// the associated sensor
+class LoContactWithSensor : public measurements::ContactWithSensor
+{
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 protected:
-    LoContactWithSensor() {}
+  LoContactWithSensor() {}
 
-  public:
-    LoContactWithSensor(int id, std::string forceSensorName)
-    {
-      id_ = id;
-      name_ = forceSensorName;
-      forceSensorName_ = forceSensorName;
+public:
+  LoContactWithSensor(int id, std::string forceSensorName)
+  {
+    id_ = id;
+    name_ = forceSensorName;
+    forceSensorName_ = forceSensorName;
 
-      resetContact();
-    }
+    resetContact();
+  }
 
-    LoContactWithSensor(int id,
-                        const std::string & forceSensorName,
-                        const std::string & surfaceName,
-                        bool sensorAttachedToSurface)
-    {
-      id_ = id;
-      name_ = forceSensorName;
-      resetContact();
+  LoContactWithSensor(int id,
+                      const std::string & forceSensorName,
+                      const std::string & surfaceName,
+                      bool sensorAttachedToSurface)
+  {
+    id_ = id;
+    name_ = forceSensorName;
+    resetContact();
 
-      surface_ = surfaceName;
-      forceSensorName_ = forceSensorName;
-      sensorAttachedToSurface_ = sensorAttachedToSurface;
-    }
+    surface_ = surfaceName;
+    forceSensorName_ = forceSensorName;
+    sensorAttachedToSurface_ = sensorAttachedToSurface;
+  }
 
-  public:
-    // reference of the contact in the world
-    stateObservation::kine::Kinematics worldRefKine_;
-    // indicates whether the contact can be used for the orientation odometry or not
-    bool useForOrientation_ = false;
-    // norm of the force measured by the sensor
-    double forceNorm_ = 0.0;
+public:
+  // reference of the contact in the world
+  stateObservation::kine::Kinematics worldRefKine_;
+  // indicates whether the contact can be used for the orientation odometry or not
+  bool useForOrientation_ = false;
+  // norm of the force measured by the sensor
+  double forceNorm_ = 0.0;
   // current estimation of the real orientation of the floating base in the world from the contact kinematics
   stateObservation::kine::Orientation currentWorldFbOrientation_;
   // current estimation of the kinematics of the contact in the world
   stateObservation::kine::Kinematics currentWorldKine_;
-  };
+};
 
 class LoContactWithoutSensor : public measurements::ContactWithoutSensor
-  {
-    // the legged odometry requires the use of contacts associated to force sensors, this class must therefore not be
-    // implemented
-  public:
+{
+  // the legged odometry requires the use of contacts associated to force sensors, this class must therefore not be
+  // implemented
+public:
   LoContactWithoutSensor(int id, std::string name)
-    {
-      BOOST_ASSERT(false && "The legged odometry requires to use only contacts with sensors.");
-      id_ = id;
-      name_ = name;
-    }
+  {
+    BOOST_ASSERT(false && "The legged odometry requires to use only contacts with sensors.");
+    id_ = id;
+    name_ = name;
+  }
 
 protected:
   LoContactWithoutSensor()
-    {
-      BOOST_ASSERT(false && "The legged odometry requires to use only contacts with sensors.");
-    }
-  };
+  {
+    BOOST_ASSERT(false && "The legged odometry requires to use only contacts with sensors.");
+  }
+};
 
-class LeggedOdometryManager
+struct LeggedOdometryManager
 {
 public:
   LeggedOdometryManager() {}
@@ -98,7 +98,7 @@ protected:
 
   typedef measurements::ContactsManager<LoContactWithSensor, LoContactWithoutSensor> ContactsManager;
 
-  class LeggedOdometryContactsManager : public ContactsManager
+  struct LeggedOdometryContactsManager : public ContactsManager
   {
   protected:
     struct sortByForce
