@@ -82,14 +82,18 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl,
 {
   const auto & realRobot = ctl.realRobot(robotName_);
 
-  // copies the mbc and mb of the real robot to update the joints configuration.
-  odometryRobot().mbc() = realRobot.mbc();
-  odometryRobot().mb() = realRobot.mb();
+  // copies the updated joints configuration from the real robot.
+  odometryRobot().q() = realRobot.q();
 
-  // we use the velocities and accelerations of the real robot because they will be compensated anyway as we compute the
+  odometryRobot().posW(fbPose_);
+
+  // we set the velocities and accelerations to zero as they will be compensated anyway as we compute the
   // successive poses in the local frame
-  odometryRobot().velW(realRobot.velW());
-  odometryRobot().accW(realRobot.accW());
+  sva::MotionVecd zeroMotion;
+  zeroMotion.linear() = so::Vector3::Zero();
+  zeroMotion.angular() = so::Vector3::Zero();
+  odometryRobot().velW(zeroMotion);
+  odometryRobot().accW(zeroMotion);
 
   odometryRobot().forwardKinematics();
 
@@ -108,14 +112,18 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl,
 {
   const auto & realRobot = ctl.realRobot(robotName_);
 
-  // copies the mbc and mb of the real robot to update the joints configuration.
-  odometryRobot().mbc() = realRobot.mbc();
-  odometryRobot().mb() = realRobot.mb();
+  // copies the updated joints configuration from the real robot.
+  odometryRobot().q() = realRobot.q();
 
-  // we use the velocities and accelerations of the real robot because they will be compensated anyway as we compute the
+  odometryRobot().posW(fbPose_);
+
+  // we set the velocities and accelerations to zero as they will be compensated anyway as we compute the
   // successive poses in the local frame
-  odometryRobot().velW(realRobot.velW());
-  odometryRobot().accW(realRobot.accW());
+  sva::MotionVecd zeroMotion;
+  zeroMotion.linear() = so::Vector3::Zero();
+  zeroMotion.angular() = so::Vector3::Zero();
+  odometryRobot().velW(zeroMotion);
+  odometryRobot().accW(zeroMotion);
 
   odometryRobot().forwardKinematics();
 
@@ -131,14 +139,19 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl, mc_rtc::Lo
 {
   const auto & realRobot = ctl.realRobot(robotName_);
 
-  // copies the mbc and mb of the real robot to update the joints configuration.
-  odometryRobot().mbc() = realRobot.mbc();
-  odometryRobot().mb() = realRobot.mb();
+  // copies the updated joints configuration from the real robot.
+  odometryRobot().q() = realRobot.q();
 
-  // we use the velocities and accelerations of the real robot because they will be compensated anyway as we compute the
+  odometryRobot().posW(fbPose_);
+  odometryRobot().forwardKinematics();
+
+  // we set the velocities and accelerations to zero as they will be compensated anyway as we compute the
   // successive poses in the local frame
-  odometryRobot().velW(realRobot.velW());
-  odometryRobot().accW(realRobot.accW());
+  sva::MotionVecd zeroMotion;
+  zeroMotion.linear() = so::Vector3::Zero();
+  zeroMotion.angular() = so::Vector3::Zero();
+  odometryRobot().velW(zeroMotion);
+  odometryRobot().accW(zeroMotion);
 
   odometryRobot().forwardKinematics();
 
