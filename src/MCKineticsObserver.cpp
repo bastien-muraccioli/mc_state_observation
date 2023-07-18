@@ -422,33 +422,36 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
       newWorldCentroidKine.orientation = mcko_K_0_fb.orientation;
       newWorldCentroidKine.angVel = mcko_K_0_fb.angVel();
 
-      so::kine::Kinematics fbFb;
-      fbFb.setZero(so::kine::Kinematics::Flags::all);
-
-      // Given, the Kinematics of the floating base inside its own frame (zero kinematics) which is our user
-      // frame, the Kinetics Observer will return the kinematics of the floating base in the real world frame.
-      so::kine::Kinematics currentWorldFbKine = observer_.getGlobalKinematicsOf(fbFb);
-
-      for(const int & contactIndex : contactsManager_.contactsFound())
-      {
-        KoContactWithSensor contact = contactsManager_.contactWithSensor(contactIndex);
-
-        so::kine::Kinematics newWorldContactKineRef = updateContactsPoseFromFb(
-            contact, currentWorldFbKine, observer_.getContactStateRestKinematics(contactIndex), mcko_K_0_fb);
-
-        // Update of the force measurements (the offset due to the gravity changed)
-        updateContactForceMeasurement(contact, contact.surfaceSensorKine_,
-                                      robot.forceSensor(contact.forceSensorName()).wrenchWithoutGravity(inputRobot));
-
-        observer_.setStateContact(contactIndex, newWorldContactKineRef, contact.contactWrenchVector_, true);
-      }
-
       observer_.setWorldCentroidStateKinematics(newWorldCentroidKine, true);
       observer_.setStateUnmodeledWrench(so::Vector6::Zero(), true);
 
       for(int i = 0; i < mapIMUs_.getList().size(); i++)
       {
         observer_.setGyroBias(so::Vector3::Zero(), i, true);
+      }
+
+      for(const int & contactIndex : contactsManager_.contactsFound())
+      {
+        KoContactWithSensor contact = contactsManager_.contactWithSensor(contactIndex);
+
+        // Update of the force measurements (the offset due to the gravity changed)
+        const mc_rbdyn::ForceSensor & forceSensor = robot.forceSensor(contact.forceSensorName());
+
+        so::kine::Kinematics bodySensorKine =
+            kinematicsTools::poseFromSva(forceSensor.X_p_f(), so::kine::Kinematics::Flags::vels);
+
+        so::kine::Kinematics bodySurfaceKine = kinematicsTools::poseFromSva(
+            robot.surface(contact.surfaceName()).X_b_s(), so::kine::Kinematics::Flags::vels);
+
+        so::kine::Kinematics surfaceSensorKine = bodySurfaceKine.getInverse() * bodySensorKine;
+
+        updateContactForceMeasurement(contact, surfaceSensorKine, forceSensor.wrenchWithoutGravity(inputRobot));
+
+        so::kine::Kinematics newWorldContactKineRef;
+
+        getOdometryWorldContactReference(ctl, contact, newWorldContactKineRef);
+
+        observer_.setStateContact(contactIndex, newWorldContactKineRef, contact.contactWrenchVector_, true);
       }
 
       invincibilityIter_ = 0;
@@ -481,7 +484,7 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
         KoContactWithSensor contact = contactsManager_.contactWithSensor(contactIndex);
 
         // Update of the force measurements (the contribution of the gravity changed)
-        const mc_rbdyn::ForceSensor forceSensor = robot.forceSensor(contact.forceSensorName());
+        const mc_rbdyn::ForceSensor & forceSensor = robot.forceSensor(contact.forceSensorName());
 
         // the tilt of the robot changed so the contribution of the gravity to the measurements changed too
         if(contactsDetectionFromThreshold_)
@@ -521,13 +524,13 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
 
 so::kine::Kinematics MCKineticsObserver::updateContactsPoseFromFb(
     KoContactWithSensor & contact,
-    const stateObservation::kine::Kinematics & currentFbWorld,
-    const stateObservation::kine::Kinematics & currentWorldContactRef,
+    const stateObservation::kine::Kinematics & oldFbWorld,
+    const stateObservation::kine::Kinematics & oldWorldContactRef,
     const stateObservation::kine::Kinematics & newWorldFbKine)
 {
   so::kine::Kinematics newWorldContactKine;
 
-  so::kine::Kinematics fbContactRefKine = currentFbWorld * currentWorldContactRef;
+  so::kine::Kinematics fbContactRefKine = oldFbWorld * oldWorldContactRef;
 
   if(contactsDetectionFromThreshold_)
   {
@@ -676,7 +679,7 @@ const measurements::ContactsManager<KoContactWithSensor, measurements::ContactWi
 
 const so::kine::Kinematics MCKineticsObserver::getContactWorldKinematics(KoContactWithSensor & contact,
                                                                          const mc_rbdyn::Robot & robot,
-                                                                         const mc_rbdyn::ForceSensor fs,
+                                                                         const mc_rbdyn::ForceSensor & fs,
                                                                          const sva::ForceVecd & measuredWrench)
 {
   /*
@@ -724,7 +727,7 @@ const so::kine::Kinematics MCKineticsObserver::getContactWorldKinematics(KoConta
 
 const so::kine::Kinematics MCKineticsObserver::getContactWorldKinematics(KoContactWithSensor & contact,
                                                                          const mc_rbdyn::Robot & robot,
-                                                                         const mc_rbdyn::ForceSensor fs)
+                                                                         const mc_rbdyn::ForceSensor & fs)
 {
   /*
   Can be used with inputRobot, a virtual robot corresponding to the real robot whose floating base's frame is
@@ -867,7 +870,7 @@ void MCKineticsObserver::updateContact(const mc_control::MCController & ctl,
 
   const auto & robot = ctl.robot(robot_);
   KoContactWithSensor & contact = contactsManager_.contactWithSensor(contactIndex);
-  const mc_rbdyn::ForceSensor forceSensor = robot.forceSensor(contact.forceSensorName());
+  const mc_rbdyn::ForceSensor & forceSensor = robot.forceSensor(contact.forceSensorName());
 
   sva::ForceVecd measuredWrench = forceSensor.wrenchWithoutGravity(inputRobot);
 

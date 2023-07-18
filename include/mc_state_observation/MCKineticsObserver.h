@@ -163,7 +163,7 @@ protected:
   /// @return stateObservation::kine::Kinematics &
   const stateObservation::kine::Kinematics getContactWorldKinematics(KoContactWithSensor & contact,
                                                                      const mc_rbdyn::Robot & robot,
-                                                                     const mc_rbdyn::ForceSensor fs,
+                                                                     const mc_rbdyn::ForceSensor & fs,
                                                                      const sva::ForceVecd & measuredWrench);
 
   /// @brief Computes the kinematics of the contact attached to the robot in the world frame.
@@ -173,7 +173,7 @@ protected:
   /// @return stateObservation::kine::Kinematics &
   const stateObservation::kine::Kinematics getContactWorldKinematics(KoContactWithSensor & contact,
                                                                      const mc_rbdyn::Robot & robot,
-                                                                     const mc_rbdyn::ForceSensor fs);
+                                                                     const mc_rbdyn::ForceSensor & fs);
 
   void updateContactForceMeasurement(KoContactWithSensor & contact,
                                      stateObservation::kine::Kinematics surfaceSensorKine,
