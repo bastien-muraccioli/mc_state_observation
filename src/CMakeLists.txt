@@ -31,7 +31,7 @@ if(NOT BUILD_MCKINETICS_ONLY)
   add_so_observer(AttitudeObserver)
   #add_so_observer(LegacyFlexibilityObserver)
   add_so_observer(NaiveOdometry)
-  #add_so_observer(TiltObserver)
+  add_so_observer(TiltObserver)
 endif()
 add_so_observer(MCKineticsObserver)
 

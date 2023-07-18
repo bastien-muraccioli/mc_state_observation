@@ -26,10 +26,10 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
   std::string odometryType = static_cast<std::string>(config("odometryType"));
   bool odometry6d;
 
-  withOdometry_ = config("withOdometry");
-
   if(odometryType != "None")
   {
+    withOdometry_ = true;
+
     if(odometryType == "flatOdometry")
     {
       odometry6d = false;
@@ -45,15 +45,16 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
     }
   }
 
-  // if(ctl.datastore().has("KoBackupInterval"))
-  if(true)
+  // if(ctl.datastore().has("KoBackupInterval")) // not working because called before MCKO
+  bool asBackup = false;
+  config("asBackup", asBackup);
+  if(asBackup)
   {
+    BOOST_ASSERT(withOdometry_ && "The odometry must be used to perform backup");
     auto & datastore = (const_cast<mc_control::MCController &>(ctl)).datastore();
-    // int backupInterval = ctl.datastore().get<int>("KoBackupInterval");
-    int backupInterval = 1;
-    backupIterInterval_ = backupInterval / ctl.timeStep;
-    ctl.gui()->addElement({"OdometryReplay"}, mc_rtc::gui::Button("OdometryReplay", [this, &ctl]() { replay(ctl); }));
-    datastore.make<TiltObserver *>("TiltObserverRef", this);
+    ctl.gui()->addElement({"OdometryBackup"}, mc_rtc::gui::Button("OdometryBackup", [this, &ctl]() { backupFb(ctl); }));
+
+    datastore.make_call("runBackup", [this, &ctl]() -> const so::kine::Kinematics { return backupFb(ctl); });
   }
 
   updateRobotName_ = robot_;
@@ -355,12 +356,7 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
   {
     odometryManager_.updateOdometryRobot(ctl, true, false);
     runTiltEstimator(ctl, odometryManager_.odometryRobot());
-  }
-
-  backupFbKinematics_.push(odometryManager_.odometryRobot().posW());
-  if(backupFbKinematics_.size() > backupIterInterval_)
-  {
-    backupFbKinematics_.pop();
+    backupFbKinematics_.push_back(odometryManager_.odometryRobot().posW());
   }
 
   return true;
@@ -409,7 +405,6 @@ void TiltObserver::updatePoseAndVel(const mc_control::MCController & ctl,
   so::Vector3 vel = worldAnchorKine_.linVel() - realWorldFbKine_.orientation * realFbAnchorKine_.linVel()
                     - (realWorldFbKine_.angVel()).cross(realWorldFbKine_.orientation * realFbAnchorKine_.position());
 
-  // to here
   velW_.linear() = vel;
   velW_.angular() = realWorldFbKine_.angVel();
 }
@@ -442,81 +437,43 @@ void TiltObserver::update(mc_rbdyn::Robot & robot, const mc_control::MCControlle
   robot.velW(velW_);
 }
 
-so::kine::Kinematics TiltObserver::replay(const mc_control::MCController & ctl)
+const so::kine::Kinematics TiltObserver::backupFb(const mc_control::MCController & ctl)
 {
-  auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
-  if(logger.t() / ctl.timeStep < backupIterInterval_)
-  {
-    mc_rtc::log::warning("The backup function was called before the required time was ellapsed. The backup will be "
-                         "performed using the last {} seconds",
-                         logger.t());
-  }
-
-  if(logger.t() / ctl.timeStep - lastBackupIter_ < backupIterInterval_)
-  {
-    mc_rtc::log::warning("The backup function was called again too quickly. The backup will be "
-                         "performed using the last {} seconds",
-                         logger.t() - lastBackupIter_ * ctl.timeStep);
-  }
-
-  // sva::PTransformd zeroPose;
-  // zeroPose.translation().setZero();
-  // zeroPose.rotation() = so::kine::Orientation::zeroRotation();
-
-  // odometryManager_.odometryRobot().posW(zeroPose);
-
   // new initial pose of the floating base
-  /*
-  std::queue<stateObservation::kine::Kinematics> * KoBackupFbKinematics =
-      ctl.datastore().get<std::queue<stateObservation::kine::Kinematics> *>("KoBackupFbKinematics");
-      so::kine::Kinematics worldResetKine = KoBackupFbKinematics->front();
-      */
 
-  so::kine::Kinematics worldResetKine = so::kine::Kinematics::zeroKinematics(so::kine::Kinematics::Flags::pose);
+  boost::circular_buffer<so::kine::Kinematics> * koBackupFbKinematics =
+      ctl.datastore().get<boost::circular_buffer<so::kine::Kinematics> *>("koBackupFbKinematics");
+  so::kine::Kinematics worldResetKine = *(koBackupFbKinematics->begin());
+
+  // so::kine::Kinematics worldResetKine = so::kine::Kinematics::zeroKinematics(so::kine::Kinematics::Flags::pose);
 
   // original initial pose of the floating base
   so::kine::Kinematics worldFbInitBackup =
       kinematicsTools::poseFromSva(backupFbKinematics_.front(), so::kine::Kinematics::Flags::pose);
 
-  // original final pose of the floating base
-  so::kine::Kinematics worldFbFinalBackup =
-      kinematicsTools::poseFromSva(odometryManager_.odometryRobot().posW(), so::kine::Kinematics::Flags::pose);
+  so::kine::Kinematics fbWorldInitBackup = worldFbInitBackup.getInverse();
 
-  // transformation between the initial and the final pose during the backup interval
-  so::kine::Kinematics initFinal =
-      worldFbInitBackup.getInverse() * worldFbFinalBackup; // transformation from the initial pose to the final pose
-
-  // new initial pose of the floating base in the frame of the original initial pose
-  so::kine::Kinematics initReset = worldFbInitBackup.getInverse() * worldResetKine;
-
-  // new final pose of the floating base in the world
-  so::kine::Kinematics newWorldFbFinalKine = worldResetKine * initFinal;
-
-  // new final pose of the floating base in the original final pose of the floating base. Used also for contacts as the
-  // transformation affects the entire robot.
-  so::kine::Kinematics finalFinal2 = worldFbFinalBackup.getInverse() * newWorldFbFinalKine;
-
-  for(const int & contactIndex : odometryManager_.contactsManager().contactsFound())
+  // we apply the transformation from the initial pose to the intermediates pose estimated by the tilt estimator to the
+  // new starting pose of the Kinetics Observer
+  for(int i = 0; i < koBackupFbKinematics->size(); i++)
   {
-    odometryManager_.contactsManager().contactWithSensor(contactIndex).worldRefKine_ =
-        odometryManager_.contactsManager().contactWithSensor(contactIndex).worldRefKine_ * finalFinal2;
+    // Intermediary pose of the floating base estimated by the tilt estimator
+    so::kine::Kinematics worldFbIntermBackup =
+        kinematicsTools::poseFromSva(backupFbKinematics_.at(i), so::kine::Kinematics::Flags::pose);
+    // transformation between the initial and the intermediary pose during the backup interval
+    so::kine::Kinematics initInterm = fbWorldInitBackup * worldFbIntermBackup;
+
+    koBackupFbKinematics->at(i) = worldResetKine * initInterm;
   }
 
-  sva::PTransformd newFbPose;
-  newFbPose.translation() = newWorldFbFinalKine.position();
-  newFbPose.rotation() = newWorldFbFinalKine.orientation.toMatrix3().transpose();
+  so::Vector3 tiltLocalLinVel = poseW_.rotation() * velW_.linear();
+  so::Vector3 tiltLocalAngVel = poseW_.rotation() * velW_.angular();
 
-  odometryManager_.odometryRobot().posW(newFbPose);
+  // koBackupFbKinematics->back() is the new last pose of the kinetics observer
+  koBackupFbKinematics->back().linVel = koBackupFbKinematics->back().orientation.toMatrix3() * tiltLocalLinVel;
+  koBackupFbKinematics->back().angVel = koBackupFbKinematics->back().orientation.toMatrix3() * tiltLocalAngVel;
 
-  std::queue<sva::PTransformd> emptyQueue;
-  std::swap(backupFbKinematics_, emptyQueue);
-
-  // std::queue<so::kine::Kinematics> emptyKineQueue;
-  // std::swap(*KoBackupFbKinematics, emptyKineQueue);
-
-  lastBackupIter_ = logger.t() / ctl.timeStep;
-
-  return newWorldFbFinalKine;
+  return koBackupFbKinematics->back();
 }
 
 void TiltObserver::addToLogger(const mc_control::MCController & ctl,

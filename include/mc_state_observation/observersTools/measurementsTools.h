@@ -253,8 +253,12 @@ public:
   double forceNorm_ = 0.0; // for debug only
   // the sensor measurement have to be used by the observer
   bool sensorEnabled_ = true;
-  // allows to know if the contact's measurements have to be added during the update
+  // allows to know if the contact's measurements have to be added during the update.
   bool sensorWasEnabled_ = false;
+
+  // measured contact wrench, expressed in the frame of the contact. Not automatically computed so must be explicitely
+  // computed and called.
+  Eigen::Matrix<double, 6, 1> contactWrenchVector_;
 
   // indicates if the sensor is directly attached to a surface (true) or not (false). Default is true because in the
   // case of detection of contacts by thresholding the measured force (@contactsDetection_ = fromThreshold), we cannot

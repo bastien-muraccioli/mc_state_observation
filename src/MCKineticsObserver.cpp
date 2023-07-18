@@ -349,7 +349,6 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
   if(!(observer_.nanDetected_ || (invincibilityIter_ != 0 && invincibilityIter_ < invincibilityFrame_)))
   {
     auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
-    std::cout << std::endl << logger.t();
     /* Core */
     so::kine::Kinematics fbFb; // "Zero" Kinematics
     fbFb.setZero(so::kine::Kinematics::Flags::all);
@@ -374,7 +373,6 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
   }
   else
   {
-    std::cout << std::endl << "invincibilityIter_: " << invincibilityIter_ << std::endl;
     auto & datastore = (const_cast<mc_control::MCController &>(ctl)).datastore();
 
     // We add an empty Kinematics object to the floating base pose buffer. This is because the buffer of the tilt
