@@ -4,7 +4,7 @@
 
 #include <mc_rbdyn/Contact.h>
 #include <mc_rbdyn/Robot.h>
-
+#include <boost/circular_buffer.hpp>
 #include <mc_state_observation/observersTools/measurementsTools.h>
 #include <state-observation/dynamics-estimators/kinetics-observer.hpp>
 
@@ -20,6 +20,41 @@ namespace mc_state_observation
  *its floating base's frame is superimposed with the world frame. This allows to ease computations performed in the
  *local frame of the robot.
  **/
+
+struct KoContactWithSensor : public measurements::ContactWithSensor
+{
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+protected:
+  KoContactWithSensor() {}
+
+public:
+  KoContactWithSensor(int id, std::string forceSensorName)
+  {
+    id_ = id;
+    name_ = forceSensorName;
+    forceSensorName_ = forceSensorName;
+
+    resetContact();
+  }
+
+  KoContactWithSensor(int id,
+                      const std::string & forceSensorName,
+                      const std::string & surfaceName,
+                      bool sensorAttachedToSurface)
+  {
+    id_ = id;
+    name_ = forceSensorName;
+    resetContact();
+
+    surface_ = surfaceName;
+    forceSensorName_ = forceSensorName;
+    sensorAttachedToSurface_ = sensorAttachedToSurface;
+  }
+
+public:
+  stateObservation::kine::Kinematics fbContactKine_;
+  stateObservation::kine::Kinematics surfaceSensorKine_;
+};
 
 struct MCKineticsObserver : public mc_observers::Observer
 {
@@ -107,7 +142,7 @@ protected:
   /// @brief Updates the list of currently set contacts.
   /// @return measurements::ContactsManager<measurements::ContactWithSensor,
   /// measurements::ContactWithoutSensor>::ContactsSet &
-  const measurements::ContactsManager<measurements::ContactWithSensor, measurements::ContactWithoutSensor>::ContactsSet &
+  const measurements::ContactsManager<KoContactWithSensor, measurements::ContactWithoutSensor>::ContactsSet &
       findNewContacts(const mc_control::MCController & ctl);
 
   /// @brief Update the currently set contacts.
@@ -115,14 +150,52 @@ protected:
   /// \ref updateContact(const mc_control::MCController & ctl, const std::string & name, mc_rtc::Logger & logger).
   /// @param contacts The list of contacts returned by \ref findNewContacts(const mc_control::MCController & ctl).
   void updateContacts(const mc_control::MCController & ctl,
-                      const measurements::ContactsManager<measurements::ContactWithSensor,
+                      const measurements::ContactsManager<KoContactWithSensor,
                                                           measurements::ContactWithoutSensor>::ContactsSet & contacts,
                       mc_rtc::Logger & logger);
+
+  /// @brief Computes the kinematics of the contact attached to the robot in the world frame. Also expresses the wrench
+  /// measured at the sensor in the frame of the contact.
+  /// @param contact Contact of which we want to compute the kinematics
+  /// @param robot robot the contacts belong to
+  /// @param fs force sensor
+  /// @param measuredWrench wrench measured at the sensor
+  /// @return stateObservation::kine::Kinematics &
+  const stateObservation::kine::Kinematics getContactWorldKinematics(KoContactWithSensor & contact,
+                                                                     const mc_rbdyn::Robot & robot,
+                                                                     const mc_rbdyn::ForceSensor fs,
+                                                                     const sva::ForceVecd & measuredWrench);
+
+  /// @brief Computes the kinematics of the contact attached to the robot in the world frame.
+  /// @param contact Contact of which we want to compute the kinematics
+  /// @param robot robot the contacts belong to
+  /// @param fs force sensor
+  /// @return stateObservation::kine::Kinematics &
+  const stateObservation::kine::Kinematics getContactWorldKinematics(KoContactWithSensor & contact,
+                                                                     const mc_rbdyn::Robot & robot,
+                                                                     const mc_rbdyn::ForceSensor fs);
+
+  void updateContactForceMeasurement(KoContactWithSensor & contact,
+                                     stateObservation::kine::Kinematics surfaceSensorKine,
+                                     const sva::ForceVecd & measuredWrench);
+
+  void updateContactForceMeasurement(KoContactWithSensor & contact, const sva::ForceVecd & measuredWrench);
+
+  void getOdometryWorldContactReference(const mc_control::MCController & ctl,
+                                        KoContactWithSensor & contact,
+                                        stateObservation::kine::Kinematics & worldContactKineRef);
+
   /// @brief Update the contact or create it if it still does not exist.
   /// @details Called by \ref updateContacts(const mc_control::MCController & ctl, std::set<std::string> contacts,
   /// mc_rtc::Logger & logger).
   /// @param name The name of the contact to update.
   void updateContact(const mc_control::MCController & ctl, const int & contactIndex, mc_rtc::Logger & logger);
+
+  stateObservation::kine::Kinematics updateContactsPoseFromFb(
+      KoContactWithSensor & contact,
+      const stateObservation::kine::Kinematics & currentFbWorld,
+      const stateObservation::kine::Kinematics & currentWorldContactRef,
+      const stateObservation::kine::Kinematics & newWorldFbKine);
 
 protected:
   std::string robot_ = "";
@@ -283,10 +356,6 @@ private:
   // state vector resulting from the Kinetics Observer esimation
   Eigen::VectorXd res_;
 
-  // vector shared by all the contacts that allows to build a (force+torque) wrench vector from the
-  // ForceSensor.wrench() function which returns a (torque+force) wrench vector
-  stateObservation::Vector6 contactWrenchVector_;
-
   // rate to apply on the measured force to obtain the threshold for contact detection.
   double contactDetectionPropThreshold_ = 0.0;
   // threshold on the measured force for contact detection.
@@ -380,8 +449,20 @@ private:
   stateObservation::Matrix3 gyroSensorCovariance_;
   stateObservation::Matrix6 contactSensorCovariance_;
 
-  measurements::ContactsManager<measurements::ContactWithSensor, measurements::ContactWithoutSensor> contactsManager_;
+  measurements::ContactsManager<KoContactWithSensor, measurements::ContactWithoutSensor> contactsManager_;
   measurements::MapIMUs mapIMUs_;
+
+  int lastBackupIter_ = 0;
+  int backupIterInterval_ = 0;
+
+  int invincibilityFrame_ = 0;
+  int invincibilityIter_ = 0;
+
+  boost::circular_buffer<stateObservation::kine::Kinematics> koBackupFbKinematics_ =
+      boost::circular_buffer<stateObservation::kine::Kinematics>(100);
+  // std::queue<stateObservation::kine::Kinematics> backupFbKinematics_;
+
+  bool contactsDetectionFromThreshold_ = false;
 
   /* Config variables */
 };
