@@ -413,6 +413,7 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
 
       // we update update robot as it will be updated at the beginning of the next iteration anyway
       update(inputRobot);
+      inputRobot.forwardKinematics();
       so::kine::Kinematics newWorldCentroidKine;
       newWorldCentroidKine.position = inputRobot.com();
       newWorldCentroidKine.linVel = inputRobot.comVelocity();
@@ -465,6 +466,7 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
     if(invincibilityIter_ == invincibilityFrame_)
     {
       update(inputRobot);
+      inputRobot.forwardKinematics();
       so::kine::Kinematics fbFb; // "Zero" Kinematics
       fbFb.setZero(so::kine::Kinematics::Flags::all);
       so::kine::Kinematics newWorldCentroidKine;

@@ -305,6 +305,7 @@ void LeggedOdometryManager::updateOdometryRobot(const mc_control::MCController &
     so::Vector3 realLocalLinVel = realRobot.posW().rotation() * realRobot.velW().linear();
     so::Vector3 realLocalAngVel = realRobot.posW().rotation() * realRobot.velW().angular();
     sva::MotionVecd vels;
+
     vels.linear() = odometryRobot().posW().rotation().transpose() * realLocalLinVel;
     vels.angular() = odometryRobot().posW().rotation().transpose() * realLocalAngVel;
     odometryRobot().velW(vels);

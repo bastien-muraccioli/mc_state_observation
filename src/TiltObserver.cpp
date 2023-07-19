@@ -150,7 +150,7 @@ void TiltObserver::updateAnchorFrameOdometry(const mc_control::MCController & ct
 {
   auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
 
-  odometryManager_.run(ctl, logger, poseW_);
+  odometryManager_.run(ctl, logger, poseW_, velW_); // we update the pose and velocities of the floating base
 
   so::kine::Kinematics worldAnchorKine = odometryManager_.getAnchorFramePose(ctl);
   X_0_C_.translation() = worldAnchorKine.position();
@@ -260,6 +260,7 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
 
   // Compute velocity of the imu in the control frame
   auto v_0_imuParent = robot.mbc().bodyVelW[robot.bodyIndexByName(imu.parentBody())];
+
   auto real_v_0_imuParent = realRobot.mbc().bodyVelW[realRobot.bodyIndexByName(rimu.parentBody())];
 
   so::kine::Kinematics worldParentKine = kinematicsTools::poseAndVelFromSva(parentPoseW, v_0_imuParent, true);
@@ -295,11 +296,10 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
 
   auto k = estimator_.getCurrentTime();
 
-  /*
   x1_ = realWorldImuKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.linVel() - realImuAnchorKine_.linVel()
         - (imu.angularVelocity()).cross(realImuAnchorKine_.position());
-  */
 
+  /*
   x1_ = (realWorldImuKine_.orientation.toMatrix3().transpose() * realWorldImuKine_.angVel())
             .cross(worldImuKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.position()
                    + realAnchorImuKine.orientation.toMatrix3().transpose() * realAnchorImuKine.position())
@@ -309,6 +309,7 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
         + realAnchorImuKine.orientation.toMatrix3().transpose() * realAnchorImuKine.linVel()
         - (worldImuKine_.orientation.toMatrix3().transpose() * worldImuKine_.angVel())
               .cross(worldImuKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.position());
+              */
 
   estimator_.setMeasurement(imu.linearAcceleration(), imu.angularVelocity(), k + 1);
   // estimator_.setExplicitX1(x1_); // we directly give the virtual measurement of the velocity by the IMU
@@ -354,8 +355,9 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
   }
   else
   {
-    odometryManager_.updateOdometryRobot(ctl, true, false);
+    // odometryManager_.updateOdometryRobot(ctl, true, false);
     runTiltEstimator(ctl, odometryManager_.odometryRobot());
+
     backupFbKinematics_.push_back(odometryManager_.odometryRobot().posW());
   }
 
@@ -366,20 +368,26 @@ void TiltObserver::updatePoseAndVel(const mc_control::MCController & ctl,
                                     const so::Vector3 & localWorldImuLinVel,
                                     const so::Vector3 & localWorldImuAngVel)
 {
-  if(withOdometry_)
-  {
-  }
-  else
+  if(!withOdometry_) // if we use odometry, the position is updated during the anchor frame update
   {
     poseW_.rotation() = R_0_fb_.transpose();
 
-    realWorldFbKine_.orientation = R_0_fb_; // we take into account the newly estimated orientation
+    realWorldFbKine_.orientation = R_0_fb_; // we replace the previous orientation estimation by the newly estimated one
 
     realFbAnchorKine_ = realWorldFbKine_.getInverse() * realWorldAnchorKine_;
+
+    std::cout << std::endl << realWorldFbKine_ << std::endl;
 
     poseW_.translation() = R_0_fb_
                            * (worldFbKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.position()
                               - realFbAnchorKine_.position());
+  }
+  else
+  {
+    // we combine the yaw estimated by the odometry with the newly estimated tilt
+    poseW_.rotation() = (so::kine::mergeRoll1Pitch1WithYaw2AxisAgnostic(
+                             R_0_fb_, odometryManager_.odometryRobot().posW().rotation().transpose()))
+                            .transpose();
   }
 
   if(!anchorFrameJumped_)
