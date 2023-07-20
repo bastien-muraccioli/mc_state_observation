@@ -21,23 +21,27 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
                                  const std::string contactsDetection,
                                  std::vector<std::string> surfacesForContactDetection,
                                  std::vector<std::string> contactsSensorDisabledInit,
-                                 const double contactDetectionThreshold)
+                                 const double contactDetectionThreshold,
+                                 const bool velUpdatedUpstream,
+                                 const bool accUpdatedUpstream)
 {
   robotName_ = robotName;
   odometry6d_ = odometry6d;
   withYawEstimation_ = withYawEstimation;
   odometryName_ = odometryName;
-  const auto & realRobot = ctl.realRobot(robotName);
+  velUpdatedUpstream_ = velUpdatedUpstream;
+  accUpdatedUpstream_ = accUpdatedUpstream;
+  const auto & robot = ctl.robot(robotName);
   odometryRobot_ = mc_rbdyn::Robots::make();
-  odometryRobot_->robotCopy(realRobot, "odometryRobot");
+  odometryRobot_->robotCopy(robot, "odometryRobot");
 
-  worldAnchorFramePose_ = kinematicsTools::poseFromSva(
-      ctl.datastore().call<sva::PTransformd>("KinematicAnchorFrame::" + ctl.robot(robotName).name(),
-                                             ctl.realRobot(robotName)),
-      so::kine::Kinematics::Flags::pose);
+  worldAnchorFramePose_ =
+      kinematicsTools::poseFromSva(ctl.datastore().call<sva::PTransformd>(
+                                       "KinematicAnchorFrame::" + ctl.robot(robotName).name(), ctl.robot(robotName)),
+                                   so::kine::Kinematics::Flags::pose);
 
-  fbPose_.translation() = realRobot.posW().translation();
-  fbPose_.rotation() = realRobot.posW().rotation();
+  fbPose_.translation() = robot.posW().translation();
+  fbPose_.rotation() = robot.posW().rotation();
   contactsManager_.init(ctl, robotName, odometryName_, contactsDetection, surfacesForContactDetection,
                         contactsSensorDisabledInit, contactDetectionThreshold);
 }
@@ -49,23 +53,27 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
                                  const bool withYawEstimation,
                                  const std::string contactsDetection,
                                  std::vector<std::string> contactsSensorDisabledInit,
-                                 const double contactDetectionThreshold)
+                                 const double contactDetectionThreshold,
+                                 const bool velUpdatedUpstream,
+                                 const bool accUpdatedUpstream)
 {
   robotName_ = robotName;
   odometry6d_ = odometry6d;
   withYawEstimation_ = withYawEstimation;
   odometryName_ = odometryName;
-  const auto & realRobot = ctl.realRobot(robotName);
+  velUpdatedUpstream_ = velUpdatedUpstream;
+  accUpdatedUpstream_ = accUpdatedUpstream;
+  const auto & robot = ctl.robot(robotName);
   odometryRobot_ = mc_rbdyn::Robots::make();
-  odometryRobot_->robotCopy(realRobot, "odometryRobot");
-  fbPose_.translation() = realRobot.posW().translation();
-  fbPose_.rotation() = realRobot.posW().rotation();
+  odometryRobot_->robotCopy(robot, "odometryRobot");
+  fbPose_.translation() = robot.posW().translation();
+  fbPose_.rotation() = robot.posW().rotation();
   odometryRobot().posW(fbPose_);
 
-  worldAnchorFramePose_ = kinematicsTools::poseFromSva(
-      ctl.datastore().call<sva::PTransformd>("KinematicAnchorFrame::" + ctl.robot(robotName).name(),
-                                             ctl.realRobot(robotName)),
-      so::kine::Kinematics::Flags::pose);
+  worldAnchorFramePose_ =
+      kinematicsTools::poseFromSva(ctl.datastore().call<sva::PTransformd>(
+                                       "KinematicAnchorFrame::" + ctl.robot(robotName).name(), ctl.robot(robotName)),
+                                   so::kine::Kinematics::Flags::pose);
   if(contactsDetection == "fromThreshold")
   {
     detectionFromThreshold_ = true;
@@ -100,9 +108,9 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl,
   // detects the contacts currently set with the environment
   contactsManager().findContacts(ctl, robotName_);
   // updates the contacts and the resulting floating base kinematics
-  updateContacts(ctl, logger);
+  updateContacts(ctl, logger, true, true);
   // updates the floating base kinematics in the observer
-  updateFbKinematics(ctl, pose, vels, accs);
+  updateFbKinematics(ctl, pose, vels, accs, logger);
 }
 
 void LeggedOdometryManager::run(const mc_control::MCController & ctl,
@@ -130,9 +138,9 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl,
   // detects the contacts currently set with the environment
   contactsManager().findContacts(ctl, robotName_);
   // updates the contacts and the resulting floating base kinematics
-  updateContacts(ctl, logger);
+  updateContacts(ctl, logger, true, false);
   // updates the floating base kinematics in the observer
-  updateFbKinematics(ctl, pose, vels);
+  updateFbKinematics(ctl, pose, vels, logger);
 }
 
 void LeggedOdometryManager::run(const mc_control::MCController & ctl, mc_rtc::Logger & logger, sva::PTransformd & pose)
@@ -158,12 +166,15 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl, mc_rtc::Lo
   // detects the contacts currently set with the environment
   contactsManager().findContacts(ctl, robotName_);
   // updates the contacts and the resulting floating base kinematics
-  updateContacts(ctl, logger);
+  updateContacts(ctl, logger, false, false);
   // updates the floating base kinematics in the observer
-  updateFbKinematics(ctl, pose);
+  updateFbKinematics(ctl, pose, logger);
 }
 
-void LeggedOdometryManager::updateContacts(const mc_control::MCController & ctl, mc_rtc::Logger & logger)
+void LeggedOdometryManager::updateContacts(const mc_control::MCController & ctl,
+                                           mc_rtc::Logger & logger,
+                                           const bool updateVels,
+                                           const bool updateAccs)
 {
   const auto & robot = ctl.robot(robotName_);
   const auto & realRobot = ctl.realRobot(robotName_);
@@ -268,8 +279,8 @@ void LeggedOdometryManager::updateContacts(const mc_control::MCController & ctl,
       }
     }
   }
-  // update of the pose of the floating base of the odometry robot in the world frame
-  updateOdometryRobot(ctl, false, false);
+  // update of the pose of the floating base of the odometry robot in the world frame before creating the new contacts
+  updateOdometryRobot(ctl, updateVels, updateAccs);
 
   // computation of the reference kinematics of the newly set contacts in the world.
   for(const int & foundContactIndex : contactsManager().contactsFound())
@@ -298,31 +309,54 @@ void LeggedOdometryManager::updateOdometryRobot(const mc_control::MCController &
 {
   const auto & realRobot = ctl.realRobot(robotName_);
 
-  odometryRobot().posW(fbPose_);
-  if(updateVels)
-  {
-    // realRobot.posW().rotation() is the transpose of R
-    so::Vector3 realLocalLinVel = realRobot.posW().rotation() * realRobot.velW().linear();
-    so::Vector3 realLocalAngVel = realRobot.posW().rotation() * realRobot.velW().angular();
-    sva::MotionVecd vels;
-
-    vels.linear() = odometryRobot().posW().rotation().transpose() * realLocalLinVel;
-    vels.angular() = odometryRobot().posW().rotation().transpose() * realLocalAngVel;
-    odometryRobot().velW(vels);
-  }
-
   if(updateAccs)
   {
-    // realRobot.posW().rotation() is the transpose of R
-    so::Vector3 realLocalLinAcc = realRobot.posW().rotation() * realRobot.accW().linear();
-    so::Vector3 realLocalAngAcc = realRobot.posW().rotation() * realRobot.accW().angular();
-    sva::MotionVecd accs;
+    if(accUpdatedUpstream_)
+    {
+      // realRobot.posW().rotation() is the transpose of R
+      so::Vector3 realLocalLinAcc = realRobot.posW().rotation() * realRobot.accW().linear();
+      so::Vector3 realLocalAngAcc = realRobot.posW().rotation() * realRobot.accW().angular();
+      sva::MotionVecd accs;
 
-    accs.linear() = odometryRobot().posW().rotation().transpose() * realLocalLinAcc;
-    accs.angular() = odometryRobot().posW().rotation().transpose() * realLocalAngAcc;
+      accs.linear() = odometryRobot().posW().rotation().transpose() * realLocalLinAcc;
+      accs.angular() = odometryRobot().posW().rotation().transpose() * realLocalAngAcc;
 
-    odometryRobot().accW(accs);
+      odometryRobot().accW(accs);
+    }
+    else
+    {
+      mc_rtc::log::error("The acceleration must be already updated upstream.");
+    }
   }
+
+  if(updateVels)
+  {
+    if(velUpdatedUpstream_)
+    {
+      BOOST_ASSERT(false && "hjjml0");
+      // realRobot.posW().rotation() is the transpose of R
+      so::Vector3 realLocalLinVel = realRobot.posW().rotation() * realRobot.velW().linear();
+      so::Vector3 realLocalAngVel = realRobot.posW().rotation() * realRobot.velW().angular();
+
+      sva::MotionVecd vels;
+
+      vels.linear() = odometryRobot().posW().rotation().transpose() * realLocalLinVel;
+      vels.angular() = odometryRobot().posW().rotation().transpose() * realLocalAngVel;
+      odometryRobot().velW(vels);
+    }
+    else
+    {
+      sva::MotionVecd vels;
+
+      vels.linear() = (fbPose_.translation() - odometryRobot().posW().translation()) / ctl.timeStep;
+      so::kine::Orientation oldOri(so::Matrix3(odometryRobot().posW().rotation().transpose()));
+      so::kine::Orientation newOri(so::Matrix3(fbPose_.rotation().transpose()));
+      vels.angular() = oldOri.differentiate(newOri) / ctl.timeStep;
+      odometryRobot().velW(vels);
+    }
+  }
+
+  odometryRobot().posW(fbPose_);
 
   odometryRobot().forwardKinematics();
 }
@@ -330,9 +364,10 @@ void LeggedOdometryManager::updateOdometryRobot(const mc_control::MCController &
 void LeggedOdometryManager::updateFbKinematics(const mc_control::MCController & ctl,
                                                sva::PTransformd & pose,
                                                sva::MotionVecd & vels,
-                                               sva::MotionVecd & accs)
+                                               sva::MotionVecd & accs,
+                                               mc_rtc::Logger & logger)
 {
-  updateOdometryRobot(ctl, true, true);
+  // updateOdometryRobot(ctl, true, true);
 
   pose.rotation() = odometryRobot().posW().rotation();
   pose.translation() = odometryRobot().posW().translation();
@@ -344,13 +379,23 @@ void LeggedOdometryManager::updateFbKinematics(const mc_control::MCController & 
 
   accs.linear() = odometryRobot().accW().linear();
   accs.angular() = odometryRobot().accW().angular();
+
+  logger.addLogEntry(odometryName_ + "_odometryRobot_posW",
+                     [this]() -> sva::PTransformd { return odometryRobot().posW(); });
+
+  logger.addLogEntry(odometryName_ + "_odometryRobot_velW",
+                     [this]() -> sva::MotionVecd { return odometryRobot().velW(); });
+
+  logger.addLogEntry(odometryName_ + "_odometryRobot_accW",
+                     [this]() -> sva::MotionVecd { return odometryRobot().accW(); });
 }
 
 void LeggedOdometryManager::updateFbKinematics(const mc_control::MCController & ctl,
                                                sva::PTransformd & pose,
-                                               sva::MotionVecd & vels)
+                                               sva::MotionVecd & vels,
+                                               mc_rtc::Logger & logger)
 {
-  updateOdometryRobot(ctl, true, false);
+  // updateOdometryRobot(ctl, true, false);
 
   pose.rotation() = odometryRobot().posW().rotation();
   pose.translation() = odometryRobot().posW().translation();
@@ -359,14 +404,25 @@ void LeggedOdometryManager::updateFbKinematics(const mc_control::MCController & 
 
   vels.linear() = odometryRobot().velW().linear();
   vels.angular() = odometryRobot().velW().angular();
+
+  logger.addLogEntry(odometryName_ + "_odometryRobot_posW",
+                     [this]() -> sva::PTransformd { return odometryRobot().posW(); });
+
+  logger.addLogEntry(odometryName_ + "_odometryRobot_velW",
+                     [this]() -> sva::MotionVecd { return odometryRobot().velW(); });
 }
 
-void LeggedOdometryManager::updateFbKinematics(const mc_control::MCController & ctl, sva::PTransformd & pose)
+void LeggedOdometryManager::updateFbKinematics(const mc_control::MCController & ctl,
+                                               sva::PTransformd & pose,
+                                               mc_rtc::Logger & logger)
 {
-  updateOdometryRobot(ctl, false, false);
+  // updateOdometryRobot(ctl, false, false);
 
   pose.rotation() = odometryRobot().posW().rotation();
   pose.translation() = odometryRobot().posW().translation();
+
+  logger.addLogEntry(odometryName_ + "_odometryRobot_posW",
+                     [this]() -> sva::PTransformd { return odometryRobot().posW(); });
 }
 
 void LeggedOdometryManager::setNewContact(LoContactWithSensor & contact, const mc_rbdyn::Robot & measurementsRobot)

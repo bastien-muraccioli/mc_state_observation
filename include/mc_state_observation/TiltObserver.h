@@ -75,7 +75,7 @@ protected:
    * parameter related to the convergence of the linear velocity
    * of the IMU expressed in the control frame
    */
-  double alpha_ = 200;
+  double alpha_ = 50;
   ///  parameter related to the fast convergence of the tilt
   double beta_ = 5;
   /// parameter related to the orthogonality

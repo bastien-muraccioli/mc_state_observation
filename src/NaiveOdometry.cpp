@@ -71,15 +71,19 @@ void NaiveOdometry::configure(const mc_control::MCController & ctl, const mc_rtc
 
   double contactDetectionThreshold = mass_ * so::cst::gravityConstant * contactDetectionPropThreshold_;
   std::vector<std::string> contactsSensorDisabledInit = config("contactsSensorDisabledInit");
+  bool velUpdatedUpstream = config("velUpdatedUpstream");
+  bool accUpdatedUpstream = config("accUpdatedUpstream");
   if(contactsDetection == "fromSurfaces")
   {
     odometryManager_.init(ctl, robot_, "NaiveOdometry", with6dOdometry, true, contactsDetection,
-                          surfacesForContactDetection, contactsSensorDisabledInit, contactDetectionThreshold);
+                          surfacesForContactDetection, contactsSensorDisabledInit, contactDetectionThreshold,
+                          velUpdatedUpstream, accUpdatedUpstream);
   }
   else
   {
     odometryManager_.init(ctl, robot_, "NaiveOdometry", with6dOdometry, true, contactsDetection,
-                          contactsSensorDisabledInit, contactDetectionThreshold);
+                          contactsSensorDisabledInit, contactDetectionThreshold, velUpdatedUpstream,
+                          accUpdatedUpstream);
   }
 }
 
