@@ -136,6 +136,7 @@ bool NaiveOdometry::run(const mc_control::MCController & ctl)
 {
   auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
 
+  odometryManager_.updateJointsConfiguration(ctl);
   odometryManager_.run(ctl, logger, X_0_fb_, v_fb_0_, a_fb_0_);
 
   /* Update of the visual representation (only a visual feature) of the observed robot */

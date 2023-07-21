@@ -82,6 +82,14 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
                         contactDetectionThreshold);
 }
 
+void LeggedOdometryManager::updateJointsConfiguration(const mc_control::MCController & ctl)
+{
+  const auto & realRobot = ctl.realRobot(robotName_);
+
+  // copies the updated joints configuration from the real robot.
+  odometryRobot().mbc().q = realRobot.mbc().q;
+}
+
 void LeggedOdometryManager::run(const mc_control::MCController & ctl,
                                 mc_rtc::Logger & logger,
                                 sva::PTransformd & pose,
@@ -89,28 +97,9 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl,
                                 sva::MotionVecd & accs)
 {
   const auto & realRobot = ctl.realRobot(robotName_);
+  const so::Matrix3 & realRobotOri = realRobot.posW().rotation().transpose();
 
-  // copies the updated joints configuration from the real robot.
-  odometryRobot().q() = realRobot.q();
-
-  odometryRobot().posW(fbPose_);
-
-  // we set the velocities and accelerations to zero as they will be compensated anyway as we compute the
-  // successive poses in the local frame
-  sva::MotionVecd zeroMotion;
-  zeroMotion.linear() = so::Vector3::Zero();
-  zeroMotion.angular() = so::Vector3::Zero();
-  odometryRobot().velW(zeroMotion);
-  odometryRobot().accW(zeroMotion);
-
-  odometryRobot().forwardKinematics();
-
-  // detects the contacts currently set with the environment
-  contactsManager().findContacts(ctl, robotName_);
-  // updates the contacts and the resulting floating base kinematics
-  updateContacts(ctl, logger, true, true);
-  // updates the floating base kinematics in the observer
-  updateFbKinematics(ctl, pose, vels, accs, logger);
+  run(ctl, logger, pose, vels, accs, realRobotOri);
 }
 
 void LeggedOdometryManager::run(const mc_control::MCController & ctl,
@@ -119,39 +108,27 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl,
                                 sva::MotionVecd & vels)
 {
   const auto & realRobot = ctl.realRobot(robotName_);
+  const so::Matrix3 & realRobotOri = realRobot.posW().rotation().transpose();
 
-  // copies the updated joints configuration from the real robot.
-  odometryRobot().q() = realRobot.q();
-
-  odometryRobot().posW(fbPose_);
-
-  // we set the velocities and accelerations to zero as they will be compensated anyway as we compute the
-  // successive poses in the local frame
-  sva::MotionVecd zeroMotion;
-  zeroMotion.linear() = so::Vector3::Zero();
-  zeroMotion.angular() = so::Vector3::Zero();
-  odometryRobot().velW(zeroMotion);
-  odometryRobot().accW(zeroMotion);
-
-  odometryRobot().forwardKinematics();
-
-  // detects the contacts currently set with the environment
-  contactsManager().findContacts(ctl, robotName_);
-  // updates the contacts and the resulting floating base kinematics
-  updateContacts(ctl, logger, true, false);
-  // updates the floating base kinematics in the observer
-  updateFbKinematics(ctl, pose, vels, logger);
+  run(ctl, logger, pose, vels, realRobotOri);
 }
 
 void LeggedOdometryManager::run(const mc_control::MCController & ctl, mc_rtc::Logger & logger, sva::PTransformd & pose)
 {
   const auto & realRobot = ctl.realRobot(robotName_);
+  const so::Matrix3 & realRobotOri = realRobot.posW().rotation().transpose();
 
-  // copies the updated joints configuration from the real robot.
-  odometryRobot().q() = realRobot.q();
+  run(ctl, logger, pose, realRobotOri);
+}
 
+void LeggedOdometryManager::run(const mc_control::MCController & ctl,
+                                mc_rtc::Logger & logger,
+                                sva::PTransformd & pose,
+                                sva::MotionVecd & vels,
+                                sva::MotionVecd & accs,
+                                const stateObservation::Matrix3 & tilt)
+{
   odometryRobot().posW(fbPose_);
-  odometryRobot().forwardKinematics();
 
   // we set the velocities and accelerations to zero as they will be compensated anyway as we compute the
   // successive poses in the local frame
@@ -166,7 +143,58 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl, mc_rtc::Lo
   // detects the contacts currently set with the environment
   contactsManager().findContacts(ctl, robotName_);
   // updates the contacts and the resulting floating base kinematics
-  updateContacts(ctl, logger, false, false);
+  updateContacts(ctl, logger, true, true, tilt);
+  // updates the floating base kinematics in the observer
+  updateFbKinematics(ctl, pose, vels, accs, logger);
+}
+
+void LeggedOdometryManager::run(const mc_control::MCController & ctl,
+                                mc_rtc::Logger & logger,
+                                sva::PTransformd & pose,
+                                sva::MotionVecd & vels,
+                                const stateObservation::Matrix3 & tilt)
+{
+  odometryRobot().posW(fbPose_);
+
+  // we set the velocities and accelerations to zero as they will be compensated anyway as we compute the
+  // successive poses in the local frame
+  sva::MotionVecd zeroMotion;
+  zeroMotion.linear() = so::Vector3::Zero();
+  zeroMotion.angular() = so::Vector3::Zero();
+  odometryRobot().velW(zeroMotion);
+  odometryRobot().accW(zeroMotion);
+
+  odometryRobot().forwardKinematics();
+
+  // detects the contacts currently set with the environment
+  contactsManager().findContacts(ctl, robotName_);
+  // updates the contacts and the resulting floating base kinematics
+  updateContacts(ctl, logger, true, false, tilt);
+  // updates the floating base kinematics in the observer
+  updateFbKinematics(ctl, pose, vels, logger);
+}
+
+void LeggedOdometryManager::run(const mc_control::MCController & ctl,
+                                mc_rtc::Logger & logger,
+                                sva::PTransformd & pose,
+                                const stateObservation::Matrix3 & tilt)
+{
+  odometryRobot().posW(fbPose_);
+
+  // we set the velocities and accelerations to zero as they will be compensated anyway as we compute the
+  // successive poses in the local frame
+  sva::MotionVecd zeroMotion;
+  zeroMotion.linear() = so::Vector3::Zero();
+  zeroMotion.angular() = so::Vector3::Zero();
+  odometryRobot().velW(zeroMotion);
+  odometryRobot().accW(zeroMotion);
+
+  odometryRobot().forwardKinematics();
+
+  // detects the contacts currently set with the environment
+  contactsManager().findContacts(ctl, robotName_);
+  // updates the contacts and the resulting floating base kinematics
+  updateContacts(ctl, logger, false, false, tilt);
   // updates the floating base kinematics in the observer
   updateFbKinematics(ctl, pose, logger);
 }
@@ -174,10 +202,10 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl, mc_rtc::Lo
 void LeggedOdometryManager::updateContacts(const mc_control::MCController & ctl,
                                            mc_rtc::Logger & logger,
                                            const bool updateVels,
-                                           const bool updateAccs)
+                                           const bool updateAccs,
+                                           const stateObservation::Matrix3 & tilt)
 {
   const auto & robot = ctl.robot(robotName_);
-  const auto & realRobot = ctl.realRobot(robotName_);
 
   double sumForces_position = 0.0;
   double sumForces_orientation = 0.0;
@@ -243,12 +271,10 @@ void LeggedOdometryManager::updateContacts(const mc_control::MCController & ctl,
     {
       if(contactsManager_.oriOdometryContacts_.size() == 1) // the orientation can be updated using 1 contact
       {
-        const so::Matrix3 & realRobotOri = realRobot.posW().rotation().transpose();
         // We merge the obtained yaw with the tilt estimated by the previous observers
-        fbPose_.rotation() =
-            so::kine::mergeRoll1Pitch1WithYaw2AxisAgnostic(
-                realRobotOri, contactsManager_.oriOdometryContacts_.begin()->get().currentWorldFbOrientation_)
-                .transpose();
+        fbPose_.rotation() = so::kine::mergeRoll1Pitch1WithYaw2AxisAgnostic(
+                                 tilt, contactsManager_.oriOdometryContacts_.begin()->get().currentWorldFbOrientation_)
+                                 .transpose();
       }
       if(contactsManager_.oriOdometryContacts_.size() == 2) // the orientation can be updated using 2 contacts
       {
@@ -272,10 +298,7 @@ void LeggedOdometryManager::updateContacts(const mc_control::MCController & ctl,
 
         so::Matrix3 meanOri = R1 * diffRotMatrix;
 
-        const so::Matrix3 & realRobotOri =
-            realRobot.posW().rotation().transpose(); // the odometryRobot()'s orientation is overwritten by the
-                                                     // realRobot's one on every iteration
-        fbPose_.rotation() = so::kine::mergeRoll1Pitch1WithYaw2AxisAgnostic(realRobotOri, meanOri).transpose();
+        fbPose_.rotation() = so::kine::mergeRoll1Pitch1WithYaw2AxisAgnostic(tilt, meanOri).transpose();
       }
     }
   }
@@ -333,7 +356,6 @@ void LeggedOdometryManager::updateOdometryRobot(const mc_control::MCController &
   {
     if(velUpdatedUpstream_)
     {
-      BOOST_ASSERT(false && "hjjml0");
       // realRobot.posW().rotation() is the transpose of R
       so::Vector3 realLocalLinVel = realRobot.posW().rotation() * realRobot.velW().linear();
       so::Vector3 realLocalAngVel = realRobot.posW().rotation() * realRobot.velW().angular();
@@ -557,7 +579,6 @@ void LeggedOdometryManager::removeContactLogEntries(mc_rtc::Logger & logger, con
 
 so::kine::Kinematics & LeggedOdometryManager::getAnchorFramePose(const mc_control::MCController & ctl)
 {
-
   const auto & robot = ctl.robot(robotName_);
 
   double sumForces_position = 0.0;

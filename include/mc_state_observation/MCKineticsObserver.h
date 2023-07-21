@@ -19,6 +19,8 @@ namespace mc_state_observation
  *The inputs are obtained from a robot called the inputRobot. Its configuration is the one of real robot, but
  *its floating base's frame is superimposed with the world frame. This allows to ease computations performed in the
  *local frame of the robot.
+ *The Kinetics Observer is associated to the Tilt Observer as a backup. If an anomaly is detected, the Kinetics Observer
+ *will recover the last ellapsed second (or less) using the displacement made by the Tilt Observer.
  **/
 
 struct KoContactWithSensor : public measurements::ContactWithSensor

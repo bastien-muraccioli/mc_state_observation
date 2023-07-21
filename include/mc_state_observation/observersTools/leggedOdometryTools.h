@@ -163,7 +163,10 @@ public:
             const bool velUpdatedUpstream,
             const bool accUpdatedUpstream);
 
-  /// @brief Core function runing the odometry.
+  /// @brief @copybrief run(const mc_control::MCController &, mc_rtc::Logger &, sva::PTransformd &, sva::MotionVecd &,
+  /// sva::MotionVecd &, stateObservation::Matrix3). This version uses the tilt estimated by the upstream observers.
+  /// @copydetails run(const mc_control::MCController &, mc_rtc::Logger &, sva::PTransformd &, sva::MotionVecd &,
+  /// sva::MotionVecd &, stateObservation::Matrix3)
   /// @param ctl Controller
   /// @param pose The pose of the floating base in the world that we want to update
   /// @param vels The velocities of the floating base in the world that we want to update
@@ -174,29 +177,69 @@ public:
            sva::MotionVecd & vels,
            sva::MotionVecd & accs);
 
-  /// @brief Core function runing the odometry.
-  /// @param ctl Controller
-  /// @param pose The pose of the floating base in the world that we want to update
-  /// @param vels The velocities of the floating base in the world that we want to update
+  /// @brief @copybrief run(const mc_control::MCController &, mc_rtc::Logger &, sva::PTransformd &, sva::MotionVecd &,
+  /// stateObservation::Matrix3). This version uses the tilt estimated by the upstream observers.
+  /// @copydetails run(const mc_control::MCController &, mc_rtc::Logger &, sva::PTransformd &, sva::MotionVecd &,
+  /// stateObservation::Matrix3)
   void run(const mc_control::MCController & ctl,
            mc_rtc::Logger & logger,
            sva::PTransformd & pose,
            sva::MotionVecd & vels);
 
+  /// @brief @copybrief run(const mc_control::MCController &, mc_rtc::Logger &, sva::PTransformd &,
+  /// stateObservation::Matrix3). This version uses the tilt estimated by the upstream observers.
+  /// @copydetails run(const mc_control::MCController &, mc_rtc::Logger &, sva::PTransformd &, stateObservation::Matrix3)
+  void run(const mc_control::MCController & ctl, mc_rtc::Logger & logger, sva::PTransformd & pose);
+
   /// @brief Core function runing the odometry.
   /// @param ctl Controller
   /// @param pose The pose of the floating base in the world that we want to update
-  void run(const mc_control::MCController & ctl, mc_rtc::Logger & logger, sva::PTransformd & pose);
+  /// @param vels The velocities of the floating base in the world that we want to update
+  /// @param accs The accelerations of the floating base in the world that we want to update
+  /// @param tilt The floating base's tilt (only the yaw is estimated).
+  void run(const mc_control::MCController & ctl,
+           mc_rtc::Logger & logger,
+           sva::PTransformd & pose,
+           sva::MotionVecd & vels,
+           sva::MotionVecd & accs,
+           const stateObservation::Matrix3 & tilt);
+
+  /// @brief Core function runing the odometry.
+  /// @param ctl Controller
+  /// @param pose The pose of the floating base in the world that we want to update
+  /// @param vels The velocities of the floating base in the world that we want to update
+  /// @param tilt The floating base's tilt (only the yaw is estimated).
+  void run(const mc_control::MCController & ctl,
+           mc_rtc::Logger & logger,
+           sva::PTransformd & pose,
+           sva::MotionVecd & vels,
+           const stateObservation::Matrix3 & tilt);
+
+  /// @brief Core function runing the odometry.
+  /// @param ctl Controller
+  /// @param pose The pose of the floating base in the world that we want to update
+  /// @param tilt The floating base's tilt (only the yaw is estimated).
+  void run(const mc_control::MCController & ctl,
+           mc_rtc::Logger & logger,
+           sva::PTransformd & pose,
+           const stateObservation::Matrix3 & tilt);
+
+  /// @brief Updates the joints configuration of the odometry robot. Has to be called at the beginning of each
+  /// iteration.
+  /// @param ctl Controller
+  void updateJointsConfiguration(const mc_control::MCController & ctl);
 
   /// @brief Updates the pose of the contacts and estimates the floating base from them.
   /// @param ctl Controller.
   /// @param logger Logger.
   /// @param updateVels Indicates if the velocities of the floating base must be updated
   /// @param updateAccs Indicates if the accelerations of the floating base must be updated
+  /// @param tilt The floating base's tilt (only the yaw is estimated).
   virtual void updateContacts(const mc_control::MCController & ctl,
                               mc_rtc::Logger & logger,
                               const bool updateVels,
-                              const bool updateAccs);
+                              const bool updateAccs,
+                              const stateObservation::Matrix3 & tilt);
 
   /// @brief Updates the floating base kinematics given as argument by the observer.
   /// @details Must be called after \ref updateContacts(const mc_control::MCController & ctl, mc_rtc::Logger & logger,
