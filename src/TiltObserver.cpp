@@ -359,7 +359,7 @@ void TiltObserver::updateAnchorFrameNoOdometry(const mc_control::MCController & 
                            MC_FMT_STREAMED(X_0_C_.translation().transpose()), error, maxAnchorFrameDiscontinuity_);
       anchorFrameJumped_ = true;
     }
-    auto errorReal = (X_0_C_.translation() - worldAnchorKine_.position()).norm();
+    auto errorReal = (X_0_C_real_.translation() - realWorldAnchorKine_.position()).norm();
     if(errorReal > maxAnchorFrameDiscontinuity_)
     {
       mc_rtc::log::warning("[{}] Real anchor frame jumped from [{}] to [{}] (error norm {:.3f} > threshold {:.3f})",
@@ -428,10 +428,14 @@ void TiltObserver::update(mc_control::MCController & ctl)
 {
   if(updateRobot_)
   {
-    auto & realRobot = ctl.realRobots().robot(updateRobot_);
-    mc_rtc::log::info("update robot: {}", mc_rbdyn::rpyFromMat(poseW_.rotation()));
+    auto & realRobot = ctl.realRobot(robot_);
+    // mc_rtc::log::info("update robot: {}", mc_rbdyn::rpyFromMat(poseW_.rotation()));
+    /*
     realRobot.posW(poseW_);
     realRobot.velW(velW_);
+    realRobot.forwardKinematics();
+    */
+    update(realRobot);
     realRobot.forwardKinematics();
   }
 
@@ -441,12 +445,12 @@ void TiltObserver::update(mc_control::MCController & ctl)
     auto & imu = const_cast<mc_rbdyn::BodySensor &>(ctl.robot(robot_).bodySensor(imuSensor_));
     auto & rimu = const_cast<mc_rbdyn::BodySensor &>(ctl.realRobot(robot_).bodySensor(imuSensor_));
 
-    imu.orientation(Eigen::Quaterniond{estimatedRotationIMU_});
-    rimu.orientation(Eigen::Quaterniond{estimatedRotationIMU_});
+    imu.orientation(Eigen::Quaterniond{estimatedRotationIMU_.transpose()});
+    rimu.orientation(Eigen::Quaterniond{estimatedRotationIMU_.transpose()});
   }
 }
 
-void TiltObserver::update(mc_rbdyn::Robot & robot, const mc_control::MCController & ctl)
+void TiltObserver::update(mc_rbdyn::Robot & robot)
 {
   robot.posW(poseW_);
   robot.velW(velW_);

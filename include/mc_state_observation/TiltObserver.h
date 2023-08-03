@@ -42,7 +42,7 @@ protected:
    * @param robot Robot to update
    */
 
-  void update(mc_rbdyn::Robot & robot, const mc_control::MCController & ctl);
+  void update(mc_rbdyn::Robot & robot);
 
   /*! \brief Add observer from logger
    *
@@ -66,7 +66,7 @@ protected:
 
 protected:
   std::string robot_;
-  bool updateRobot_ = false;
+  bool updateRobot_ = true;
   std::string updateRobotName_;
   std::string imuSensor_;
   bool updateSensor_ = true;

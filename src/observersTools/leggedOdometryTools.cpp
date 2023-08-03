@@ -402,6 +402,7 @@ void LeggedOdometryManager::updateFbKinematics(const mc_control::MCController & 
   accs.linear() = odometryRobot().accW().linear();
   accs.angular() = odometryRobot().accW().angular();
 
+  /*
   logger.addLogEntry(odometryName_ + "_odometryRobot_posW",
                      [this]() -> sva::PTransformd { return odometryRobot().posW(); });
 
@@ -410,6 +411,7 @@ void LeggedOdometryManager::updateFbKinematics(const mc_control::MCController & 
 
   logger.addLogEntry(odometryName_ + "_odometryRobot_accW",
                      [this]() -> sva::MotionVecd { return odometryRobot().accW(); });
+                     */
 }
 
 void LeggedOdometryManager::updateFbKinematics(const mc_control::MCController & ctl,
@@ -427,11 +429,13 @@ void LeggedOdometryManager::updateFbKinematics(const mc_control::MCController & 
   vels.linear() = odometryRobot().velW().linear();
   vels.angular() = odometryRobot().velW().angular();
 
+  /*
   logger.addLogEntry(odometryName_ + "_odometryRobot_posW",
                      [this]() -> sva::PTransformd { return odometryRobot().posW(); });
 
   logger.addLogEntry(odometryName_ + "_odometryRobot_velW",
                      [this]() -> sva::MotionVecd { return odometryRobot().velW(); });
+                     */
 }
 
 void LeggedOdometryManager::updateFbKinematics(const mc_control::MCController & ctl,
@@ -443,8 +447,10 @@ void LeggedOdometryManager::updateFbKinematics(const mc_control::MCController & 
   pose.rotation() = odometryRobot().posW().rotation();
   pose.translation() = odometryRobot().posW().translation();
 
+  /*
   logger.addLogEntry(odometryName_ + "_odometryRobot_posW",
                      [this]() -> sva::PTransformd { return odometryRobot().posW(); });
+                     */
 }
 
 void LeggedOdometryManager::setNewContact(LoContactWithSensor & contact, const mc_rbdyn::Robot & measurementsRobot)
