@@ -21,16 +21,20 @@ public:
 
   bool run(const mc_control::MCController & ctl) override;
 
-  void updateAnchorFrame(const mc_control::MCController & ctl);
+  void updateAnchorFrame(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot);
 
   void updateAnchorFrameOdometry(const mc_control::MCController & ctl);
-  void updateAnchorFrameNoOdometry(const mc_control::MCController & ctl);
+  void updateAnchorFrameNoOdometry(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot);
 
   void updatePoseAndVel(const mc_control::MCController & ctl,
                         const stateObservation::Vector3 & localWorldImuLinVel,
                         const stateObservation::Vector3 & localWorldImuAngVel);
 
-  void runTiltEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & realRobot);
+  /*! \brief update the robot pose in the world only for visualization purpose
+   *
+   * @param updatedRobot Robot with the kinematics of the control robot but with updated joint values.
+   */
+  void runTiltEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot);
 
   void update(mc_control::MCController & ctl) override;
 
@@ -75,21 +79,32 @@ protected:
    * parameter related to the convergence of the linear velocity
    * of the IMU expressed in the control frame
    */
-  double alpha_ = 50;
+  double finalAlpha_ = 50;
   ///  parameter related to the fast convergence of the tilt
-  double beta_ = 5;
+  double finalBeta_ = 5;
   /// parameter related to the orthogonality
+  double finalGamma_ = 15;
+
+  /*!
+   * initial value of the parameter related to the convergence of the linear velocity
+   * of the IMU expressed in the control frame
+   */
+  double alpha_ = 50;
+  /// initial value of the parameter related to the fast convergence of the tilt
+  double beta_ = 5;
+  /// initial value of the parameter related to the orthogonality
   double gamma_ = 15;
+
   std::string anchorFrameFunction_;
   stateObservation::TiltEstimator estimator_;
 
   // values used for computation
-  stateObservation::kine::Kinematics realFbImuKine_;
+  stateObservation::kine::Kinematics updatedFbImuKine_;
   sva::MotionVecd imuVelC_ = sva::MotionVecd::Zero();
   sva::PTransformd X_C_IMU_ = sva::PTransformd::Identity();
   sva::PTransformd X_0_C_ = sva::PTransformd::Identity(); // control anchor frame
-  sva::PTransformd X_0_C_real_ = sva::PTransformd::Identity(); // anchor frame updated by the other observers
-  sva::PTransformd X_0_C_real_previous_ = sva::PTransformd::Identity(); // previous real anchor frame
+  sva::PTransformd X_0_C_updated_ = sva::PTransformd::Identity(); // anchor frame updated by the other observers
+  sva::PTransformd X_0_C_updated_previous_ = sva::PTransformd::Identity(); // previous updated anchor frame
 
   sva::PTransformd newWorldAnchorPose = sva::PTransformd::Identity(); // control anchor frame
 
@@ -99,15 +114,16 @@ protected:
 
   stateObservation::kine::Kinematics worldAnchorKine_ =
       stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
-  stateObservation::kine::Kinematics realWorldAnchorKine_ =
+  stateObservation::kine::Kinematics updatedWorldAnchorKine_ =
       stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
   stateObservation::kine::Kinematics worldFbKine_;
-  stateObservation::kine::Kinematics realWorldFbKine_;
+  stateObservation::kine::Kinematics updatedWorldFbKine_;
+  stateObservation::kine::Kinematics correctedWorldImuKine_;
 
   stateObservation::Vector3 estimatedWorldImuLocalLinVel_;
   stateObservation::Vector3 virtualMeasureWorldImuLocalLinVel_;
-  stateObservation::Vector3 realRobotWorldImuLocalLinVel_;
-  stateObservation::Vector3 realRobotWorldImuLocalAngVel_;
+  stateObservation::Vector3 updatedRobotWorldImuLocalLinVel_;
+  stateObservation::Vector3 updatedRobotWorldImuLocalAngVel_;
 
   // result
   // The observed tilt of the sensor
@@ -136,10 +152,10 @@ private:
   bool withOdometry_ = false;
 
   stateObservation::Vector3 x1_;
-  stateObservation::kine::Kinematics realWorldImuKine_;
+  stateObservation::kine::Kinematics updatedWorldImuKine_;
   stateObservation::kine::Kinematics worldImuKine_;
-  stateObservation::kine::Kinematics realImuAnchorKine_;
-  stateObservation::kine::Kinematics realFbAnchorKine_;
+  stateObservation::kine::Kinematics updatedImuAnchorKine_;
+  stateObservation::kine::Kinematics updatedFbAnchorKine_;
 
   double contactDetectionPropThreshold_ = 0.11;
 

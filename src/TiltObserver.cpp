@@ -60,9 +60,19 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
   updateRobotName_ = robot_;
   imuSensor_ = config("imuSensor", ctl.robot().bodySensor().name());
   updateSensorName_ = imuSensor_;
-  config("alpha", alpha_);
-  config("beta", beta_);
-  config("gamma", gamma_);
+
+  // config("alpha", alpha_);
+  // config("beta", beta_);
+  // config("gamma", gamma_);
+
+  config("initAlpha", alpha_);
+  config("initBeta", beta_);
+  config("initGamma", gamma_);
+
+  config("finalAlpha", finalAlpha_);
+  config("finalBeta", finalBeta_);
+  config("finalGamma", finalGamma_);
+
   // anchorFrameFunction_ = config("anchorFrameFunction", name() + "::" + ctl.robot(robot_).name());
   anchorFrameFunction_ = "KinematicAnchorFrame::" + ctl.robot(robot_).name();
   config("maxAnchorFrameDiscontinuity", maxAnchorFrameDiscontinuity_);
@@ -131,21 +141,82 @@ void TiltObserver::reset(const mc_control::MCController & ctl)
 
   my_robots_ = mc_rbdyn::Robots::make();
   my_robots_->robotCopy(robot, robot.name());
-  my_robots_->robotCopy(realRobot, "inputRobot");
+  my_robots_->robotCopy(robot, "updatedRobot");
   ctl.gui()->addElement(
       {"Robots"},
       mc_rtc::gui::Robot("TiltEstimator", [this]() -> const mc_rbdyn::Robot & { return my_robots_->robot(); }));
+
+  const auto & imu = robot.bodySensor(imuSensor_);
+
   poseW_ = ctl.robot(robot_).posW();
   velW_ = ctl.robot(robot_).velW();
+
+  so::Vector3 tilt; // not exactly the tilt but Rt * ez, corresponding to the Tilt estimator's x1
+  if(imu.linearAcceleration().norm() < 1e-4)
+  {
+    tilt = ctl.robot(robot_).posW().rotation() * so::Vector3::UnitZ();
+  }
+  else
+  {
+    tilt = imu.linearAcceleration()
+           / imu.linearAcceleration().norm(); // we consider the acceleration as zero on the initialization
+  }
+
+  // std::cout << "imu.linearAcceleration(): " << imu.linearAcceleration() << std::endl;
+  // std::cout << "tilt: " << tilt.transpose() << std::endl;
+
+  estimator_.initEstimator(so::Vector3::Zero(), tilt, tilt);
+
+  // poseW_ = ctl.robot(robot_).posW();
+  // velW_ = ctl.robot(robot_).velW();
+
+  /*
+  std::cout << std::endl << "robot" << std::endl << robot.posW().rotation() << std::endl;
+  std::cout << std::endl << "realRobot" << std::endl << realRobot.posW().rotation() << std::endl;
+
+  const sva::PTransformd & imuXbs = imu.X_b_s();
+
+  so::kine::Kinematics parentImuKine =
+      kinematicsTools::poseFromSva(imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vels);
+
+  const sva::PTransformd & parentPoseW = robot.bodyPosW(imu.parentBody());
+
+  so::kine::Kinematics worldParentKine = kinematicsTools::poseFromSva(parentPoseW, so::kine::Kinematics::Flags::pose);
+
+  worldImuKine_ = worldParentKine * parentImuKine;
+
+  so::Vector3 initX2 = worldImuKine_.orientation.toMatrix3().transpose() * so::Vector3::UnitZ();
+  */
+  /*
+   const Eigen::Matrix3d cOri = (imu.X_b_s() * ctl.robot(robot_).bodyPosW(imu.parentBody())).rotation();
+   so::Vector3 initX2 = cOri * so::Vector3::UnitZ(); // so::kine::rotationMatrixToRotationVector(cOri.transpose());
+
+   estimator_.initEstimator(so::Vector3::Zero(), initX2, initX2);
+   */
 }
 
 bool TiltObserver::run(const mc_control::MCController & ctl)
 {
+  const auto & robot = ctl.robot(robot_);
   const auto & realRobot = ctl.realRobot(robot_);
+  auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
+
+  my_robots_->robot("updatedRobot").mbc() = robot.mbc();
+  my_robots_->robot("updatedRobot").mbc().q = robot.mbc().q;
+
+  my_robots_->robot("updatedRobot").forwardKinematics();
+  my_robots_->robot("updatedRobot").forwardVelocity();
+
+  if(logger.t() > 1.0)
+  {
+    alpha_ = finalAlpha_;
+    beta_ = finalBeta_;
+    gamma_ = finalGamma_;
+  }
+
   if(!withOdometry_)
   {
-    const auto & realRobot = ctl.realRobot(robot_);
-    runTiltEstimator(ctl, realRobot);
+    runTiltEstimator(ctl, my_robots_->robot("updatedRobot"));
   }
   else
   {
@@ -156,12 +227,12 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
 
   /* Update of the observed robot */
   my_robots_->robot().mbc().q = realRobot.mbc().q;
-  update(my_robots_->robot(), ctl);
+  update(my_robots_->robot());
 
   return true;
 }
 
-void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & realRobot)
+void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot)
 {
   const auto & robot = ctl.robot(robot_);
 
@@ -171,7 +242,7 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
 
   // updates the anchor frame used by the tilt observer.
   // If we perform odometry, the control and real robot anchor frame are both the one of the odometry robot.
-  updateAnchorFrame(ctl);
+  updateAnchorFrame(ctl, updatedRobot);
 
   // Anchor frame defined w.r.t control robot
   // XXX what if the feet are being moved by the stabilizer?
@@ -184,87 +255,99 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
   // - linear velocity of the anchor frame in the world of the control robot (derivative?)
 
   const auto & imu = robot.bodySensor(imuSensor_);
-  const auto & rimu = realRobot.bodySensor(imuSensor_);
+  const auto & rimu = updatedRobot.bodySensor(imuSensor_);
 
-  auto X_0_FB = robot.posW();
-  auto v_0_FB = robot.velW();
-  // auto acc_0_FB = robot.accW();
-  // worldFbKine_ = kinematicsTools::kinematicsFromSva(X_0_FB, v_0_FB, acc_0_FB, true, true);
-  worldFbKine_ = kinematicsTools::poseAndVelFromSva(X_0_FB, v_0_FB, true);
-
-  auto X_0_FB_real = realRobot.posW();
-  auto v_0_FB_real = realRobot.velW();
+  worldFbKine_ = kinematicsTools::poseAndVelFromSva(robot.posW(), robot.velW(), true);
 
   // In the case we do odometry, the pose and velocities of the odometry robot are still not updated but the joints are.
   // It is not a problem as this kinematics object is not used to retrieve global poses and velocities.
-  realWorldFbKine_ = kinematicsTools::poseAndVelFromSva(X_0_FB_real, v_0_FB_real, true);
+  updatedWorldFbKine_ = kinematicsTools::poseAndVelFromSva(updatedRobot.posW(), updatedRobot.velW(), true);
 
   const sva::PTransformd & imuXbs = imu.X_b_s();
   const sva::PTransformd & rimuXbs = rimu.X_b_s();
 
   so::kine::Kinematics parentImuKine =
       kinematicsTools::poseFromSva(imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vels);
-  so::kine::Kinematics realParentImuKine =
+  so::kine::Kinematics updatedParentImuKine =
       kinematicsTools::poseFromSva(rimuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vels);
 
   const sva::PTransformd & parentPoseW = robot.bodyPosW(imu.parentBody());
-  const sva::PTransformd & realParentPoseW = realRobot.bodyPosW(rimu.parentBody());
+  const sva::PTransformd & updatedParentPoseW = updatedRobot.bodyPosW(rimu.parentBody());
 
   // Compute velocity of the imu in the control frame
-  auto v_0_imuParent = robot.mbc().bodyVelW[robot.bodyIndexByName(imu.parentBody())];
+  auto & v_0_imuParent = robot.mbc().bodyVelW[robot.bodyIndexByName(imu.parentBody())];
 
-  auto real_v_0_imuParent = realRobot.mbc().bodyVelW[realRobot.bodyIndexByName(rimu.parentBody())];
+  auto & updated_v_0_imuParent = updatedRobot.mbc().bodyVelW[updatedRobot.bodyIndexByName(rimu.parentBody())];
 
   so::kine::Kinematics worldParentKine = kinematicsTools::poseAndVelFromSva(parentPoseW, v_0_imuParent, true);
-  so::kine::Kinematics realWorldParentKine =
-      kinematicsTools::poseAndVelFromSva(realParentPoseW, real_v_0_imuParent, true);
+  so::kine::Kinematics updatedWorldParentKine =
+      kinematicsTools::poseAndVelFromSva(updatedParentPoseW, updated_v_0_imuParent, true);
 
   worldImuKine_ = worldParentKine * parentImuKine;
-  realWorldImuKine_ = realWorldParentKine * realParentImuKine;
+  updatedWorldImuKine_ = updatedWorldParentKine * updatedParentImuKine;
 
   so::kine::Kinematics newWorldAnchorKine = kinematicsTools::poseFromSva(X_0_C_, so::kine::Kinematics::Flags::pose);
 
-  so::kine::Kinematics newRealWorldAnchorKine =
-      kinematicsTools::poseFromSva(X_0_C_real_, so::kine::Kinematics::Flags::pose);
+  so::kine::Kinematics newUpdatedWorldAnchorKine =
+      kinematicsTools::poseFromSva(X_0_C_updated_, so::kine::Kinematics::Flags::pose);
 
   worldAnchorKine_.update(newWorldAnchorKine, ctl.timeStep, flagPoseVels_);
 
-  realWorldAnchorKine_.update(newRealWorldAnchorKine, ctl.timeStep,
-                              flagPoseVels_); // this is not the real robot's anchor frame
+  updatedWorldAnchorKine_.update(newUpdatedWorldAnchorKine, ctl.timeStep, flagPoseVels_);
 
   // Pose of the imu in the control frame
-  so::kine::Kinematics realAnchorImuKine = realWorldAnchorKine_.getInverse() * realWorldImuKine_;
-  realImuAnchorKine_ = realAnchorImuKine.getInverse();
-  realFbImuKine_ = realWorldFbKine_.getInverse() * realWorldImuKine_;
+  so::kine::Kinematics updatedAnchorImuKine = updatedWorldAnchorKine_.getInverse() * updatedWorldImuKine_;
+  updatedImuAnchorKine_ = updatedAnchorImuKine.getInverse();
+  updatedFbImuKine_ = updatedWorldFbKine_.getInverse() * updatedWorldImuKine_;
 
-  BOOST_ASSERT((realAnchorImuKine.linVel.isSet() || realAnchorImuKine.angVel.isSet()) && "vels were not computed");
-
-  estimator_.setSensorPositionInC(realAnchorImuKine.position());
-  estimator_.setSensorOrientationInC(realAnchorImuKine.orientation.toMatrix3());
-  estimator_.setSensorLinearVelocityInC(realAnchorImuKine.linVel());
-  estimator_.setSensorAngularVelocityInC(realAnchorImuKine.angVel());
-  estimator_.setControlOriginVelocityInW(worldAnchorKine_.orientation.toMatrix3().transpose()
-                                         * worldAnchorKine_.linVel());
+  BOOST_ASSERT((updatedAnchorImuKine.linVel.isSet() || updatedAnchorImuKine.angVel.isSet())
+               && "vels were not computed");
 
   auto k = estimator_.getCurrentTime();
+  estimator_.setMeasurement(imu.linearAcceleration(), imu.angularVelocity(), k + 1);
 
-  x1_ = realWorldImuKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.linVel() - realImuAnchorKine_.linVel()
-        - (imu.angularVelocity()).cross(realImuAnchorKine_.position());
+  if(withOdometry_)
+  {
+    estimator_.setSensorPositionInC(updatedAnchorImuKine.position());
+    estimator_.setSensorOrientationInC(updatedAnchorImuKine.orientation.toMatrix3());
+    estimator_.setSensorLinearVelocityInC(updatedAnchorImuKine.linVel());
+    estimator_.setSensorAngularVelocityInC(updatedAnchorImuKine.angVel());
+    estimator_.setControlOriginVelocityInW(worldAnchorKine_.orientation.toMatrix3().transpose()
+                                           * worldAnchorKine_.linVel());
+  }
+  else
+  {
+    x1_ = worldImuKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.linVel()
+          - (imu.angularVelocity()).cross(updatedImuAnchorKine_.position()) - updatedImuAnchorKine_.linVel();
+
+    estimator_.setExplicitX1(x1_); // we directly give the virtual measurement of the velocity by the IMU
+  }
+  /*
+  estimator_.setSensorPositionInC(updatedAnchorImuKine.position());
+  estimator_.setSensorOrientationInC(updatedAnchorImuKine.orientation.toMatrix3());
+  estimator_.setSensorLinearVelocityInC(updatedAnchorImuKine.linVel());
+  estimator_.setSensorAngularVelocityInC(updatedAnchorImuKine.angVel());
+  estimator_.setControlOriginVelocityInW(worldAnchorKine_.orientation.toMatrix3().transpose()
+                                         * worldAnchorKine_.linVel());
+  */
 
   /*
-  x1_ = (realWorldImuKine_.orientation.toMatrix3().transpose() * realWorldImuKine_.angVel())
+  x1_ = updatedWorldImuKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.linVel() -
+  updatedImuAnchorKine_.linVel()
+        - (imu.angularVelocity()).cross(updatedImuAnchorKine_.position());
+        */
+
+  /*
+  x1_ = (updatedWorldImuKine_.orientation.toMatrix3().transpose() * updatedWorldImuKine_.angVel())
             .cross(worldImuKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.position()
-                   + realAnchorImuKine.orientation.toMatrix3().transpose() * realAnchorImuKine.position())
+                   + updatedAnchorImuKine.orientation.toMatrix3().transpose() * updatedAnchorImuKine.position())
         + worldImuKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.linVel()
-        - (realAnchorImuKine.orientation.toMatrix3().transpose() * realAnchorImuKine.angVel())
-              .cross(realAnchorImuKine.orientation.toMatrix3().transpose() * realAnchorImuKine.position())
-        + realAnchorImuKine.orientation.toMatrix3().transpose() * realAnchorImuKine.linVel()
+        - (updatedAnchorImuKine.orientation.toMatrix3().transpose() * updatedAnchorImuKine.angVel())
+              .cross(updatedAnchorImuKine.orientation.toMatrix3().transpose() * updatedAnchorImuKine.position())
+        + updatedAnchorImuKine.orientation.toMatrix3().transpose() * updatedAnchorImuKine.linVel()
         - (worldImuKine_.orientation.toMatrix3().transpose() * worldImuKine_.angVel())
               .cross(worldImuKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.position());
               */
-
-  estimator_.setMeasurement(imu.linearAcceleration(), imu.angularVelocity(), k + 1);
-  // estimator_.setExplicitX1(x1_); // we directly give the virtual measurement of the velocity by the IMU
 
   xk_ = estimator_.getEstimatedState(k + 1);
 
@@ -274,7 +357,7 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
   estimatedRotationIMU_ = so::kine::mergeTiltWithYaw(tilt, worldImuKine_.orientation.toMatrix3());
 
   // Estimated orientation of the floating base in the world (especially the tilt)
-  R_0_fb_ = estimatedRotationIMU_ * realFbImuKine_.orientation.toMatrix3().transpose();
+  R_0_fb_ = estimatedRotationIMU_ * updatedFbImuKine_.orientation.toMatrix3().transpose();
 
   auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
 
@@ -289,15 +372,15 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
   updatePoseAndVel(ctl, xk_.head(3), imu.angularVelocity());
 
   // update the velocities as MotionVecd for the logs
-  imuVelC_.linear() = realAnchorImuKine.linVel();
-  imuVelC_.angular() = realAnchorImuKine.angVel();
+  imuVelC_.linear() = updatedAnchorImuKine.linVel();
+  imuVelC_.angular() = updatedAnchorImuKine.angVel();
 
   // update the pose as PTransformd for the logs
-  X_C_IMU_.translation() = realAnchorImuKine.position();
-  X_C_IMU_.rotation() = realAnchorImuKine.orientation.toMatrix3().transpose();
+  X_C_IMU_.translation() = updatedAnchorImuKine.position();
+  X_C_IMU_.rotation() = updatedAnchorImuKine.orientation.toMatrix3().transpose();
 }
 
-void TiltObserver::updateAnchorFrame(const mc_control::MCController & ctl)
+void TiltObserver::updateAnchorFrame(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot)
 {
   if(withOdometry_)
   {
@@ -305,7 +388,7 @@ void TiltObserver::updateAnchorFrame(const mc_control::MCController & ctl)
   }
   else
   {
-    updateAnchorFrameNoOdometry(ctl);
+    updateAnchorFrameNoOdometry(ctl, updatedRobot);
   }
 }
 
@@ -314,13 +397,13 @@ void TiltObserver::updateAnchorFrameOdometry(const mc_control::MCController & ct
   so::kine::Kinematics worldAnchorKine = odometryManager_.getAnchorFramePose(ctl);
   X_0_C_.translation() = worldAnchorKine.position();
   X_0_C_.rotation() = worldAnchorKine.orientation.toMatrix3().transpose();
-  X_0_C_real_ = X_0_C_;
+  X_0_C_updated_ = X_0_C_;
 }
 
-void TiltObserver::updateAnchorFrameNoOdometry(const mc_control::MCController & ctl)
+void TiltObserver::updateAnchorFrameNoOdometry(const mc_control::MCController & ctl,
+                                               const mc_rbdyn::Robot & updatedRobot)
 {
   const auto & robot = ctl.robot(robot_);
-  const auto & realRobot = ctl.realRobot(robot_);
 
   anchorFrameJumped_ = false;
 
@@ -336,13 +419,13 @@ void TiltObserver::updateAnchorFrameNoOdometry(const mc_control::MCController & 
                               + robot.indirectSurfaceForceSensor("RightFootCenter").force().z());
 
     X_0_C_ = sva::interpolate(robot.surfacePose("RightFootCenter"), robot.surfacePose("LeftFootCenter"), leftFootRatio);
-    X_0_C_real_ = sva::interpolate(realRobot.surfacePose("RightFootCenter"), realRobot.surfacePose("LeftFootCenter"),
-                                   leftFootRatio);
+    X_0_C_updated_ = sva::interpolate(updatedRobot.surfacePose("RightFootCenter"),
+                                      updatedRobot.surfacePose("LeftFootCenter"), leftFootRatio);
   }
   else
   {
     X_0_C_ = ctl.datastore().call<sva::PTransformd>(anchorFrameFunction_, ctl.robot(robot_));
-    X_0_C_real_ = ctl.datastore().call<sva::PTransformd>(anchorFrameFunction_, ctl.realRobot(robot_));
+    X_0_C_updated_ = ctl.datastore().call<sva::PTransformd>(anchorFrameFunction_, updatedRobot);
   }
 
   if(firstIter_)
@@ -359,18 +442,18 @@ void TiltObserver::updateAnchorFrameNoOdometry(const mc_control::MCController & 
                            MC_FMT_STREAMED(X_0_C_.translation().transpose()), error, maxAnchorFrameDiscontinuity_);
       anchorFrameJumped_ = true;
     }
-    auto errorReal = (X_0_C_real_.translation() - realWorldAnchorKine_.position()).norm();
-    if(errorReal > maxAnchorFrameDiscontinuity_)
+    auto errorUpdated = (X_0_C_updated_.translation() - updatedWorldAnchorKine_.position()).norm();
+    if(errorUpdated > maxAnchorFrameDiscontinuity_)
     {
-      mc_rtc::log::warning("[{}] Real anchor frame jumped from [{}] to [{}] (error norm {:.3f} > threshold {:.3f})",
-                           name(), MC_FMT_STREAMED(X_0_C_real_previous_.translation().transpose()),
-                           MC_FMT_STREAMED(X_0_C_real_.translation().transpose()), errorReal,
+      mc_rtc::log::warning("[{}] Updated anchor frame jumped from [{}] to [{}] (error norm {:.3f} > threshold {:.3f})",
+                           name(), MC_FMT_STREAMED(X_0_C_updated_previous_.translation().transpose()),
+                           MC_FMT_STREAMED(X_0_C_updated_.translation().transpose()), errorUpdated,
                            maxAnchorFrameDiscontinuity_);
       anchorFrameJumped_ = true;
     }
   }
 
-  X_0_C_real_previous_ = X_0_C_real_;
+  X_0_C_updated_previous_ = X_0_C_updated_;
 }
 
 void TiltObserver::updatePoseAndVel(const mc_control::MCController & ctl,
@@ -381,13 +464,13 @@ void TiltObserver::updatePoseAndVel(const mc_control::MCController & ctl,
   {
     poseW_.rotation() = R_0_fb_.transpose();
 
-    realWorldFbKine_.orientation = R_0_fb_; // we replace the previous orientation estimation by the new one
+    updatedWorldFbKine_.orientation = R_0_fb_; // we replace the previous orientation estimation by the new one
 
-    realFbAnchorKine_ = realWorldFbKine_.getInverse() * realWorldAnchorKine_;
+    updatedFbAnchorKine_ = updatedWorldFbKine_.getInverse() * updatedWorldAnchorKine_;
 
     poseW_.translation() = R_0_fb_
                            * (worldFbKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.position()
-                              - realFbAnchorKine_.position());
+                              - updatedFbAnchorKine_.position());
   }
   else
   {
@@ -405,23 +488,34 @@ void TiltObserver::updatePoseAndVel(const mc_control::MCController & ctl,
   {
     mc_rtc::log::warning("[{}] Skipping velocity update (anchor frame jumped)", name());
   }
-  so::kine::Kinematics correctedWorldImuKine =
-      realWorldFbKine_
-      * realFbImuKine_; // corrected pose of the imu in the world. This step is used only to get the pose
-                        // of the IMU in the world that is required for the kinematics composition.
-  correctedWorldImuKine.linVel = correctedWorldImuKine.orientation * localWorldImuLinVel;
 
-  correctedWorldImuKine.angVel = correctedWorldImuKine.orientation * localWorldImuAngVel;
+  correctedWorldImuKine_ =
+      updatedWorldFbKine_
+      * updatedFbImuKine_; // corrected pose of the imu in the world. This step is used only to get the pose
+                           // of the IMU in the world that is required for the kinematics composition.
 
-  realWorldFbKine_ = correctedWorldImuKine * realFbImuKine_.getInverse();
+  correctedWorldImuKine_.linVel = correctedWorldImuKine_.orientation * localWorldImuLinVel;
+  correctedWorldImuKine_.angVel = correctedWorldImuKine_.orientation * localWorldImuAngVel;
 
-  realFbAnchorKine_ = realWorldFbKine_.getInverse() * realWorldAnchorKine_;
+  updatedWorldFbKine_ = correctedWorldImuKine_ * updatedFbImuKine_.getInverse();
 
-  so::Vector3 vel = worldAnchorKine_.linVel() - realWorldFbKine_.orientation * realFbAnchorKine_.linVel()
-                    - (realWorldFbKine_.angVel()).cross(realWorldFbKine_.orientation * realFbAnchorKine_.position());
+  updatedFbAnchorKine_ = updatedWorldFbKine_.getInverse() * updatedWorldAnchorKine_;
+
+  so::Vector3 vel =
+      worldAnchorKine_.linVel() - updatedWorldFbKine_.orientation * updatedFbAnchorKine_.linVel()
+      - (updatedWorldFbKine_.angVel()).cross(updatedWorldFbKine_.orientation * updatedFbAnchorKine_.position());
+
+  std::cout << std::endl << "vel: " << vel.transpose() << std::endl;
+
+  std::cout << std::endl << "part1: " << worldAnchorKine_.linVel() << std::endl;
+  std::cout << std::endl << "part2: " << updatedImuAnchorKine_.linVel() << std::endl;
 
   velW_.linear() = vel;
-  velW_.angular() = realWorldFbKine_.angVel();
+  velW_.angular() = updatedWorldFbKine_.angVel();
+  /*
+    velW_.linear() = updatedWorldFbKine_.linVel();
+    velW_.angular() = updatedWorldFbKine_.angVel();
+    */
 }
 
 void TiltObserver::update(mc_control::MCController & ctl)
@@ -521,127 +615,129 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
   logger.addLogEntry(category + "_FloatingBase_world_vel", [this]() -> const sva::MotionVecd & { return velW_; });
   logger.addLogEntry(category + "_debug_x1", [this]() -> const so::Vector3 & { return x1_; });
 
-  logger.addLogEntry(category + "_debug_x1_part1",
+  logger.addLogEntry(category + "_debug_realX1",
                      [this, &ctl]() -> so::Vector3
                      {
-                       auto & imu = const_cast<mc_rbdyn::BodySensor &>(ctl.robot(robot_).bodySensor(imuSensor_));
-                       return worldImuKine_.orientation.toMatrix3().transpose()
-                              * ((so::kine::skewSymmetric(worldImuKine_.orientation * imu.angularVelocity())
-                                  - so::kine::skewSymmetric(worldImuKine_.angVel()))
-                                 * worldAnchorKine_.position());
-                       ;
-                     });
-  logger.addLogEntry(category + "_debug_x1_part2",
-                     [this, &ctl]() -> so::Vector3
-                     {
-                       auto & imu = const_cast<mc_rbdyn::BodySensor &>(ctl.robot(robot_).bodySensor(imuSensor_));
-                       return -imu.angularVelocity().cross(realImuAnchorKine_.position());
-                       ;
-                     });
-  logger.addLogEntry(category + "_debug_x1_part3",
-                     [this, &ctl]() -> so::Vector3
-                     {
-                       auto & imu = const_cast<mc_rbdyn::BodySensor &>(ctl.robot(robot_).bodySensor(imuSensor_));
-                       return worldImuKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.linVel();
-                       ;
-                     });
-  logger.addLogEntry(category + "_debug_x1_part4",
-                     [this, &ctl]() -> so::Vector3
-                     {
-                       auto & imu = const_cast<mc_rbdyn::BodySensor &>(ctl.robot(robot_).bodySensor(imuSensor_));
-                       return -realImuAnchorKine_.linVel();
-                       ;
+                       const auto & realRobot = ctl.realRobot(robot_);
+                       const auto & rimu = realRobot.bodySensor(imuSensor_);
+
+                       const sva::PTransformd & rimuXbs = rimu.X_b_s();
+
+                       so::kine::Kinematics parentImuKine = kinematicsTools::poseFromSva(
+                           rimuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vels);
+
+                       const sva::PTransformd & parentPoseW = realRobot.bodyPosW(rimu.parentBody());
+
+                       // Compute velocity of the imu in the control frame
+                       auto & v_0_imuParent = realRobot.mbc().bodyVelW[realRobot.bodyIndexByName(rimu.parentBody())];
+
+                       so::kine::Kinematics worldParentKine =
+                           kinematicsTools::poseAndVelFromSva(parentPoseW, v_0_imuParent, true);
+
+                       so::kine::Kinematics worldImuKine = worldParentKine * parentImuKine;
+                       return worldImuKine.orientation.toMatrix3().transpose() * worldImuKine.linVel();
                      });
 
-  logger.addLogEntry(category + "_debug_x1_part5",
+  logger.addLogEntry(category + "_debug_realImuVel",
                      [this, &ctl]() -> so::Vector3
                      {
-                       auto & imu = const_cast<mc_rbdyn::BodySensor &>(ctl.robot(robot_).bodySensor(imuSensor_));
-                       return worldImuKine_.orientation.toMatrix3().transpose()
-                              * (so::kine::skewSymmetric(worldImuKine_.orientation * imu.angularVelocity())
-                                 * worldAnchorKine_.position());
-                       ;
-                     });
-  logger.addLogEntry(category + "_debug_x1_part6",
-                     [this, &ctl]() -> so::Vector3
-                     {
-                       auto & imu = const_cast<mc_rbdyn::BodySensor &>(ctl.robot(robot_).bodySensor(imuSensor_));
-                       return so::kine::skewSymmetric(imu.angularVelocity())
-                              * (worldImuKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.position());
-                       ;
-                     });
-  logger.addLogEntry(category + "_debug_x1_part6bis",
-                     [this, &ctl]() -> so::Vector3
-                     {
-                       auto & imu = const_cast<mc_rbdyn::BodySensor &>(ctl.robot(robot_).bodySensor(imuSensor_));
-                       return worldImuKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.position();
-                       ;
-                     });
-  logger.addLogEntry(category + "_debug_x1_part6ter",
-                     [this, &ctl]() -> so::Vector3
-                     {
-                       auto & imu = const_cast<mc_rbdyn::BodySensor &>(ctl.robot(robot_).bodySensor(imuSensor_));
-                       return -worldImuKine_.orientation.toMatrix3().transpose()
-                              * (worldImuKine_.angVel()).cross(worldAnchorKine_.position());
-                       ;
-                     });
-  logger.addLogEntry(category + "_debug_x1_part6quat",
-                     [this, &ctl]() -> so::Vector3
-                     {
-                       auto & imu = const_cast<mc_rbdyn::BodySensor &>(ctl.robot(robot_).bodySensor(imuSensor_));
-                       return -worldImuKine_.orientation.toMatrix3().transpose() * (worldImuKine_.angVel());
-                       ;
-                     });
-  logger.addLogEntry(category + "_debug_x1_part7",
-                     [this, &ctl]() -> so::Vector3
-                     {
-                       auto & imu = const_cast<mc_rbdyn::BodySensor &>(ctl.robot(robot_).bodySensor(imuSensor_));
-                       return worldImuKine_.orientation * imu.angularVelocity() - worldImuKine_.angVel();
-                       ;
-                     });
-  logger.addLogEntry(category + "_debug_x1_part8",
-                     [this, &ctl]() -> so::Vector3
-                     {
-                       auto & imu = const_cast<mc_rbdyn::BodySensor &>(ctl.robot(robot_).bodySensor(imuSensor_));
-                       return worldImuKine_.orientation * imu.angularVelocity();
-                       ;
-                     });
-  logger.addLogEntry(category + "_debug_x1_part9",
-                     [this, &ctl]() -> so::Vector3
-                     {
-                       auto & imu = const_cast<mc_rbdyn::BodySensor &>(ctl.robot(robot_).bodySensor(imuSensor_));
-                       return -worldImuKine_.angVel();
-                       ;
+                       const auto & realRobot = ctl.realRobot(robot_);
+                       const auto & rimu = realRobot.bodySensor(imuSensor_);
+
+                       const sva::PTransformd & rimuXbs = rimu.X_b_s();
+
+                       so::kine::Kinematics parentImuKine = kinematicsTools::poseFromSva(
+                           rimuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vels);
+
+                       const sva::PTransformd & parentPoseW = realRobot.bodyPosW(rimu.parentBody());
+
+                       auto & v_0_imuParent = realRobot.mbc().bodyVelW[realRobot.bodyIndexByName(rimu.parentBody())];
+
+                       so::kine::Kinematics worldParentKine =
+                           kinematicsTools::poseAndVelFromSva(parentPoseW, v_0_imuParent, true);
+
+                       so::kine::Kinematics worldImuKine = worldParentKine * parentImuKine;
+                       return worldImuKine.linVel();
                      });
 
-  logger.addLogEntry(category + "_debug_x1_other",
+  logger.addLogEntry(category + "_debug_realBodyVel",
                      [this, &ctl]() -> so::Vector3
                      {
-                       auto & imu = const_cast<mc_rbdyn::BodySensor &>(ctl.robot(robot_).bodySensor(imuSensor_));
-                       return worldImuKine_.orientation.toMatrix3().transpose()
-                                  * ((so::kine::skewSymmetric(worldImuKine_.orientation * imu.angularVelocity())
-                                      - so::kine::skewSymmetric(worldImuKine_.angVel()))
-                                     * worldAnchorKine_.position())
-                              - imu.angularVelocity().cross(realImuAnchorKine_.position())
-                              + worldImuKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.linVel()
-                              - realImuAnchorKine_.linVel();
-                       ;
+                       const auto & realRobot = ctl.realRobot(robot_);
+                       const auto & rimu = realRobot.bodySensor(imuSensor_);
+
+                       return realRobot.mbc().bodyVelW[realRobot.bodyIndexByName(rimu.parentBody())].linear();
+                     });
+
+  logger.addLogEntry(category + "_debug_ctlX1",
+                     [this, &ctl]() -> so::Vector3
+                     {
+                       const auto & robot = ctl.robot(robot_);
+                       const auto & imu = robot.bodySensor(imuSensor_);
+
+                       const sva::PTransformd & imuXbs = imu.X_b_s();
+
+                       so::kine::Kinematics parentImuKine = kinematicsTools::poseFromSva(
+                           imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vels);
+
+                       const sva::PTransformd & parentPoseW = robot.bodyPosW(imu.parentBody());
+
+                       // Compute velocity of the imu in the control frame
+                       auto & v_0_imuParent = robot.mbc().bodyVelW[robot.bodyIndexByName(imu.parentBody())];
+
+                       so::kine::Kinematics worldParentKine =
+                           kinematicsTools::poseAndVelFromSva(parentPoseW, v_0_imuParent, true);
+
+                       so::kine::Kinematics worldImuKine = worldParentKine * parentImuKine;
+                       return worldImuKine.orientation.toMatrix3().transpose() * worldImuKine.linVel();
+                     });
+
+  logger.addLogEntry(category + "_debug_ctlImuVel",
+                     [this, &ctl]() -> so::Vector3
+                     {
+                       const auto & robot = ctl.robot(robot_);
+                       const auto & imu = robot.bodySensor(imuSensor_);
+
+                       const sva::PTransformd & imuXbs = imu.X_b_s();
+
+                       so::kine::Kinematics parentImuKine = kinematicsTools::poseFromSva(
+                           imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vels);
+
+                       const sva::PTransformd & parentPoseW = robot.bodyPosW(imu.parentBody());
+
+                       auto & v_0_imuParent = robot.mbc().bodyVelW[robot.bodyIndexByName(imu.parentBody())];
+
+                       so::kine::Kinematics worldParentKine =
+                           kinematicsTools::poseAndVelFromSva(parentPoseW, v_0_imuParent, true);
+
+                       so::kine::Kinematics worldImuKine = worldParentKine * parentImuKine;
+                       return worldImuKine.linVel();
+                     });
+
+  logger.addLogEntry(category + "_debug_ctlBodyVel",
+                     [this, &ctl]() -> so::Vector3
+                     {
+                       const auto & robot = ctl.robot(robot_);
+                       const auto & imu = robot.bodySensor(imuSensor_);
+
+                       return robot.mbc().bodyVelW[robot.bodyIndexByName(imu.parentBody())].linear();
                      });
 
   kinematicsTools::addToLogger(worldAnchorKine_, logger, category + "_debug_worldAnchorKine");
-  kinematicsTools::addToLogger(realWorldImuKine_, logger, category + "_debug_realWorldImuKine");
+  kinematicsTools::addToLogger(updatedWorldImuKine_, logger, category + "_debug_updatedWorldImuKine");
   kinematicsTools::addToLogger(worldImuKine_, logger, category + "_debug_worldImuKine");
-  kinematicsTools::addToLogger(realWorldAnchorKine_, logger, category + "_debug_realWorldAnchorKine");
-  kinematicsTools::addToLogger(realImuAnchorKine_, logger, category + "_debug_realImuAnchorKine_");
-  kinematicsTools::addToLogger(realWorldFbKine_, logger, category + "_debug_realWorldFbKine_");
-  kinematicsTools::addToLogger(realFbAnchorKine_, logger, category + "_debug_realFbAnchorKine_");
+  kinematicsTools::addToLogger(updatedWorldAnchorKine_, logger, category + "_debug_updatedWorldAnchorKine");
+  kinematicsTools::addToLogger(updatedImuAnchorKine_, logger, category + "_debug_updatedImuAnchorKine_");
+  kinematicsTools::addToLogger(updatedWorldFbKine_, logger, category + "_debug_updatedWorldFbKine_");
+  kinematicsTools::addToLogger(updatedFbAnchorKine_, logger, category + "_debug_updatedFbAnchorKine_");
+  kinematicsTools::addToLogger(correctedWorldImuKine_, logger, category + "_debug_correctedWorldImuKine_");
   /*
   x1_ = (imu.angularVelocity())
             .cross(worldImuKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.position()
-                   - realImuAnchorKine.position())
+                   - updatedImuAnchorKine.position())
         + worldImuKine_.orientation.toMatrix3().transpose()
               * (worldAnchorKine_.linVel() - (worldImuKine_.angVel()).cross(worldAnchorKine_.position()))
-        - realImuAnchorKine.linVel(); */
+        - updatedImuAnchorKine.linVel(); */
 }
 
 void TiltObserver::removeFromLogger(mc_rtc::Logger & logger, const std::string & category)
