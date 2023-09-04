@@ -60,6 +60,7 @@ protected:
    */
   void removeFromLogger(mc_rtc::Logger &, const std::string & category) override;
 
+
   /*! \brief Add observer information the GUI.
    *
    * @param category Category in which to add this observer
@@ -151,11 +152,24 @@ private:
 
   bool withOdometry_ = false;
 
+  // Debug
   stateObservation::Vector3 x1_;
   stateObservation::kine::Kinematics updatedWorldImuKine_;
   stateObservation::kine::Kinematics worldImuKine_;
-  stateObservation::kine::Kinematics updatedImuAnchorKine_;
+  stateObservation::kine::Kinematics updatedImuAnchorKine_ = stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
   stateObservation::kine::Kinematics updatedFbAnchorKine_;
+
+  stateObservation::kine::Kinematics previous_realWorldAnchorKine_  =
+      stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
+  
+  stateObservation::kine::Kinematics imuAnchorKine_  =
+      stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
+
+
+  stateObservation::Vector3 x1_part1_;
+  stateObservation::Vector3 x1_part2_;
+  stateObservation::Vector3 x1_part3_;
+  
 
   double contactDetectionPropThreshold_ = 0.11;
 
