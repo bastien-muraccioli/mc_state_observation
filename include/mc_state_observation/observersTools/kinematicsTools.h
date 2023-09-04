@@ -102,6 +102,15 @@ stateObservation::kine::Kinematics & addVelsAndAccs(stateObservation::kine::Kine
                                                     bool velIsGlobal = true,
                                                     bool accIsGlobal = true);
 
+
+
+///////////////////////////////////////////////////////////////////////
+/// -------------------Kinematics to SVA conversion--------------------
+///////////////////////////////////////////////////////////////////////
+
+sva::PTransformd pTransformFromKinematics(const stateObservation::kine::Kinematics & kine);
+
+
 ///////////////////////////////////////////////////////////////////////
 /// -------------------------Logging functions-------------------------
 ///////////////////////////////////////////////////////////////////////

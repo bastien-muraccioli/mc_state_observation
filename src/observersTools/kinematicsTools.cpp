@@ -200,5 +200,19 @@ void addToLogger(const stateObservation::kine::Kinematics & kine, mc_rtc::Logger
                      });
 }
 
+
+///////////////////////////////////////////////////////////////////////
+/// -------------------Kinematics to SVA conversion--------------------
+///////////////////////////////////////////////////////////////////////
+
+
+sva::PTransformd pTransformFromKinematics(const so::kine::Kinematics & kine)
+{
+  sva::PTransformd pose;
+  pose.translation() = kine.position();
+  pose.rotation() = kine.orientation.toMatrix3().transpose();
+  return pose;
+}
+
 } // namespace kinematicsTools
 } // namespace mc_state_observation
