@@ -84,10 +84,18 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
 
 void LeggedOdometryManager::updateJointsConfiguration(const mc_control::MCController & ctl)
 {
+  sva::PTransformd backupPose = odometryRobot().posW();
+  sva::MotionVecd backupVel = odometryRobot().velW();
+  sva::MotionVecd backupAcc = odometryRobot().accW();
+
   const auto & realRobot = ctl.realRobot(robotName_);
 
   // copies the updated joints configuration from the real robot.
   odometryRobot().mbc().q = realRobot.mbc().q;
+
+  odometryRobot().posW(backupPose);
+  odometryRobot().velW(backupVel);
+  odometryRobot().accW(backupAcc);
 }
 
 void LeggedOdometryManager::run(const mc_control::MCController & ctl,
@@ -97,6 +105,7 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl,
                                 sva::MotionVecd & accs)
 {
   const auto & realRobot = ctl.realRobot(robotName_);
+
   const so::Matrix3 & realRobotOri = realRobot.posW().rotation().transpose();
 
   run(ctl, logger, pose, vels, accs, realRobotOri);
@@ -108,6 +117,7 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl,
                                 sva::MotionVecd & vels)
 {
   const auto & realRobot = ctl.realRobot(robotName_);
+
   const so::Matrix3 & realRobotOri = realRobot.posW().rotation().transpose();
 
   run(ctl, logger, pose, vels, realRobotOri);
@@ -116,8 +126,9 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl,
 void LeggedOdometryManager::run(const mc_control::MCController & ctl, mc_rtc::Logger & logger, sva::PTransformd & pose)
 {
   const auto & realRobot = ctl.realRobot(robotName_);
-  const so::Matrix3 & realRobotOri = realRobot.posW().rotation().transpose();
 
+  const so::Matrix3 & realRobotOri = realRobot.posW().rotation().transpose();
+  // the tilt must come from another estimator so we use the real robot for the orientation
   run(ctl, logger, pose, realRobotOri);
 }
 
@@ -128,6 +139,7 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl,
                                 sva::MotionVecd & accs,
                                 const stateObservation::Matrix3 & tilt)
 {
+  updateJointsConfiguration(ctl);
   odometryRobot().posW(fbPose_);
 
   // we set the velocities and accelerations to zero as they will be compensated anyway as we compute the
