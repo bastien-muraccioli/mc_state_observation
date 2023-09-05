@@ -584,16 +584,14 @@ void LeggedOdometryManager::addContactLogEntries(mc_rtc::Logger & logger, const 
   const std::string & contactName = contact.getName();
   logger.addLogEntry(odometryName_ + "_" + contactName + "_ref_position",
                      [this, contact]() -> Eigen::Vector3d { return contact.worldRefKine_.position(); });
-  logger.addLogEntry(odometryName_ + "_" + contactName + "_ref_orientation",
-                     [this, contact]() -> so::Quaternion
-                     { return contact.worldRefKine_.orientation.toQuaternion().inverse(); });
-  logger.addLogEntry(odometryName_ + "_" + contactName + "_ref_orientation_RollPitchYaw",
-                     [this, contact]() -> so::Vector3
-                     {
-                       so::kine::Orientation ori;
-                       return so::kine::rotationMatrixToRollPitchYaw(
-                           contact.worldRefKine_.orientation.toMatrix3().transpose());
-                     });
+  logger.addLogEntry(odometryName_ + "_" + contactName + "_ref_orientation", [this, contact]() -> so::Quaternion {
+    return contact.worldRefKine_.orientation.toQuaternion().inverse();
+  });
+  logger.addLogEntry(
+      odometryName_ + "_" + contactName + "_ref_orientation_RollPitchYaw", [this, contact]() -> so::Vector3 {
+        so::kine::Orientation ori;
+        return so::kine::rotationMatrixToRollPitchYaw(contact.worldRefKine_.orientation.toMatrix3().transpose());
+      });
 }
 
 void LeggedOdometryManager::removeContactLogEntries(mc_rtc::Logger & logger, const LoContactWithSensor & contact)

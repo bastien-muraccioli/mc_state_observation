@@ -124,9 +124,9 @@ void NaiveOdometry::reset(const mc_control::MCController & ctl)
 
   my_robots_ = mc_rbdyn::Robots::make();
   my_robots_->robotCopy(robot, robot.name());
-  ctl.gui()->addElement(
-      {"Robots"},
-      mc_rtc::gui::Robot("NaiveOdometry", [this]() -> const mc_rbdyn::Robot & { return my_robots_->robot(); }));
+  ctl.gui()->addElement({"Robots"}, mc_rtc::gui::Robot("NaiveOdometry", [this]() -> const mc_rbdyn::Robot & {
+                          return my_robots_->robot();
+                        }));
 
   X_0_fb_.translation() = realRobot.posW().translation();
   X_0_fb_.rotation() = realRobot.posW().rotation();
