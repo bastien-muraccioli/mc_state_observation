@@ -85,8 +85,6 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
 void LeggedOdometryManager::updateJointsConfiguration(const mc_control::MCController & ctl)
 {
   sva::PTransformd backupPose = odometryRobot().posW();
-  sva::MotionVecd backupVel = odometryRobot().velW();
-  sva::MotionVecd backupAcc = odometryRobot().accW();
 
   const auto & realRobot = ctl.realRobot(robotName_);
 
@@ -94,8 +92,8 @@ void LeggedOdometryManager::updateJointsConfiguration(const mc_control::MCContro
   odometryRobot().mbc().q = realRobot.mbc().q;
 
   odometryRobot().posW(backupPose);
-  odometryRobot().velW(backupVel);
-  odometryRobot().accW(backupAcc);
+
+  odometryRobot().forwardKinematics();
 }
 
 void LeggedOdometryManager::run(const mc_control::MCController & ctl,

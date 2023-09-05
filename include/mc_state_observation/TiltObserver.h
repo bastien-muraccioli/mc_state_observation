@@ -157,18 +157,13 @@ private:
   stateObservation::kine::Kinematics updatedWorldImuKine_;
   stateObservation::kine::Kinematics worldImuKine_;
   stateObservation::kine::Kinematics updatedImuAnchorKine_ = stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
-  stateObservation::kine::Kinematics updatedFbAnchorKine_;
+  stateObservation::kine::Kinematics fbAnchorKine_;
 
   stateObservation::kine::Kinematics previous_realWorldAnchorKine_  =
       stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
   
   stateObservation::kine::Kinematics imuAnchorKine_  =
       stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
-
-
-  stateObservation::Vector3 x1_part1_;
-  stateObservation::Vector3 x1_part2_;
-  stateObservation::Vector3 x1_part3_;
   
 
   double contactDetectionPropThreshold_ = 0.11;
