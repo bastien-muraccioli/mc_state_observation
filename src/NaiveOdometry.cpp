@@ -72,18 +72,18 @@ void NaiveOdometry::configure(const mc_control::MCController & ctl, const mc_rtc
   double contactDetectionThreshold = mass_ * so::cst::gravityConstant * contactDetectionPropThreshold_;
   std::vector<std::string> contactsSensorDisabledInit = config("contactsSensorDisabledInit");
   bool velUpdatedUpstream = config("velUpdatedUpstream");
-  bool accUpdatedUpstream = config("accUpdatedUpstream");
+  accUpdatedUpstream_ = config("accUpdatedUpstream");
   if(contactsDetection == "fromSurfaces")
   {
     odometryManager_.init(ctl, robot_, "NaiveOdometry", with6dOdometry, true, contactsDetection,
                           surfacesForContactDetection, contactsSensorDisabledInit, contactDetectionThreshold,
-                          velUpdatedUpstream, accUpdatedUpstream);
+                          velUpdatedUpstream, accUpdatedUpstream_);
   }
   else
   {
     odometryManager_.init(ctl, robot_, "NaiveOdometry", with6dOdometry, true, contactsDetection,
                           contactsSensorDisabledInit, contactDetectionThreshold, velUpdatedUpstream,
-                          accUpdatedUpstream);
+                          accUpdatedUpstream_);
   }
 }
 
@@ -136,8 +136,15 @@ bool NaiveOdometry::run(const mc_control::MCController & ctl)
 {
   auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
 
-  odometryManager_.updateJointsConfiguration(ctl);
-  odometryManager_.run(ctl, logger, X_0_fb_, v_fb_0_, a_fb_0_);
+  //  if the acceleration was estimated by a previous estimator, it can be updated
+  if(accUpdatedUpstream_)
+  {
+    odometryManager_.run(ctl, logger, X_0_fb_, v_fb_0_, a_fb_0_);
+  }
+  else
+  {
+    odometryManager_.run(ctl, logger, X_0_fb_, v_fb_0_);
+  }
 
   /* Update of the visual representation (only a visual feature) of the observed robot */
   my_robots_->robot().mbc().q = ctl.realRobot().mbc().q;

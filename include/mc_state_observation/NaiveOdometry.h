@@ -147,6 +147,8 @@ private:
   sva::MotionVecd a_fb_0_ = sva::MotionVecd::Zero();
 
   leggedOdometry::LeggedOdometryManager odometryManager_;
+
+  bool accUpdatedUpstream_ = false;
 };
 
 } // namespace mc_state_observation
