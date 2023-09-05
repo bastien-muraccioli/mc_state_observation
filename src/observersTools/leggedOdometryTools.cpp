@@ -84,14 +84,17 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
 
 void LeggedOdometryManager::updateJointsConfiguration(const mc_control::MCController & ctl)
 {
-  sva::PTransformd backupPose = odometryRobot().posW();
-
   const auto & realRobot = ctl.realRobot(robotName_);
+
+  // sva::PTransformd backupPose = odometryRobot().posW();
+  std::vector<double> q0 = odometryRobot().mbc().q[0];
+  odometryRobot().mbc().q = realRobot.mbc().q;
+  odometryRobot().mbc().q[0] = q0;
 
   // copies the updated joints configuration from the real robot.
   odometryRobot().mbc().q = realRobot.mbc().q;
 
-  odometryRobot().posW(backupPose);
+  // odometryRobot().posW(backupPose);
 
   odometryRobot().forwardKinematics();
 }
@@ -149,6 +152,8 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl,
   odometryRobot().accW(zeroMotion);
 
   odometryRobot().forwardKinematics();
+  odometryRobot().forwardVelocity();
+  odometryRobot().forwardAcceleration();
 
   // detects the contacts currently set with the environment
   contactsManager().findContacts(ctl, robotName_);
@@ -164,6 +169,7 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl,
                                 sva::MotionVecd & vels,
                                 const stateObservation::Matrix3 & tilt)
 {
+  updateJointsConfiguration(ctl);
   odometryRobot().posW(fbPose_);
 
   // we set the velocities and accelerations to zero as they will be compensated anyway as we compute the
@@ -175,6 +181,8 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl,
   odometryRobot().accW(zeroMotion);
 
   odometryRobot().forwardKinematics();
+  odometryRobot().forwardVelocity();
+  odometryRobot().forwardAcceleration();
 
   // detects the contacts currently set with the environment
   contactsManager().findContacts(ctl, robotName_);
@@ -189,6 +197,7 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl,
                                 sva::PTransformd & pose,
                                 const stateObservation::Matrix3 & tilt)
 {
+  updateJointsConfiguration(ctl);
   odometryRobot().posW(fbPose_);
 
   // we set the velocities and accelerations to zero as they will be compensated anyway as we compute the
@@ -200,6 +209,8 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl,
   odometryRobot().accW(zeroMotion);
 
   odometryRobot().forwardKinematics();
+  odometryRobot().forwardVelocity();
+  odometryRobot().forwardAcceleration();
 
   // detects the contacts currently set with the environment
   contactsManager().findContacts(ctl, robotName_);
