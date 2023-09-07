@@ -60,7 +60,6 @@ protected:
    */
   void removeFromLogger(mc_rtc::Logger &, const std::string & category) override;
 
-
   /*! \brief Add observer information the GUI.
    *
    * @param category Category in which to add this observer
@@ -144,11 +143,12 @@ private:
   sva::PTransformd prevPoseW_ = sva::PTransformd::Identity(); ///< Estimated pose of the floating-base in world frame */
   sva::MotionVecd velW_ = sva::MotionVecd::Zero();
 
-  sva::PTransformd poseForDisplay;
   double maxAnchorFrameDiscontinuity_ =
       0.01; ///< Threshold (norm) above wich the anchor frame is considered to have had a discontinuity
   bool anchorFrameJumped_ = false; /** Detects whether the anchor frame had a discontinuity */
-  bool firstIter_ = true;
+
+  int iter_ = 0;
+  int itersBeforeAnchorsVel = 10;
 
   bool withOdometry_ = false;
 
@@ -156,15 +156,12 @@ private:
   stateObservation::Vector3 x1_;
   stateObservation::kine::Kinematics updatedWorldImuKine_;
   stateObservation::kine::Kinematics worldImuKine_;
-  stateObservation::kine::Kinematics updatedImuAnchorKine_ = stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
+  stateObservation::kine::Kinematics updatedImuAnchorKine_ =
+      stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
   stateObservation::kine::Kinematics fbAnchorKine_;
 
-  stateObservation::kine::Kinematics previous_realWorldAnchorKine_  =
-      stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
-  
-  stateObservation::kine::Kinematics imuAnchorKine_  =
-      stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
-  
+  stateObservation::kine::Kinematics newWorldAnchorKine_;
+  stateObservation::kine::Kinematics newUpdatedWorldAnchorKine_;
 
   double contactDetectionPropThreshold_ = 0.11;
 
