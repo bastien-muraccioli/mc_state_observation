@@ -91,11 +91,6 @@ void LeggedOdometryManager::updateJointsConfiguration(const mc_control::MCContro
   odometryRobot().mbc().q = realRobot.mbc().q;
   odometryRobot().mbc().q[0] = q0;
 
-  // copies the updated joints configuration from the real robot.
-  odometryRobot().mbc().q = realRobot.mbc().q;
-
-  // odometryRobot().posW(backupPose);
-
   odometryRobot().forwardKinematics();
 }
 
