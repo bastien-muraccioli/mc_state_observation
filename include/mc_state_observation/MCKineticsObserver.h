@@ -457,6 +457,8 @@ private:
   int lastBackupIter_ = 0;
   int backupIterInterval_ = 0;
 
+  // time during which the Kinetics Observer is still getting updated by the Tilt Observer after the need of a backup,
+  // so the Kalman Filter has time to converge again
   int invincibilityFrame_ = 0;
   int invincibilityIter_ = 0;
 
