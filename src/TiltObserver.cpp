@@ -50,7 +50,7 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
   config("asBackup", asBackup);
   if(asBackup)
   {
-    BOOST_ASSERT(withOdometry_ && "The odometry must be used to perform backup");
+    // BOOST_ASSERT(withOdometry_ && "The odometry must be used to perform backup");
     auto & datastore = (const_cast<mc_control::MCController &>(ctl)).datastore();
     ctl.gui()->addElement({"OdometryBackup"}, mc_rtc::gui::Button("OdometryBackup", [this, &ctl]() { backupFb(ctl); }));
 
@@ -184,11 +184,17 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
   const auto & realRobot = ctl.realRobot(robot_);
   auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
 
+  /*
   my_robots_->robot("updatedRobot").mbc().q = realRobot.mbc().q;
 
   my_robots_->robot("updatedRobot").posW(robot.posW());
   my_robots_->robot("updatedRobot").velW(robot.velW());
   my_robots_->robot("updatedRobot").accW(robot.accW());
+  */
+
+  std::vector<double> q0 = robot.mbc().q[0];
+  my_robots_->robot("updatedRobot").mbc().q = realRobot.mbc().q;
+  my_robots_->robot("updatedRobot").mbc().q[0] = q0;
 
   my_robots_->robot("updatedRobot").forwardKinematics();
   my_robots_->robot("updatedRobot").forwardVelocity();
@@ -344,10 +350,10 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
   if(withOdometry_)
   {
     odometryManager_.run(ctl, logger, poseW_, velW_, R_0_fb_);
-    backupFbKinematics_.push_back(odometryManager_.odometryRobot().posW());
   }
 
   updatePoseAndVel(ctl, xk_.head(3), imu.angularVelocity());
+  backupFbKinematics_.push_back(poseW_);
 
   // update the velocities as MotionVecd for the logs
   imuVelC_.linear() = updatedAnchorImuKine.linVel();

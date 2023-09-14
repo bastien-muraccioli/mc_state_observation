@@ -725,8 +725,12 @@ protected:
   // list of the currently set contacts. The custom comparator is used to ensure that the sorting of contacts is
   // consistent
 
+  // list of the current contacts
   ContactsSet contactsFound_;
+
+  // list of contacts that were set on last iteration
   ContactsSet oldContacts_;
+  // list of the contacts that just got removed
   ContactsSet removedContacts_;
 
   // list of surfaces used for contacts detection if @contactsDetection_ is set to "fromSurfaces"
