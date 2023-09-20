@@ -35,15 +35,28 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
   odometryRobot_ = mc_rbdyn::Robots::make();
   odometryRobot_->robotCopy(robot, "odometryRobot");
 
-  worldAnchorFramePose_ =
-      kinematicsTools::poseFromSva(ctl.datastore().call<sva::PTransformd>(
-                                       "KinematicAnchorFrame::" + ctl.robot(robotName).name(), ctl.robot(robotName)),
-                                   so::kine::Kinematics::Flags::pose);
-
   fbPose_.translation() = robot.posW().translation();
   fbPose_.rotation() = robot.posW().rotation();
   contactsManager_.init(ctl, robotName, odometryName_, contactsDetection, surfacesForContactDetection,
                         contactsSensorDisabledInit, contactDetectionThreshold);
+
+  if(!ctl.datastore().has("KinematicAnchorFrame::" + ctl.robot(robotName).name()))
+  {
+    double leftFootRatio = robot.indirectSurfaceForceSensor("LeftFootCenter").force().z()
+                           / (robot.indirectSurfaceForceSensor("LeftFootCenter").force().z()
+                              + robot.indirectSurfaceForceSensor("RightFootCenter").force().z());
+
+    worldAnchorFramePose_ = kinematicsTools::poseFromSva(
+        sva::interpolate(robot.surfacePose("RightFootCenter"), robot.surfacePose("LeftFootCenter"), leftFootRatio),
+        so::kine::Kinematics::Flags::pose);
+  }
+  else
+  {
+    worldAnchorFramePose_ =
+        kinematicsTools::poseFromSva(ctl.datastore().call<sva::PTransformd>(
+                                         "KinematicAnchorFrame::" + ctl.robot(robotName).name(), ctl.robot(robotName)),
+                                     so::kine::Kinematics::Flags::pose);
+  }
 }
 
 void LeggedOdometryManager::init(const mc_control::MCController & ctl,
@@ -70,16 +83,30 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
   fbPose_.rotation() = robot.posW().rotation();
   odometryRobot().posW(fbPose_);
 
-  worldAnchorFramePose_ =
-      kinematicsTools::poseFromSva(ctl.datastore().call<sva::PTransformd>(
-                                       "KinematicAnchorFrame::" + ctl.robot(robotName).name(), ctl.robot(robotName)),
-                                   so::kine::Kinematics::Flags::pose);
   if(contactsDetection == "fromThreshold")
   {
     detectionFromThreshold_ = true;
   }
   contactsManager_.init(ctl, robotName, odometryName_, contactsDetection, contactsSensorDisabledInit,
                         contactDetectionThreshold);
+
+  if(!ctl.datastore().has("KinematicAnchorFrame::" + ctl.robot(robotName).name()))
+  {
+    double leftFootRatio = robot.indirectSurfaceForceSensor("LeftFootCenter").force().z()
+                           / (robot.indirectSurfaceForceSensor("LeftFootCenter").force().z()
+                              + robot.indirectSurfaceForceSensor("RightFootCenter").force().z());
+
+    worldAnchorFramePose_ = kinematicsTools::poseFromSva(
+        sva::interpolate(robot.surfacePose("RightFootCenter"), robot.surfacePose("LeftFootCenter"), leftFootRatio),
+        so::kine::Kinematics::Flags::pose);
+  }
+  else
+  {
+    worldAnchorFramePose_ =
+        kinematicsTools::poseFromSva(ctl.datastore().call<sva::PTransformd>(
+                                         "KinematicAnchorFrame::" + ctl.robot(robotName).name(), ctl.robot(robotName)),
+                                     so::kine::Kinematics::Flags::pose);
+  }
 }
 
 void LeggedOdometryManager::updateJointsConfiguration(const mc_control::MCController & ctl)
