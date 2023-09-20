@@ -630,139 +630,16 @@ so::kine::Kinematics & LeggedOdometryManager::getAnchorFramePose(const mc_contro
 {
   const auto & robot = ctl.robot(robotName_);
 
-  double sumForces_position = 0.0;
-  double sumForces_orientation = 0.0;
+  double leftFootRatio = robot.indirectSurfaceForceSensor("LeftFootCenter").force().z()
+                         / (robot.indirectSurfaceForceSensor("LeftFootCenter").force().z()
+                            + robot.indirectSurfaceForceSensor("RightFootCenter").force().z());
 
-  bool anchorUpdatable = false;
+  worldAnchorFramePose_ =
+      kinematicsTools::poseFromSva(sva::interpolate(odometryRobot().surfacePose("RightFootCenter"),
+                                                    odometryRobot().surfacePose("LeftFootCenter"), leftFootRatio),
+                                   so::kine::Kinematics::Flags::pose);
 
-  // force weighted sum of the estimated floating base positions
-  so::Vector3 totalAnchorPosition = so::Vector3::Zero();
-
-  // checks that the position and orientation can be updated from the currently set contacts and computes the pose of
-  // the floating base obtained from each contact
-  for(const int & setContactIndex : contactsManager().contactsFound())
-  {
-    if(contactsManager()
-           .contactWithSensor(setContactIndex)
-           .wasAlreadySet_) // the contact already exists so we will use it to estimate the floating base pose
-    {
-      anchorUpdatable = true;
-
-      LoContactWithSensor & setContact = contactsManager_.contactWithSensor(setContactIndex);
-      const so::kine::Kinematics & worldContactKineOdometryRobot =
-          getContactKinematics(setContact, robot.forceSensor(setContact.getName()));
-
-      sumForces_position += setContact.forceNorm_;
-      // force weighted sum of the estimated floating base positions
-      totalAnchorPosition += setContact.currentWorldKine_.position() * setContact.forceNorm_;
-
-      if(setContact.getName().find("Hand")
-         == std::string::npos) // we take less the hands into account for the orientation odometry
-      {
-        sumForces_orientation += setContact.forceNorm_;
-      }
-      else
-      {
-        sumForces_orientation += 0.3 * setContact.forceNorm_;
-      }
-    }
-  }
-
-  if(!anchorUpdatable)
-  {
     return worldAnchorFramePose_;
-  }
-
-  worldAnchorFramePose_.position = totalAnchorPosition / sumForces_position;
-
-  if(contactsManager().contactsFound().size() > 2)
-  {
-    if(contactsManager_.oriOdometryContacts_.size() == 1) // the orientation can be updated using 1 contact
-    {
-      worldAnchorFramePose_.orientation =
-          contactsManager_.oriOdometryContacts_.begin()->get().currentWorldKine_.orientation;
-    }
-    if(contactsManager_.oriOdometryContacts_.size() == 2) // the orientation can be updated using 2 contacts
-    {
-      const auto & contact1 = *contactsManager_.oriOdometryContacts_.begin();
-      const auto & contact2 = *std::next(contactsManager_.oriOdometryContacts_.begin(), 1);
-
-      const auto & R1 = contact1.get().currentWorldKine_.orientation.toMatrix3();
-      const auto & R2 = contact2.get().currentWorldKine_.orientation.toMatrix3();
-
-      double u;
-
-      // we take less the hands into account for the orientation odometry. The hands
-      // orientation is generally less trustable, notably because of the lower force implying
-      // more potential slippage.
-      if(contact1.get().getName().find("Hand") == std::string::npos)
-      {
-        u = 0.3 * contact1.get().forceNorm_ / sumForces_orientation;
-      }
-      else
-      {
-        u = contact1.get().forceNorm_ / sumForces_orientation;
-      }
-
-      so::Matrix3 diffRot = R1.transpose() * R2;
-
-      so::Vector3 diffRotVector = (1.0 - u)
-                                  * so::kine::skewSymmetricToRotationVector(
-                                      diffRot); // we perform the multiplication by the weighting coefficient now so a
-                                                // zero coefficient gives a unit rotation matrix and not a zero matrix
-      so::AngleAxis diffRotAngleAxis = so::kine::rotationVectorToAngleAxis(diffRotVector);
-
-      so::Matrix3 diffRotMatrix = so::kine::Orientation(diffRotAngleAxis).toMatrix3(); // exp( (1 - u) * log(R1^T R2) )
-
-      so::Matrix3 meanOri = R1 * diffRotMatrix;
-
-      worldAnchorFramePose_.orientation = meanOri;
-    }
-  }
-  else
-  {
-    if(contactsManager().contactsFound().size() == 1) // the orientation can be updated using 1 contact
-    {
-      worldAnchorFramePose_.orientation =
-          contactsManager().contactWithSensor(*contactsManager().contactsFound().begin()).currentWorldKine_.orientation;
-    }
-    if(contactsManager().contactsFound().size() == 2) // the orientation can be updated using 2 contacts
-    {
-      const auto & contact1 = contactsManager().contactWithSensor(*contactsManager().contactsFound().begin());
-      const auto & contact2 =
-          contactsManager().contactWithSensor(*std::next(contactsManager().contactsFound().begin(), 1));
-
-      const auto & R1 = contact1.currentWorldKine_.orientation.toMatrix3();
-      const auto & R2 = contact2.currentWorldKine_.orientation.toMatrix3();
-
-      double u;
-
-      if(contact1.getName().find("Hand")
-         == std::string::npos) // we take less the hands into account for the orientation odometry
-      {
-        u = 0.3 * contact1.forceNorm_ / sumForces_orientation;
-      }
-      else
-      {
-        u = contact1.forceNorm_ / sumForces_orientation;
-      }
-
-      so::Matrix3 diffRot = R1.transpose() * R2;
-
-      so::Vector3 diffRotVector = (1.0 - u)
-                                  * so::kine::skewSymmetricToRotationVector(
-                                      diffRot); // we perform the multiplication by the weighting coefficient now so a
-                                                // zero coefficient gives a unit rotation matrix and not a zero matrix
-      so::AngleAxis diffRotAngleAxis = so::kine::rotationVectorToAngleAxis(diffRotVector);
-
-      so::Matrix3 diffRotMatrix = so::kine::Orientation(diffRotAngleAxis).toMatrix3(); // exp( (1 - u) * log(R1^T R2) )
-
-      so::Matrix3 meanOri = R1 * diffRotMatrix;
-
-      worldAnchorFramePose_.orientation = meanOri;
-    }
-  }
-  return worldAnchorFramePose_;
 }
 } // namespace leggedOdometry
 } // namespace mc_state_observation
