@@ -75,6 +75,7 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
 
   // anchorFrameFunction_ = config("anchorFrameFunction", name() + "::" + ctl.robot(robot_).name());
   anchorFrameFunction_ = "KinematicAnchorFrame::" + ctl.robot(robot_).name();
+
   config("maxAnchorFrameDiscontinuity", maxAnchorFrameDiscontinuity_);
   config("updateRobot", updateRobot_);
   config("updateRobotName", updateRobotName_);
@@ -264,7 +265,6 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
   // we use the imu object of control robot because the copy of BodySensor objects seems to be incomplete. Anyway we use
   // it only to get information about the parent body, which is the same with the control robot.
   const sva::PTransformd & imuXbs = imu.X_b_s();
-  // const sva::PTransformd & rimuXbs = rimu.X_b_s();
 
   so::kine::Kinematics parentImuKine =
       kinematicsTools::poseFromSva(imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vels);
@@ -302,7 +302,7 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
   updatedImuAnchorKine_.update(newUpdatedImuAnchorKine, ctl.timeStep, flagPoseVels_);
 
   // we ignore the initial outlier velocity due to the position jump
-  if(iter_ < itersBeforeAnchorsVel)
+  if(iter_ < itersBeforeAnchorsVel_)
   {
     updatedImuAnchorKine_.linVel().setZero();
     updatedImuAnchorKine_.angVel().setZero();
@@ -323,6 +323,8 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
     estimator_.setSensorAngularVelocityInC(updatedAnchorImuKine.angVel());
     estimator_.setControlOriginVelocityInW(worldAnchorKine_.orientation.toMatrix3().transpose()
                                            * worldAnchorKine_.linVel());
+
+    x1_ = estimator_.getVirtualLocalVelocityMeasurement();
   }
   else
   {
@@ -332,13 +334,21 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
     estimator_.setExplicitX1(x1_); // we directly give the virtual measurement of the velocity by the IMU
   }
 
+  if(newWorldAnchorKine_.linVel.isSet())
+  {
+    // this means that there is a discontinuiy in the anchor frame velocity (otherwise this velocity is not given) and
+    // that we have to reset x1 and x1hat.
+    estimator_.resetX1andX1hat();
+  }
+
+  // estimation of the state with the complementary filters
   xk_ = estimator_.getEstimatedState(k + 1);
 
   // retrieving the estimated Tilt
   so::Vector3 tilt = xk_.tail(3);
 
   // Orientation of the imu in the world obtained from the estimated tilt and the yaw of the control robot.
-  estimatedRotationIMU_ = so::kine::mergeTiltWithYaw(tilt, worldImuKine_.orientation.toMatrix3());
+  estimatedRotationIMU_ = so::kine::mergeTiltWithYawAxisAgnostic(tilt, worldImuKine_.orientation.toMatrix3());
 
   // Estimated orientation of the floating base in the world (especially the tilt)
   R_0_fb_ = estimatedRotationIMU_ * updatedFbImuKine_.orientation.toMatrix3().transpose();
@@ -370,13 +380,18 @@ void TiltObserver::updateAnchorFrame(const mc_control::MCController & ctl, const
   if(withOdometry_)
   {
     updateAnchorFrameOdometry(ctl);
+    // newWorldAnchorKine_ is already updated in updateAnchorFrameOdometry()
+    newUpdatedWorldAnchorKine_ = newWorldAnchorKine_;
   }
   else
   {
     updateAnchorFrameNoOdometry(ctl, updatedRobot);
+    // new pose of the anchor frame in the world.
+    newWorldAnchorKine_ = kinematicsTools::poseFromSva(X_0_C_, so::kine::Kinematics::Flags::pose);
+    newUpdatedWorldAnchorKine_ = kinematicsTools::poseFromSva(X_0_C_updated_, so::kine::Kinematics::Flags::pose);
   }
 
-  if(iter_ > itersBeforeAnchorsVel)
+  if(iter_ > itersBeforeAnchorsVel_)
   { // Check whether anchor frame jumped
     auto error = (X_0_C_.translation() - worldAnchorKine_.position()).norm();
     if(error > maxAnchorFrameDiscontinuity_)
@@ -399,16 +414,12 @@ void TiltObserver::updateAnchorFrame(const mc_control::MCController & ctl, const
 
   X_0_C_updated_previous_ = X_0_C_updated_;
 
-  // new pose of the anchor frame in the world.
-  newWorldAnchorKine_ = kinematicsTools::poseFromSva(X_0_C_, so::kine::Kinematics::Flags::pose);
-  newUpdatedWorldAnchorKine_ = kinematicsTools::poseFromSva(X_0_C_updated_, so::kine::Kinematics::Flags::pose);
-
-  // the velocities of the anchor frames are computed by finite differences
+  // the velocities of the anchor frames are computed by finite differences, unless it is given in exceptional cases.
   worldAnchorKine_.update(newWorldAnchorKine_, ctl.timeStep, flagPoseVels_);
   updatedWorldAnchorKine_.update(newUpdatedWorldAnchorKine_, ctl.timeStep, flagPoseVels_);
 
   // we ignore the initial outlier velocities due to the position jump
-  if(iter_ < itersBeforeAnchorsVel)
+  if(iter_ < itersBeforeAnchorsVel_)
   {
     worldAnchorKine_.linVel().setZero();
     worldAnchorKine_.angVel().setZero();
@@ -419,7 +430,11 @@ void TiltObserver::updateAnchorFrame(const mc_control::MCController & ctl, const
 
 void TiltObserver::updateAnchorFrameOdometry(const mc_control::MCController & ctl)
 {
+  // Generally contains only the pose of the anchor frame, but when no contact is detected, the anchor frame becomes the
+  // frame of the IMU and its velocity is considered as zero. For that transition the one when the anchor frame gets
+  // back "to normal", it will contain the zero velocity.
   newWorldAnchorKine_ = odometryManager_.getAnchorFramePose(ctl);
+
   X_0_C_.translation() = newWorldAnchorKine_.position();
   X_0_C_.rotation() = newWorldAnchorKine_.orientation.toMatrix3().transpose();
   X_0_C_updated_ = X_0_C_;
@@ -640,6 +655,7 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
                        return worldImuKine_.orientation.toMatrix3().transpose() * worldImuKine_.angVel();
                      });
 
+  /*
   logger.addLogEntry(category + "_debug_realAnchorPos",
                      [this, &ctl]() -> sva::PTransformd
                      {
@@ -647,6 +663,7 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
 
                        return ctl.datastore().call<sva::PTransformd>(anchorFrameFunction_, ctl.realRobot(robot_));
                      });
+                     */
 
   logger.addLogEntry(category + "_debug_ctlWorldAnchorVelExpressedInImu",
                      [this, &ctl]() -> so::Vector3
