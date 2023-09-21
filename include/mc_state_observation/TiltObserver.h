@@ -148,7 +148,7 @@ private:
   bool anchorFrameJumped_ = false; /** Detects whether the anchor frame had a discontinuity */
 
   int iter_ = 0;
-  int itersBeforeAnchorsVel = 10;
+  int itersBeforeAnchorsVel_ = 10;
 
   bool withOdometry_ = false;
 
