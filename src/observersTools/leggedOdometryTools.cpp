@@ -201,7 +201,7 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl,
   // updates the contacts and the resulting floating base kinematics
   updateFbAndContacts(ctl, logger, true, true, tilt);
   // updates the floating base kinematics in the observer
-  updateFbKinematics(ctl, pose, vels, accs, logger);
+  updateFbKinematics(pose, vels, accs);
 }
 
 void LeggedOdometryManager::run(const mc_control::MCController & ctl,
@@ -230,7 +230,7 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl,
   // updates the contacts and the resulting floating base kinematics
   updateFbAndContacts(ctl, logger, true, false, tilt);
   // updates the floating base kinematics in the observer
-  updateFbKinematics(ctl, pose, vels, logger);
+  updateFbKinematics(pose, vels);
 }
 
 void LeggedOdometryManager::run(const mc_control::MCController & ctl,
@@ -258,7 +258,7 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl,
   // updates the contacts and the resulting floating base kinematics
   updateFbAndContacts(ctl, logger, false, false, tilt);
   // updates the floating base kinematics in the observer
-  updateFbKinematics(ctl, pose, logger);
+  updateFbKinematics(pose);
 }
 
 void LeggedOdometryManager::getFbFromContacts(const mc_control::MCController & ctl,
@@ -306,7 +306,6 @@ void LeggedOdometryManager::getFbFromContacts(const mc_control::MCController & c
         setContact.currentWorldFbPose_.orientation =
             so::Matrix3(setContact.worldRefKine_.orientation.toMatrix3() * contactFrameOri_odometryRobot);
       }
-      std::cout << std::endl << setContact.currentWorldFbPose_ << std::endl;
     }
   }
 }
@@ -393,6 +392,12 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
 
       fbPose_.rotation() = so::kine::mergeRoll1Pitch1WithYaw2AxisAgnostic(tilt, meanOri).transpose();
     }
+  }
+  else
+  {
+    // If no contact is detected, the yaw will not be updated but the tilt will.
+    fbPose_.rotation() =
+        so::kine::mergeRoll1Pitch1WithYaw2AxisAgnostic(tilt, fbPose_.rotation().transpose()).transpose();
   }
 
   // update of the pose of the floating base of the odometry robot in the world frame before creating the new contacts
@@ -489,11 +494,7 @@ void LeggedOdometryManager::updateOdometryRobot(const mc_control::MCController &
   }
 }
 
-void LeggedOdometryManager::updateFbKinematics(const mc_control::MCController & ctl,
-                                               sva::PTransformd & pose,
-                                               sva::MotionVecd & vels,
-                                               sva::MotionVecd & accs,
-                                               mc_rtc::Logger & logger)
+void LeggedOdometryManager::updateFbKinematics(sva::PTransformd & pose, sva::MotionVecd & vels, sva::MotionVecd & accs)
 {
   // updateOdometryRobot(ctl, true, true);
 
@@ -507,23 +508,9 @@ void LeggedOdometryManager::updateFbKinematics(const mc_control::MCController & 
 
   accs.linear() = odometryRobot().accW().linear();
   accs.angular() = odometryRobot().accW().angular();
-
-#ifdef _DEBUG
-  logger.addLogEntry(odometryName_ + "_odometryRobot_posW",
-                     [this]() -> sva::PTransformd { return odometryRobot().posW(); });
-
-  logger.addLogEntry(odometryName_ + "_odometryRobot_velW",
-                     [this]() -> sva::MotionVecd { return odometryRobot().velW(); });
-
-  logger.addLogEntry(odometryName_ + "_odometryRobot_accW",
-                     [this]() -> sva::MotionVecd { return odometryRobot().accW(); });
-#endif
 }
 
-void LeggedOdometryManager::updateFbKinematics(const mc_control::MCController & ctl,
-                                               sva::PTransformd & pose,
-                                               sva::MotionVecd & vels,
-                                               mc_rtc::Logger & logger)
+void LeggedOdometryManager::updateFbKinematics(sva::PTransformd & pose, sva::MotionVecd & vels)
 {
   // updateOdometryRobot(ctl, true, false);
 
@@ -534,29 +521,14 @@ void LeggedOdometryManager::updateFbKinematics(const mc_control::MCController & 
 
   vels.linear() = odometryRobot().velW().linear();
   vels.angular() = odometryRobot().velW().angular();
-
-#ifdef _DEBUG
-  logger.addLogEntry(odometryName_ + "_odometryRobot_posW",
-                     [this]() -> sva::PTransformd { return odometryRobot().posW(); });
-
-  logger.addLogEntry(odometryName_ + "_odometryRobot_velW",
-                     [this]() -> sva::MotionVecd { return odometryRobot().velW(); });
-#endif
 }
 
-void LeggedOdometryManager::updateFbKinematics(const mc_control::MCController & ctl,
-                                               sva::PTransformd & pose,
-                                               mc_rtc::Logger & logger)
+void LeggedOdometryManager::updateFbKinematics(sva::PTransformd & pose)
 {
   // updateOdometryRobot(ctl, false, false);
 
   pose.rotation() = odometryRobot().posW().rotation();
   pose.translation() = odometryRobot().posW().translation();
-
-#ifdef _DEBUG
-  logger.addLogEntry(odometryName_ + "_odometryRobot_posW",
-                     [this]() -> sva::PTransformd { return odometryRobot().posW(); });
-#endif
 }
 
 void LeggedOdometryManager::setNewContact(LoContactWithSensor & contact, const mc_rbdyn::Robot & measurementsRobot)
@@ -667,47 +639,11 @@ void LeggedOdometryManager::selectForOrientationOdometry()
 void LeggedOdometryManager::addContactLogEntries(mc_rtc::Logger & logger, const LoContactWithSensor & contact)
 {
   const std::string & contactName = contact.getName();
-  logger.addLogEntry(odometryName_ + "_" + contactName + "_ref_position",
-                     [this, contact]() -> Eigen::Vector3d { return contact.worldRefKine_.position(); });
-  logger.addLogEntry(odometryName_ + "_" + contactName + "_ref_orientation",
-                     [this, contact]() -> so::Quaternion
-                     { return contact.worldRefKine_.orientation.toQuaternion().inverse(); });
-  logger.addLogEntry(odometryName_ + "_" + contactName + "_ref_orientation_RollPitchYaw",
-                     [this, contact]() -> so::Vector3
-                     {
-                       so::kine::Orientation ori;
-                       return so::kine::rotationMatrixToRollPitchYaw(
-                           contact.worldRefKine_.orientation.toMatrix3().transpose());
-                     });
-  logger.addLogEntry(odometryName_ + "_" + contactName + "_currentWorldFbPose_positionNotWorking",
-                     [this, contact]() -> Eigen::Vector3d
-                     {
-                       if(contact.currentWorldFbPose_.position.isSet())
-                       {
-                         std::cout << std::endl << contact.currentWorldFbPose_ << std::endl;
-                         return contact.currentWorldFbPose_.position();
-                       }
-                       else
-                       {
-                         return stateObservation::Vector3::Zero();
-                       }
-                     });
+  kinematicsTools::addToLogger(contact.worldRefKine_, logger, odometryName_ + "_" + contactName + "_refPose");
   kinematicsTools::addToLogger(contact.currentWorldFbPose_, logger,
                                odometryName_ + "_" + contactName + "_currentWorldFbPose");
-  logger.addLogEntry(odometryName_ + "_" + contactName + "_currentWorldFbPose_orientationNotWorking",
-                     [this, contact]() -> so::Quaternion
-                     {
-                       if(contact.currentWorldFbPose_.orientation.isSet())
-                       {
-                         return contact.currentWorldFbPose_.orientation.toQuaternion().inverse();
-                       }
-                       else
-                       {
-                         stateObservation::kine::Orientation zeroOri;
-                         zeroOri.setZeroRotation();
-                         return zeroOri.toQuaternion();
-                       }
-                     });
+  kinematicsTools::addToLogger(contact.currentWorldKine_, logger,
+                               odometryName_ + "_" + contactName + "_currentWorldContactKine");
 }
 
 void LeggedOdometryManager::removeContactLogEntries(mc_rtc::Logger & logger, const LoContactWithSensor & contact)
@@ -715,7 +651,9 @@ void LeggedOdometryManager::removeContactLogEntries(mc_rtc::Logger & logger, con
   const std::string & contactName = contact.getName();
   logger.removeLogEntry(odometryName_ + "_" + contactName + "_ref_position");
   logger.removeLogEntry(odometryName_ + "_" + contactName + "_ref_orientation");
-  logger.removeLogEntry(odometryName_ + "_" + contactName + "_ref_orientation_RollPitchYaw");
+  kinematicsTools::removeFromLogger(logger, odometryName_ + "_" + contactName + "_refPose");
+  kinematicsTools::removeFromLogger(logger, odometryName_ + "_" + contactName + "_currentWorldFbPose");
+  kinematicsTools::removeFromLogger(logger, odometryName_ + "_" + contactName + "_currentWorldContactKine");
 }
 
 so::kine::Kinematics & LeggedOdometryManager::getAnchorFramePose(const mc_control::MCController & ctl)
@@ -848,12 +786,6 @@ so::kine::Kinematics & LeggedOdometryManager::getAnchorFramePose(const mc_contro
         sumForces_orientation += setContact.forceNorm_;
       }
     }
-  }
-
-  if(contactsManager_.oriOdometryContacts_.size() == 1)
-  {
-    posUpdatable = false;
-    oriUpdatable = false;
   }
 
   if(posUpdatable)

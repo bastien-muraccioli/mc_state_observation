@@ -293,7 +293,7 @@ void ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::findContactsFro
     contact.second.forceNorm_ = forceSensor.wrenchWithoutGravity(measRobot).force().norm();
     if(contact.second.forceNorm_ > contactDetectionThreshold_)
     {
-      // the contact is added to the map of contacts using the name of the associated surface
+      //  the contact is added to the map of contacts using the name of the associated surface
       contactsFound_.insert(contact.second.getID());
     }
   }

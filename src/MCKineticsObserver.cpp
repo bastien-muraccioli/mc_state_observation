@@ -347,7 +347,6 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
   // results of the Kinetics Observer
   if(!(observer_.nanDetected_ || (invincibilityIter_ != 0 && invincibilityIter_ < invincibilityFrame_)))
   {
-    auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
     /* Core */
     so::kine::Kinematics fbFb; // "Zero" Kinematics
     fbFb.setZero(so::kine::Kinematics::Flags::all);
@@ -522,7 +521,6 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
 }
 
 so::kine::Kinematics MCKineticsObserver::updateContactsPoseFromFb(
-    KoContactWithSensor & contact,
     const stateObservation::kine::Kinematics & oldFbWorld,
     const stateObservation::kine::Kinematics & oldWorldContactRef,
     const stateObservation::kine::Kinematics & newWorldFbKine)
@@ -995,14 +993,14 @@ void MCKineticsObserver::addToLogger(const mc_control::MCController &,
                                      mc_rtc::Logger & logger,
                                      const std::string & category)
 {
-  logger.addLogEntry(category + "_mcko_fb_posW", [this]() -> const sva::PTransformd & { return X_0_fb_; });
-  logger.addLogEntry(category + "_mcko_fb_velW", [this]() -> const sva::MotionVecd & { return v_fb_0_; });
-  logger.addLogEntry(category + "_mcko_fb_accW", [this]() -> const sva::MotionVecd & { return a_fb_0_; });
+  logger.addLogEntry(category + "_mcko_fb_posW", [this]() -> sva::PTransformd & { return X_0_fb_; });
+  logger.addLogEntry(category + "_mcko_fb_velW", [this]() -> sva::MotionVecd & { return v_fb_0_; });
+  logger.addLogEntry(category + "_mcko_fb_accW", [this]() -> sva::MotionVecd & { return a_fb_0_; });
 
   logger.addLogEntry(category + "_mcko_fb_yaw",
                      [this]() -> double { return -so::kine::rotationMatrixToYawAxisAgnostic(X_0_fb_.rotation()); });
 
-  logger.addLogEntry(category + "_constants_mass", [this]() -> const double { return observer_.getMass(); });
+  logger.addLogEntry(category + "_constants_mass", [this]() -> double { return observer_.getMass(); });
 
   logger.addLogEntry(category + "_constants_forceThreshold",
                      [this]() -> double { return mass_ * so::cst::gravityConstant * contactDetectionPropThreshold_; });

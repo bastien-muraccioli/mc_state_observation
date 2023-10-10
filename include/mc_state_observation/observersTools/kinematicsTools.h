@@ -102,20 +102,19 @@ stateObservation::kine::Kinematics & addVelsAndAccs(stateObservation::kine::Kine
                                                     bool velIsGlobal = true,
                                                     bool accIsGlobal = true);
 
-
-
 ///////////////////////////////////////////////////////////////////////
 /// -------------------Kinematics to SVA conversion--------------------
 ///////////////////////////////////////////////////////////////////////
 
 sva::PTransformd pTransformFromKinematics(const stateObservation::kine::Kinematics & kine);
 
-
 ///////////////////////////////////////////////////////////////////////
 /// -------------------------Logging functions-------------------------
 ///////////////////////////////////////////////////////////////////////
 
 void addToLogger(const stateObservation::kine::Kinematics & kine, mc_rtc::Logger & logger, const std::string & prefix);
+
+void removeFromLogger(mc_rtc::Logger & logger, const std::string & prefix);
 
 } // namespace kinematicsTools
 } // namespace mc_state_observation

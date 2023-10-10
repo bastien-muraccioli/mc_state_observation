@@ -194,7 +194,6 @@ protected:
   void updateContact(const mc_control::MCController & ctl, const int & contactIndex, mc_rtc::Logger & logger);
 
   stateObservation::kine::Kinematics updateContactsPoseFromFb(
-      KoContactWithSensor & contact,
       const stateObservation::kine::Kinematics & currentFbWorld,
       const stateObservation::kine::Kinematics & currentWorldContactRef,
       const stateObservation::kine::Kinematics & newWorldFbKine);

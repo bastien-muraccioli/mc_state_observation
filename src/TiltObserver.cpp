@@ -115,7 +115,11 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
     }
 
     const auto & robot = ctl.robot(robot_);
+
+    config("contactDetectionPropThreshold", contactDetectionPropThreshold_);
+
     double contactDetectionThreshold = robot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_;
+
     std::vector<std::string> contactsSensorDisabledInit = config("contactsSensorDisabledInit");
 
     bool velUpdatedUpstream = config("velUpdatedUpstream");
@@ -817,6 +821,19 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
 
                        so::kine::Kinematics worldImuKine = worldParentKine * parentImuKine;
                        return worldImuKine.linVel();
+                     });
+
+  logger.addLogEntry(category + "_debug_contactDetected",
+                     [this]() -> std::string
+                     {
+                       if(odometryManager_.contactsManager().contactsFound().size() > 0)
+                       {
+                         return "contacts";
+                       }
+                       else
+                       {
+                         return "no contacts";
+                       }
                      });
 
   logger.addLogEntry(category + "_debug_ctlBodyVel",

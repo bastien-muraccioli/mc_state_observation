@@ -282,11 +282,7 @@ public:
   /// @param accs The accelerations of the floating base in the world that we want to update. This acceleration must
   /// come from an upstream observer.
   /// @param logger logger
-  void updateFbKinematics(const mc_control::MCController & ctl,
-                          sva::PTransformd & pose,
-                          sva::MotionVecd & vels,
-                          sva::MotionVecd & accs,
-                          mc_rtc::Logger & logger);
+  void updateFbKinematics(sva::PTransformd & pose, sva::MotionVecd & vels, sva::MotionVecd & accs);
 
   /// @brief Updates the floating base kinematics given as argument by the observer.
   /// @details Beware, only the pose is updated by the odometry, the velocities update only performs a transformation
@@ -295,16 +291,13 @@ public:
   /// @param pose The pose of the floating base in the world that we want to update
   /// @param vels The velocities of the floating base in the world that we want to update.
   /// @param logger logger
-  void updateFbKinematics(const mc_control::MCController & ctl,
-                          sva::PTransformd & pose,
-                          sva::MotionVecd & vels,
-                          mc_rtc::Logger & logger);
+  void updateFbKinematics(sva::PTransformd & pose, sva::MotionVecd & vels);
 
   /// @brief Updates the floating base kinematics given as argument by the observer.
   /// @param ctl Controller
   /// @param pose The pose of the floating base in the world that we want to update
   /// @param logger logger
-  void updateFbKinematics(const mc_control::MCController & ctl, sva::PTransformd & pose, mc_rtc::Logger & logger);
+  void updateFbKinematics(sva::PTransformd & pose);
 
   /// @brief Computes the reference kinematics of the newly set contact in the world.
   /// @param contact The new contact
@@ -316,7 +309,7 @@ public:
   /// @param fs The force sensor associated to the contact
   /// @return stateObservation::kine::Kinematics &
   const stateObservation::kine::Kinematics & getCurrentContactKinematics(LoContactWithSensor & contact,
-                                                                  const mc_rbdyn::ForceSensor & fs);
+                                                                         const mc_rbdyn::ForceSensor & fs);
 
   /// @brief Select which contacts to use for the orientation odometry
   /// @details The two contacts with the highest measured force are selected. The contacts at hands are ignored because
