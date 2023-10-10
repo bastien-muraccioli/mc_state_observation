@@ -119,6 +119,7 @@ protected:
   stateObservation::kine::Kinematics worldFbKine_;
   stateObservation::kine::Kinematics updatedWorldFbKine_;
   stateObservation::kine::Kinematics correctedWorldImuKine_;
+  stateObservation::kine::Kinematics correctedWorldFbKine_;
 
   stateObservation::Vector3 estimatedWorldImuLocalLinVel_;
   stateObservation::Vector3 virtualMeasureWorldImuLocalLinVel_;

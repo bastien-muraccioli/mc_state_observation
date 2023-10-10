@@ -315,7 +315,7 @@ public:
   /// @param contact Contact of which we want to compute the kinematics
   /// @param fs The force sensor associated to the contact
   /// @return stateObservation::kine::Kinematics &
-  const stateObservation::kine::Kinematics & getContactKinematics(LoContactWithSensor & contact,
+  const stateObservation::kine::Kinematics & getCurrentContactKinematics(LoContactWithSensor & contact,
                                                                   const mc_rbdyn::ForceSensor & fs);
 
   /// @brief Select which contacts to use for the orientation odometry
@@ -323,8 +323,11 @@ public:
   /// their orientation is less trustable.
   void selectForOrientationOdometry();
 
-  /// @brief Returns the pose of the odometry robot's anchor frame. If no contact is detected, this version uses the
-  /// frame of the body sensor used by the estimator. Used by Tilt Observer.
+  /// @brief Returns the pose of the odometry robot's anchor frame based on the current floating base and encoders.
+  /// @details The anchor frame can be obtained using 2 ways:
+  /// - 1: contacts are detected and can be used to compute the anchor frame.
+  /// - 2: no contact is detected, the robot is hanging. If we still need an anchor frame for the tilt estimation we
+  /// arbitrarily use the frame of the bodySensor used by the estimator.
   /// @param ctl controller
   /// @param bodySensorName name of the body sensor.
   stateObservation::kine::Kinematics & getAnchorFramePose(const mc_control::MCController & ctl,
@@ -356,6 +359,11 @@ public:
     return contactsManager_;
   }
 
+public:
+  // Indicates if the mode of computation of the anchor frame changed. Might me needed by the estimator (ex;
+  // TiltObserver)
+  bool prevAnchorFromContacts_ = true;
+
 protected:
   // Name of the odometry, used in logs and in the gui.
   std::string odometryName_;
@@ -364,10 +372,6 @@ protected:
   // Indicates if the desired odometry must be a flat or a 6D odometry.
   bool odometry6d_;
   // Indicates if the orientation must be estimated by this odometry.
-
-  // Indicates if the anchor frame was computed using contacts or was associated to the frame of the IMU during the last
-  // iteration. Might be useful if the estimator must be aware of a sudden change in position for example.
-  bool prevAnchorFromContacts_ = true;
 
   bool withYawEstimation_;
   // tracked pose of the floating base
