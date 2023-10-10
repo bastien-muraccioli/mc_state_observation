@@ -61,8 +61,9 @@ public:
   bool useForOrientation_ = false;
   // norm of the force measured by the sensor
   double forceNorm_ = 0.0;
-  // current estimation of the real orientation of the floating base in the world from the contact kinematics
-  stateObservation::kine::Orientation currentWorldFbOrientation_;
+  // current estimation of the kinematics of the floating base in the world, obtained from the reference pose of the
+  // contact in the world
+  stateObservation::kine::Kinematics currentWorldFbPose_;
   // current estimation of the kinematics of the contact in the world
   stateObservation::kine::Kinematics currentWorldKine_;
 };
@@ -235,23 +236,39 @@ public:
   /// @param updateVels Indicates if the velocities of the floating base must be updated
   /// @param updateAccs Indicates if the accelerations of the floating base must be updated
   /// @param tilt The floating base's tilt (only the yaw is estimated).
-  virtual void updateContacts(const mc_control::MCController & ctl,
-                              mc_rtc::Logger & logger,
-                              const bool updateVels,
-                              const bool updateAccs,
-                              const stateObservation::Matrix3 & tilt);
+  void updateFbAndContacts(const mc_control::MCController & ctl,
+                           mc_rtc::Logger & logger,
+                           const bool updateVels,
+                           const bool updateAccs,
+                           const stateObservation::Matrix3 & tilt);
+
+  /// @brief If the contacts respect the conditions, computes the pose of the floating base for each set contact.
+  /// @details Combines the reference pose of the contact in the world and the transformation from the contact to the
+  /// frame.
+  /// @param ctl Controller.
+  /// @param posUpdatable Indicates if the position can be updated using contacts
+  /// @param oriUpdatable Indicates if the orientation can be updated using contacts
+  /// @param sumForces_position Sum of the measured force of all the contacts that will be used for the position
+  /// estimation
+  /// @param sumForces_orientation Sum of the measured force of all the contacts that will be used for the orientation
+  /// estimation
+  void getFbFromContacts(const mc_control::MCController & ctl,
+                         bool & posUpdatable,
+                         bool & oriUpdatable,
+                         double & sumForces_position,
+                         double & sumForces_orientation);
 
   /// @brief Updates the floating base kinematics given as argument by the observer.
-  /// @details Must be called after \ref updateContacts(const mc_control::MCController & ctl, mc_rtc::Logger & logger,
-  /// const bool updateVels, const bool updateAccs).Beware, only the pose is updated by the odometry, the velocities
-  /// (except if not updated by an upstream observer) and accelerations update only performs a transformation from the
-  /// real robot to our newly estimated robot. If you want to update the accelerations of the floating base, you need to
-  /// add an observer computing them beforehand.
+  /// @details Must be called after \ref updateFbAndContacts(const mc_control::MCController & ctl, mc_rtc::Logger &
+  /// logger, const bool updateVels, const bool updateAccs).Beware, only the pose is updated by the odometry, the
+  /// velocities (except if not updated by an upstream observer) and accelerations update only performs a
+  /// transformation from the real robot to our newly estimated robot. If you want to update the accelerations of
+  /// the floating base, you need to add an observer computing them beforehand.
   /// @param ctl Controller.
-  /// @param updateVels If true, the velocity of the floating base of the odometry robot is updated from the one of the
-  /// real robot.
-  /// @param updateAccs If true, the acceleration of the floating base of the odometry robot is updated from the one of
-  /// the real robot. This acceleration must be computed by an upstream observer..
+  /// @param updateVels If true, the velocity of the floating base of the odometry robot is updated from the one of
+  /// the real robot.
+  /// @param updateAccs If true, the acceleration of the floating base of the odometry robot is updated from the one
+  /// of the real robot. This acceleration must be computed by an upstream observer..
   void updateOdometryRobot(const mc_control::MCController & ctl, const bool updateVels, const bool updateAccs);
 
   /// @brief Updates the floating base kinematics given as argument by the observer.
@@ -264,11 +281,8 @@ public:
   /// @param vels The velocities of the floating base in the world that we want to update.
   /// @param accs The accelerations of the floating base in the world that we want to update. This acceleration must
   /// come from an upstream observer.
-  void updateFbKinematics(const mc_control::MCController & ctl,
-                          sva::PTransformd & pose,
-                          sva::MotionVecd & vels,
-                          sva::MotionVecd & accs,
-                          mc_rtc::Logger & logger);
+  /// @param logger logger
+  void updateFbKinematics(sva::PTransformd & pose, sva::MotionVecd & vels, sva::MotionVecd & accs);
 
   /// @brief Updates the floating base kinematics given as argument by the observer.
   /// @details Beware, only the pose is updated by the odometry, the velocities update only performs a transformation
@@ -276,34 +290,46 @@ public:
   /// @param ctl Controller
   /// @param pose The pose of the floating base in the world that we want to update
   /// @param vels The velocities of the floating base in the world that we want to update.
-  void updateFbKinematics(const mc_control::MCController & ctl,
-                          sva::PTransformd & pose,
-                          sva::MotionVecd & vels,
-                          mc_rtc::Logger & logger);
+  /// @param logger logger
+  void updateFbKinematics(sva::PTransformd & pose, sva::MotionVecd & vels);
 
   /// @brief Updates the floating base kinematics given as argument by the observer.
   /// @param ctl Controller
   /// @param pose The pose of the floating base in the world that we want to update
-  void updateFbKinematics(const mc_control::MCController & ctl, sva::PTransformd & pose, mc_rtc::Logger & logger);
+  /// @param logger logger
+  void updateFbKinematics(sva::PTransformd & pose);
 
   /// @brief Computes the reference kinematics of the newly set contact in the world.
-  /// @param forceSensor The force sensor attached to the contact
+  /// @param contact The new contact
+  /// @param measurementsRobot The robot containing the contact's force sensor
   void setNewContact(LoContactWithSensor & contact, const mc_rbdyn::Robot & measurementsRobot);
 
   /// @brief Computes the kinematics of the contact attached to the odometry robot in the world frame.
   /// @param contact Contact of which we want to compute the kinematics
-  /// @param measurementsRobot Robot used only to obtain the sensors measurements.
+  /// @param fs The force sensor associated to the contact
   /// @return stateObservation::kine::Kinematics &
-  const stateObservation::kine::Kinematics & getContactKinematics(LoContactWithSensor & contact,
-                                                                  const mc_rbdyn::ForceSensor & fs);
+  const stateObservation::kine::Kinematics & getCurrentContactKinematics(LoContactWithSensor & contact,
+                                                                         const mc_rbdyn::ForceSensor & fs);
 
   /// @brief Select which contacts to use for the orientation odometry
   /// @details The two contacts with the highest measured force are selected. The contacts at hands are ignored because
   /// their orientation is less trustable.
   void selectForOrientationOdometry();
 
-  stateObservation::kine::Kinematics & getAnchorFramePose(const mc_control::MCController & ctl);
+  /// @brief Returns the pose of the odometry robot's anchor frame based on the current floating base and encoders.
+  /// @details The anchor frame can be obtained using 2 ways:
+  /// - 1: contacts are detected and can be used to compute the anchor frame.
+  /// - 2: no contact is detected, the robot is hanging. If we still need an anchor frame for the tilt estimation we
+  /// arbitrarily use the frame of the bodySensor used by the estimator.
+  /// @param ctl controller
+  /// @param bodySensorName name of the body sensor.
+  stateObservation::kine::Kinematics & getAnchorFramePose(const mc_control::MCController & ctl,
+                                                          const std::string & bodySensorName);
 
+  /// @brief Returns the pose of the odometry robot's anchor frame. If no contact is detected, this version does not
+  /// update the anchor frame.
+  /// @param ctl controller
+  stateObservation::kine::Kinematics & getAnchorFramePose(const mc_control::MCController & ctl);
   /// @brief Add the log entries corresponding to the contact.
   /// @param logger
   /// @param contactName
@@ -326,6 +352,11 @@ public:
     return contactsManager_;
   }
 
+public:
+  // Indicates if the mode of computation of the anchor frame changed. Might me needed by the estimator (ex;
+  // TiltObserver)
+  bool prevAnchorFromContacts_ = true;
+
 protected:
   // Name of the odometry, used in logs and in the gui.
   std::string odometryName_;
@@ -334,6 +365,7 @@ protected:
   // Indicates if the desired odometry must be a flat or a 6D odometry.
   bool odometry6d_;
   // Indicates if the orientation must be estimated by this odometry.
+
   bool withYawEstimation_;
   // tracked pose of the floating base
   sva::PTransformd fbPose_ = sva::PTransformd::Identity();
@@ -342,7 +374,7 @@ protected:
   LeggedOdometryContactsManager contactsManager_;
   std::shared_ptr<mc_rbdyn::Robots> odometryRobot_;
   bool detectionFromThreshold_ = false;
-  stateObservation::kine::Kinematics worldAnchorFramePose_;
+  stateObservation::kine::Kinematics worldAnchorPose_;
 
   bool velUpdatedUpstream_ = false;
   bool accUpdatedUpstream_ = false;

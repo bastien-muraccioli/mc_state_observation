@@ -126,66 +126,88 @@ so::kine::Kinematics & addVelsAndAccs(so::kine::Kinematics & kine,
 
 void addToLogger(const stateObservation::kine::Kinematics & kine, mc_rtc::Logger & logger, const std::string & prefix)
 {
-  logger.addLogEntry(prefix + "_position", [&kine]() -> const stateObservation::Vector3 {
-    if(kine.position.isSet())
-    {
-      return kine.position();
-    }
-    else
-    {
-      return stateObservation::Vector3::Zero();
-    }
-  });
-  logger.addLogEntry(prefix + "_ori", [&kine]() -> Eigen::Quaterniond {
-    if(kine.orientation.isSet())
-    {
-      return kine.orientation.inverse().toQuaternion();
-    }
-    else
-    {
-      return stateObservation::kine::Orientation::zeroRotation().toQuaternion();
-    }
-  });
-  logger.addLogEntry(prefix + "_linVel", [&kine]() -> const stateObservation::Vector3 {
-    if(kine.linVel.isSet())
-    {
-      return kine.linVel();
-    }
-    else
-    {
-      return stateObservation::Vector3::Zero();
-    };
-  });
-  logger.addLogEntry(prefix + "_angVel", [&kine]() -> const stateObservation::Vector3 {
-    if(kine.angVel.isSet())
-    {
-      return kine.angVel();
-    }
-    else
-    {
-      return stateObservation::Vector3::Zero();
-    };
-  });
-  logger.addLogEntry(prefix + "_linAcc", [&kine]() -> const stateObservation::Vector3 {
-    if(kine.linAcc.isSet())
-    {
-      return kine.linAcc();
-    }
-    else
-    {
-      return stateObservation::Vector3::Zero();
-    };
-  });
-  logger.addLogEntry(prefix + "_angAcc", [&kine]() -> const stateObservation::Vector3 {
-    if(kine.angAcc.isSet())
-    {
-      return kine.angAcc();
-    }
-    else
-    {
-      return stateObservation::Vector3::Zero();
-    };
-  });
+  logger.addLogEntry(prefix + "_position",
+                     [&kine]() -> const stateObservation::Vector3
+                     {
+                       if(kine.position.isSet())
+                       {
+                         return kine.position();
+                       }
+                       else
+                       {
+                         return stateObservation::Vector3::Zero();
+                       }
+                     });
+  logger.addLogEntry(prefix + "_ori",
+                     [&kine]() -> Eigen::Quaterniond
+                     {
+                       if(kine.orientation.isSet())
+                       {
+                         return kine.orientation.inverse().toQuaternion();
+                       }
+                       else
+                       {
+                         return stateObservation::kine::Orientation::zeroRotation().toQuaternion();
+                       }
+                     });
+  logger.addLogEntry(prefix + "_linVel",
+                     [&kine]() -> const stateObservation::Vector3
+                     {
+                       if(kine.linVel.isSet())
+                       {
+                         return kine.linVel();
+                       }
+                       else
+                       {
+                         return stateObservation::Vector3::Zero();
+                       };
+                     });
+  logger.addLogEntry(prefix + "_angVel",
+                     [&kine]() -> const stateObservation::Vector3
+                     {
+                       if(kine.angVel.isSet())
+                       {
+                         return kine.angVel();
+                       }
+                       else
+                       {
+                         return stateObservation::Vector3::Zero();
+                       };
+                     });
+  logger.addLogEntry(prefix + "_linAcc",
+                     [&kine]() -> const stateObservation::Vector3
+                     {
+                       if(kine.linAcc.isSet())
+                       {
+                         return kine.linAcc();
+                       }
+                       else
+                       {
+                         return stateObservation::Vector3::Zero();
+                       };
+                     });
+  logger.addLogEntry(prefix + "_angAcc",
+                     [&kine]() -> const stateObservation::Vector3
+                     {
+                       if(kine.angAcc.isSet())
+                       {
+                         return kine.angAcc();
+                       }
+                       else
+                       {
+                         return stateObservation::Vector3::Zero();
+                       };
+                     });
+}
+
+void removeFromLogger(mc_rtc::Logger & logger, const std::string & prefix)
+{
+  logger.removeLogEntry(prefix + "_position");
+  logger.removeLogEntry(prefix + "_ori");
+  logger.removeLogEntry(prefix + "_linVel");
+  logger.removeLogEntry(prefix + "_angVel");
+  logger.removeLogEntry(prefix + "_linAcc");
+  logger.removeLogEntry(prefix + "_angAcc");
 }
 
 ///////////////////////////////////////////////////////////////////////
