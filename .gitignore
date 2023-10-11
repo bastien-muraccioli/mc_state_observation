@@ -1,7 +1,0 @@
-build/
-build-dbg/
-build-debug/
-build-release/
-build-none/
-build-relDebInfo/
-.vscode/settings.json
