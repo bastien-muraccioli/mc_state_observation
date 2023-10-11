@@ -166,13 +166,7 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   contactSensorCovariance_.block<3, 3>(3, 3) =
       (config("torqueSensorVariance").operator so::Vector3()).matrix().asDiagonal();
 
-  observer_.setAllCovariances(statePositionInitCovariance_, stateOriInitCovariance_, stateLinVelInitCovariance_,
-                              stateAngVelInitCovariance_, gyroBiasInitCovariance_, unmodeledWrenchInitCovariance_,
-                              contactInitCovarianceFirstContacts_, statePositionProcessCovariance_,
-                              stateOriProcessCovariance_, stateLinVelProcessCovariance_, stateAngVelProcessCovariance_,
-                              gyroBiasProcessCovariance_, unmodeledWrenchProcessCovariance_, contactProcessCovariance_,
-                              positionSensorCovariance_, orientationSensorCoVariance_, acceleroSensorCovariance_,
-                              gyroSensorCovariance_, contactSensorCovariance_);
+  setObserverCovariances();
 
   const auto & robot = ctl.robot(robot_);
   double contactDetectionThreshold = robot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_;
@@ -212,6 +206,35 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
     ctl.gui()->addElement({"MCKineticsObserver"},
                           mc_rtc::gui::Button("SimulateNanBehaviour", [this]() { observer_.nanDetected_ = true; }));
   }
+}
+
+void MCKineticsObserver::setObserverCovariances()
+{
+
+  observer_.setKinematicsInitCovarianceDefault(statePositionInitCovariance_, stateOriInitCovariance_,
+                                               stateLinVelInitCovariance_, stateAngVelInitCovariance_);
+  observer_.setGyroBiasInitCovarianceDefault(gyroBiasInitCovariance_);
+  observer_.setUnmodeledWrenchInitCovMatDefault(unmodeledWrenchInitCovariance_);
+  observer_.setContactInitCovMatDefault(contactInitCovarianceFirstContacts_);
+  observer_.resetStateCovarianceMat();
+
+  observer_.setKinematicsProcessCovarianceDefault(statePositionProcessCovariance_, stateOriProcessCovariance_,
+                                                  stateLinVelProcessCovariance_, stateAngVelProcessCovariance_);
+  observer_.setGyroBiasProcessCovarianceDefault(gyroBiasProcessCovariance_);
+  observer_.setUnmodeledWrenchProcessCovarianceDefault(unmodeledWrenchProcessCovariance_);
+  observer_.setContactProcessCovarianceDefault(contactProcessCovariance_);
+
+  observer_.resetProcessCovarianceMat();
+
+  so::Matrix6 absPoseSensorDefCovariance = so::Matrix6::Zero();
+  absPoseSensorDefCovariance.block<int(observer_.sizePos), int(observer_.sizePos)>(0, 0) = positionSensorCovariance_;
+  absPoseSensorDefCovariance.block<int(observer_.sizeOriTangent), int(observer_.sizeOriTangent)>(
+      observer_.sizePos, observer_.sizePos) = orientationSensorCoVariance_;
+
+  observer_.setAbsolutePoseSensorDefaultCovarianceMatrix(absPoseSensorDefCovariance);
+
+  observer_.setIMUDefaultCovarianceMatrix(acceleroSensorCovariance_, gyroSensorCovariance_);
+  observer_.setContactWrenchSensorDefaultCovarianceMatrix(contactSensorCovariance_);
 }
 
 void MCKineticsObserver::reset(const mc_control::MCController & ctl)
@@ -1005,7 +1028,17 @@ void MCKineticsObserver::addToLogger(const mc_control::MCController &,
   logger.addLogEntry(category + "_constants_forceThreshold",
                      [this]() -> double { return mass_ * so::cst::gravityConstant * contactDetectionPropThreshold_; });
   logger.addLogEntry(category + "_debug_invincibilityFrame",
-                     [this]() -> int { return invincibilityIter_ != 0 && invincibilityIter_ < invincibilityFrame_; });
+                     [this]() -> std::string
+                     {
+                       if(invincibilityIter_ != 0 && invincibilityIter_ < invincibilityFrame_)
+                       {
+                         return "invincibilityFrame";
+                       }
+                       else
+                       {
+                         return "no invincibility";
+                       };
+                     });
 }
 
 void MCKineticsObserver::removeFromLogger(mc_rtc::Logger & logger, const std::string & category)

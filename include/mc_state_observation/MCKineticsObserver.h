@@ -65,6 +65,8 @@ struct MCKineticsObserver : public mc_observers::Observer
 
   void configure(const mc_control::MCController & ctl, const mc_rtc::Configuration &) override;
 
+  void setObserverCovariances();
+
   void reset(const mc_control::MCController & ctl) override;
 
   bool run(const mc_control::MCController & ctl) override;
