@@ -458,10 +458,10 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
         const mc_rbdyn::ForceSensor & forceSensor = robot.forceSensor(contact.forceSensorName());
 
         so::kine::Kinematics bodySensorKine =
-            kinematicsTools::poseFromSva(forceSensor.X_p_f(), so::kine::Kinematics::Flags::vels);
+            kinematicsTools::poseFromSva(forceSensor.X_p_f(), so::kine::Kinematics::Flags::vel);
 
         so::kine::Kinematics bodySurfaceKine = kinematicsTools::poseFromSva(
-            robot.surface(contact.surfaceName()).X_b_s(), so::kine::Kinematics::Flags::vels);
+            robot.surface(contact.surfaceName()).X_b_s(), so::kine::Kinematics::Flags::vel);
 
         so::kine::Kinematics surfaceSensorKine = bodySurfaceKine.getInverse() * bodySensorKine;
 
@@ -616,16 +616,6 @@ void MCKineticsObserver::inputAdditionalWrench(const mc_rbdyn::Robot & inputRobo
       additionalUserResultingForce_ += measuredWrench.force();
       additionalUserResultingMoment_ += measuredWrench.moment();
     }
-
-    /*
-    if(contact.isExternalWrench == true) // if a force sensor is not associated to a currently set contact,
-    its measurement is given as an input external wrench
-    {
-      sva::ForceVecd measuredWrench = measRobot.forceSensor(fsName).worldWrenchWithoutGravity(inputRobot);
-      additionalUserResultingForce_ += measuredWrench.force();
-      additionalUserResultingMoment_ += measuredWrench.moment();
-    }
-    */
   }
   observer_.setAdditionalWrench(additionalUserResultingForce_, additionalUserResultingMoment_);
 
@@ -658,8 +648,8 @@ void MCKineticsObserver::updateIMUs(const mc_rbdyn::Robot & measRobot, const mc_
     /** Position of accelerometer **/
 
     const sva::PTransformd & bodyImuPose = inputRobot.bodySensor(imu.name()).X_b_s();
-    so::kine::Kinematics bodyImuKine = kinematicsTools::poseFromSva(
-        bodyImuPose, so::kine::Kinematics::Flags::vels | so::kine::Kinematics::Flags::accs);
+    so::kine::Kinematics bodyImuKine =
+        kinematicsTools::poseFromSva(bodyImuPose, so::kine::Kinematics::Flags::vel | so::kine::Kinematics::Flags::acc);
 
     so::kine::Kinematics worldBodyKine = kinematicsTools::kinematicsFromSva(
         inputRobot.mbc().bodyPosW[inputRobot.bodyIndexByName(imu.parentBody())],
@@ -714,7 +704,7 @@ const so::kine::Kinematics MCKineticsObserver::getContactWorldKinematics(KoConta
 
   const sva::PTransformd & bodyContactSensorPose = fs.X_p_f();
   so::kine::Kinematics bodyContactSensorKine =
-      kinematicsTools::poseFromSva(bodyContactSensorPose, so::kine::Kinematics::Flags::vels);
+      kinematicsTools::poseFromSva(bodyContactSensorPose, so::kine::Kinematics::Flags::vel);
 
   // kinematics of the sensor's parent body in the world
   so::kine::Kinematics worldBodyKine =
@@ -735,7 +725,7 @@ const so::kine::Kinematics MCKineticsObserver::getContactWorldKinematics(KoConta
     // pose of the surface in the world / floating base's frame
     sva::PTransformd worldSurfacePose = robot.surfacePose(contact.surfaceName());
     // Kinematics of the surface in the world / floating base's frame
-    worldContactKine = kinematicsTools::poseFromSva(worldSurfacePose, so::kine::Kinematics::Flags::vels);
+    worldContactKine = kinematicsTools::poseFromSva(worldSurfacePose, so::kine::Kinematics::Flags::vel);
 
     contact.surfaceSensorKine_ = worldContactKine.getInverse() * worldSensorKine;
     // expressing the force measurement in the frame of the surface
@@ -761,7 +751,7 @@ const so::kine::Kinematics MCKineticsObserver::getContactWorldKinematics(KoConta
 
   const sva::PTransformd & bodyContactSensorPose = fs.X_p_f();
   so::kine::Kinematics bodyContactSensorKine =
-      kinematicsTools::poseFromSva(bodyContactSensorPose, so::kine::Kinematics::Flags::vels);
+      kinematicsTools::poseFromSva(bodyContactSensorPose, so::kine::Kinematics::Flags::vel);
 
   // kinematics of the sensor's parent body in the world
   so::kine::Kinematics worldBodyKine =
@@ -781,7 +771,7 @@ const so::kine::Kinematics MCKineticsObserver::getContactWorldKinematics(KoConta
     // pose of the surface in the world / floating base's frame
     sva::PTransformd worldSurfacePose = robot.surfacePose(contact.surfaceName());
     // Kinematics of the surface in the world / floating base's frame
-    worldContactKine = kinematicsTools::poseFromSva(worldSurfacePose, so::kine::Kinematics::Flags::vels);
+    worldContactKine = kinematicsTools::poseFromSva(worldSurfacePose, so::kine::Kinematics::Flags::vel);
   }
 
   return worldContactKine;

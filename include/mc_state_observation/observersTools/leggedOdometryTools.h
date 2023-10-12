@@ -1,3 +1,14 @@
+/**
+ * \file      leggedOdometryTools.h
+ * \author    Arnaud Demont, Mehdi Benallegue
+ * \date       2023
+ * \brief      Library for an easened legged odometry implementation.
+ *
+ * \details
+ *
+ *
+ */
+
 #pragma once
 
 #include <mc_state_observation/observersTools/measurementsTools.h>
@@ -16,7 +27,7 @@ namespace leggedOdometry
  * ground and corrects the estimated height accordingly, it is preferable in this use case.
  * The odometry manager must be initialized once all the configuration parameters are retrieved using the init function,
  * and called on every iteration with \ref LeggedOdometryManager::run(const mc_control::MCController & ctl,
- * mc_rtc::Logger & logger, sva::PTransformd & pose, sva::MotionVecd & vels, sva::MotionVecd & accs).
+ * mc_rtc::Logger & logger, sva::PTransformd & pose, sva::MotionVecd & vel, sva::MotionVecd & acc).
  **/
 
 ///////////////////////////////////////////////////////////////////////
@@ -126,8 +137,8 @@ public:
   /// @param surfacesForContactDetection Admissible surfaces for the contacts detection.
   /// @param contactsSensorDisabledInit Contacts that must not be enabled since the beginning (faulty one for example).
   /// @param contactDetectionThreshold Threshold used for the contact detection
-  /// @param velUpdatedUpstream Informs whether the velocities were updated by upstream observers
-  /// @param accUpdatedUpstream Informs whether the accelerations were updated by upstream observers
+  /// @param velUpdatedUpstream Informs whether the 6D velocity was updated by upstream observers
+  /// @param accUpdatedUpstream Informs whether the acceleration was updated by upstream observers
   void init(const mc_control::MCController & ctl,
             const std::string robotName,
             const std::string & odometryName,
@@ -151,8 +162,8 @@ public:
   /// @param contactsDetection Desired contacts detection method.
   /// @param contactsSensorDisabledInit Contacts that must not be enabled since the beginning (faulty one for example).
   /// @param contactDetectionThreshold Threshold used for the contact detection
-  /// @param velUpdatedUpstream Informs whether the velocities were updated by upstream observers
-  /// @param accUpdatedUpstream Informs whether the accelerations were updated by upstream observers
+  /// @param velUpdatedUpstream Informs whether the 6D velocity was updated by upstream observers
+  /// @param accUpdatedUpstream Informs whether the acceleration was updated by upstream observers
   void init(const mc_control::MCController & ctl,
             const std::string robotName,
             const std::string & odometryName,
@@ -170,13 +181,13 @@ public:
   /// sva::MotionVecd &, stateObservation::Matrix3)
   /// @param ctl Controller
   /// @param pose The pose of the floating base in the world that we want to update
-  /// @param vels The velocities of the floating base in the world that we want to update
-  /// @param accs The accelerations of the floating base in the world that we want to update
+  /// @param vel The 6D velocity of the floating base in the world that we want to update
+  /// @param acc The acceleration of the floating base in the world that we want to update
   void run(const mc_control::MCController & ctl,
            mc_rtc::Logger & logger,
            sva::PTransformd & pose,
-           sva::MotionVecd & vels,
-           sva::MotionVecd & accs);
+           sva::MotionVecd & vel,
+           sva::MotionVecd & acc);
 
   /// @brief @copybrief run(const mc_control::MCController &, mc_rtc::Logger &, sva::PTransformd &, sva::MotionVecd &,
   /// stateObservation::Matrix3). This version uses the tilt estimated by the upstream observers.
@@ -185,7 +196,7 @@ public:
   void run(const mc_control::MCController & ctl,
            mc_rtc::Logger & logger,
            sva::PTransformd & pose,
-           sva::MotionVecd & vels);
+           sva::MotionVecd & vel);
 
   /// @brief @copybrief run(const mc_control::MCController &, mc_rtc::Logger &, sva::PTransformd &,
   /// stateObservation::Matrix3). This version uses the tilt estimated by the upstream observers.
@@ -195,25 +206,25 @@ public:
   /// @brief Core function runing the odometry.
   /// @param ctl Controller
   /// @param pose The pose of the floating base in the world that we want to update
-  /// @param vels The velocities of the floating base in the world that we want to update
-  /// @param accs The accelerations of the floating base in the world that we want to update
+  /// @param vel The 6D velocity of the floating base in the world that we want to update
+  /// @param acc The acceleration of the floating base in the world that we want to update
   /// @param tilt The floating base's tilt (only the yaw is estimated).
   void run(const mc_control::MCController & ctl,
            mc_rtc::Logger & logger,
            sva::PTransformd & pose,
-           sva::MotionVecd & vels,
-           sva::MotionVecd & accs,
+           sva::MotionVecd & vel,
+           sva::MotionVecd & acc,
            const stateObservation::Matrix3 & tilt);
 
   /// @brief Core function runing the odometry.
   /// @param ctl Controller
   /// @param pose The pose of the floating base in the world that we want to update
-  /// @param vels The velocities of the floating base in the world that we want to update
+  /// @param vel The 6D velocity of the floating base in the world that we want to update
   /// @param tilt The floating base's tilt (only the yaw is estimated).
   void run(const mc_control::MCController & ctl,
            mc_rtc::Logger & logger,
            sva::PTransformd & pose,
-           sva::MotionVecd & vels,
+           sva::MotionVecd & vel,
            const stateObservation::Matrix3 & tilt);
 
   /// @brief Core function runing the odometry.
@@ -233,8 +244,8 @@ public:
   /// @brief Updates the pose of the contacts and estimates the floating base from them.
   /// @param ctl Controller.
   /// @param logger Logger.
-  /// @param updateVels Indicates if the velocities of the floating base must be updated
-  /// @param updateAccs Indicates if the accelerations of the floating base must be updated
+  /// @param updateVels Indicates if the 6D velocity of the floating base must be updated
+  /// @param updateAccs Indicates if the acceleration of the floating base must be updated
   /// @param tilt The floating base's tilt (only the yaw is estimated).
   void updateFbAndContacts(const mc_control::MCController & ctl,
                            mc_rtc::Logger & logger,
@@ -261,8 +272,8 @@ public:
   /// @brief Updates the floating base kinematics given as argument by the observer.
   /// @details Must be called after \ref updateFbAndContacts(const mc_control::MCController & ctl, mc_rtc::Logger &
   /// logger, const bool updateVels, const bool updateAccs).Beware, only the pose is updated by the odometry, the
-  /// velocities (except if not updated by an upstream observer) and accelerations update only performs a
-  /// transformation from the real robot to our newly estimated robot. If you want to update the accelerations of
+  /// 6D velocity (except if not updated by an upstream observer) and acceleration update only performs a
+  /// transformation from the real robot to our newly estimated robot. If you want to update the acceleration of
   /// the floating base, you need to add an observer computing them beforehand.
   /// @param ctl Controller.
   /// @param updateVels If true, the velocity of the floating base of the odometry robot is updated from the one of
@@ -272,26 +283,26 @@ public:
   void updateOdometryRobot(const mc_control::MCController & ctl, const bool updateVels, const bool updateAccs);
 
   /// @brief Updates the floating base kinematics given as argument by the observer.
-  /// @details Beware, only the pose is updated by the odometry, the velocities (except if not updated by an upstream
-  /// observer) and accelerations update only performs a transformation from the real robot to our newly estimated
-  /// robot. If you want to update the accelerations of the floating base, you need to add an observer computing them
+  /// @details Beware, only the pose is updated by the odometry, the 6D velocity (except if not updated by an upstream
+  /// observer) and acceleration update only performs a transformation from the real robot to our newly estimated
+  /// robot. If you want to update the acceleration of the floating base, you need to add an observer computing them
   /// beforehand.
   /// @param ctl Controller
   /// @param pose The pose of the floating base in the world that we want to update
-  /// @param vels The velocities of the floating base in the world that we want to update.
-  /// @param accs The accelerations of the floating base in the world that we want to update. This acceleration must
+  /// @param vel The 6D velocity of the floating base in the world that we want to update.
+  /// @param acc The acceleration of the floating base in the world that we want to update. This acceleration must
   /// come from an upstream observer.
   /// @param logger logger
-  void updateFbKinematics(sva::PTransformd & pose, sva::MotionVecd & vels, sva::MotionVecd & accs);
+  void updateFbKinematics(sva::PTransformd & pose, sva::MotionVecd & vel, sva::MotionVecd & acc);
 
   /// @brief Updates the floating base kinematics given as argument by the observer.
-  /// @details Beware, only the pose is updated by the odometry, the velocities update only performs a transformation
+  /// @details Beware, only the pose is updated by the odometry, the 6D velocity update only performs a transformation
   /// from the real robot to our newly estimated robot.
   /// @param ctl Controller
   /// @param pose The pose of the floating base in the world that we want to update
-  /// @param vels The velocities of the floating base in the world that we want to update.
+  /// @param vel The 6D velocity of the floating base in the world that we want to update.
   /// @param logger logger
-  void updateFbKinematics(sva::PTransformd & pose, sva::MotionVecd & vels);
+  void updateFbKinematics(sva::PTransformd & pose, sva::MotionVecd & vel);
 
   /// @brief Updates the floating base kinematics given as argument by the observer.
   /// @param ctl Controller

@@ -368,7 +368,7 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
   const sva::PTransformd & imuXbs = imu.X_b_s();
 
   so::kine::Kinematics parentImuKine =
-      kinematicsTools::poseFromSva(imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vels);
+      kinematicsTools::poseFromSva(imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
 
   const sva::PTransformd & parentPoseW = robot.bodyPosW(imu.parentBody());
   const sva::PTransformd & updatedParentPoseW = updatedRobot.bodyPosW(imu.parentBody());
@@ -433,7 +433,7 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
     x1_ = worldImuKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.linVel()
           - (imu.angularVelocity()).cross(updatedImuAnchorKine_.position()) - updatedImuAnchorKine_.linVel();
 
-    estimator_.setExplicitX1(x1_); // we directly give the virtual measurement of the velocity by the IMU
+    estimator_.setExplicitImuLocVel(x1_); // we directly give the virtual measurement of the velocity by the IMU
   }
 
   if(newWorldAnchorKine_.linVel.isSet())
@@ -452,7 +452,7 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
 
     if(odometryManager_.prevAnchorFromContacts_)
     {
-      estimator_.setExplicitX1(so::Vector3::Zero());
+      estimator_.setExplicitImuLocVel(so::Vector3::Zero());
       // estimator_.setAlpha(0);
     }
     else
@@ -460,7 +460,7 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
       // estimator_.setAlpha(alpha_);
     }
 
-    estimator_.resetX1hat();
+    estimator_.resetImuLocVelHat();
   }
 
   // estimation of the state with the complementary filters
@@ -650,7 +650,7 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
                        const sva::PTransformd & realImuXbs = ctl.realRobot(robot_).bodySensor(imuSensor_).X_b_s();
 
                        so::kine::Kinematics realParentImuKine = kinematicsTools::poseFromSva(
-                           realImuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vels);
+                           realImuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
 
                        const sva::PTransformd & realParentPoseW =
                            ctl.realRobot(robot_).bodyPosW(ctl.realRobot(robot_).bodySensor(imuSensor_).parentBody());
@@ -674,7 +674,7 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
                        const sva::PTransformd & imuXbs = ctl.robot(robot_).bodySensor(imuSensor_).X_b_s();
 
                        so::kine::Kinematics parentImuKine = kinematicsTools::poseFromSva(
-                           imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vels);
+                           imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
 
                        const sva::PTransformd & parentPoseW =
                            ctl.robot(robot_).bodyPosW(ctl.robot(robot_).bodySensor(imuSensor_).parentBody());
@@ -733,7 +733,7 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
                        const sva::PTransformd & rimuXbs = rimu.X_b_s();
 
                        so::kine::Kinematics parentImuKine = kinematicsTools::poseFromSva(
-                           rimuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vels);
+                           rimuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
 
                        const sva::PTransformd & parentPoseW = realRobot.bodyPosW(rimu.parentBody());
 
@@ -756,7 +756,7 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
                        const sva::PTransformd & rimuXbs = rimu.X_b_s();
 
                        so::kine::Kinematics parentImuKine = kinematicsTools::poseFromSva(
-                           rimuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vels);
+                           rimuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
 
                        const sva::PTransformd & parentPoseW = realRobot.bodyPosW(rimu.parentBody());
 
@@ -787,7 +787,7 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
                        const sva::PTransformd & imuXbs = imu.X_b_s();
 
                        so::kine::Kinematics parentImuKine = kinematicsTools::poseFromSva(
-                           imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vels);
+                           imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
 
                        const sva::PTransformd & parentPoseW = robot.bodyPosW(imu.parentBody());
 
@@ -810,7 +810,7 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
                        const sva::PTransformd & imuXbs = imu.X_b_s();
 
                        so::kine::Kinematics parentImuKine = kinematicsTools::poseFromSva(
-                           imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vels);
+                           imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
 
                        const sva::PTransformd & parentPoseW = robot.bodyPosW(imu.parentBody());
 

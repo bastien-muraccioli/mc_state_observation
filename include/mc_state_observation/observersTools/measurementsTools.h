@@ -1,3 +1,14 @@
+/**
+ * \file      measurementTools.h
+ * \author    Arnaud Demont
+ * \date       2023
+ * \brief      Library for an easened handling of contacts and sensors in general.
+ *
+ * \details
+ *
+ *
+ */
+
 #pragma once
 
 #include <mc_control/MCController.h>
