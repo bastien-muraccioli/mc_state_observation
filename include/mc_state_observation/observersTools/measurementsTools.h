@@ -27,6 +27,8 @@ namespace measurements
 ///////////////////////////////////////////////////////////////////////
 /// -----------------------------Sensors-------------------------------
 ///////////////////////////////////////////////////////////////////////
+
+/// @brief Class containing the information of a sensor to facilitate its handling.
 struct Sensor
 {
 public:
@@ -57,7 +59,7 @@ protected:
 /// --------------------------------IMUs-------------------------------
 ///////////////////////////////////////////////////////////////////////
 
-/* Contains the important variables associated to the IMU */
+/// @brief Class containing the information of an IMU.
 struct IMU : public Sensor
 {
 public:
@@ -73,6 +75,8 @@ public:
   Eigen::Vector3d gyroBias;
 };
 
+/// @brief List of IMUs.
+/// @details Facilitates the handling of IMUs.
 struct MapIMUs
 {
 public:

@@ -23,6 +23,8 @@ namespace mc_state_observation
  *will recover the last ellapsed second (or less) using the displacement made by the Tilt Observer.
  **/
 
+/// @brief Class containing the information of a contact.
+/// @details This class is enhanced with the kinematics of the contact in the floating base.
 struct KoContactWithSensor : public measurements::ContactWithSensor
 {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -104,10 +106,6 @@ protected:
    * @param category Category in which to log this observer
    */
 
-  void plotVariablesBeforeUpdate(const mc_control::MCController & ctl, mc_rtc::Logger & logger);
-
-  void plotVariablesAfterUpdate(mc_rtc::Logger & logger);
-
   /// @brief Add the logs of the desired contact.
   /// @param contactIndex The index of the contact.
   /// @param logger
@@ -179,26 +177,40 @@ protected:
                                                                      const mc_rbdyn::Robot & robot,
                                                                      const mc_rbdyn::ForceSensor & fs);
 
+  /// @brief Updates the measurements of the force sensor attached to a contact.
+  /// @details Expresses the measured wrench in the frame of the contact, as the sensor is not necessarily attached to
+  /// it.
+  /// @param contact Contact associated to the sensor
+  /// @param surfaceSensorKine transformation from the sensor to the contact.
+  /// @param measuredWrench measured wrench
   void updateContactForceMeasurement(KoContactWithSensor & contact,
                                      stateObservation::kine::Kinematics surfaceSensorKine,
                                      const sva::ForceVecd & measuredWrench);
 
+  /// @brief Updates the measurements of the force sensor attached to a contact.
+  /// @details Expresses the measured wrench in the frame of the contact, as the sensor is not necessarily attached to
+  /// it.
+  /// @param contact Contact associated to the sensor
+  /// @param surfaceSensorKine transformation from the sensor to the contact.
+  /// @param measuredWrench measured wrench
   void updateContactForceMeasurement(KoContactWithSensor & contact, const sva::ForceVecd & measuredWrench);
 
-  void getOdometryWorldContactReference(const mc_control::MCController & ctl,
-                                        KoContactWithSensor & contact,
-                                        stateObservation::kine::Kinematics & worldContactKineRef);
+  /// @brief Computes the rest pose of the contact in the world using the visco-elastic model.
+  /// @details Uses the measured wrench to obtain the rest pose of the contact from the one obtained by forward
+  /// kinematics. The visco-elastic model allows to compute the slight displacement resulting form the applied wrench.
+
+  /// @param ctl Controller
+  /// @param contact Contact for which we compute the rest pose.
+  /// @param worldContactKineRef rest pose of the contact in the world, which is modified by this function.
+  void getOdometryWorldContactRest(const mc_control::MCController & ctl,
+                                   KoContactWithSensor & contact,
+                                   stateObservation::kine::Kinematics & worldContactKineRef);
 
   /// @brief Update the contact or create it if it still does not exist.
   /// @details Called by \ref updateContacts(const mc_control::MCController & ctl, std::set<std::string> contacts,
   /// mc_rtc::Logger & logger).
   /// @param name The name of the contact to update.
   void updateContact(const mc_control::MCController & ctl, const int & contactIndex, mc_rtc::Logger & logger);
-
-  stateObservation::kine::Kinematics updateContactsPoseFromFb(
-      const stateObservation::kine::Kinematics & currentFbWorld,
-      const stateObservation::kine::Kinematics & currentWorldContactRef,
-      const stateObservation::kine::Kinematics & newWorldFbKine);
 
 protected:
   std::string robot_ = "";
@@ -306,14 +318,6 @@ public:
     gyroSensorCovariance_ = stateObservation::Matrix3::Identity() * covariance;
     updateNoiseCovariance();
   }
-
-  /*
-  // Get last input vector sent to observer.
-  inline const Eigen::VectorXd & inputs() const
-  {
-    return inputs_;
-  }
-  */
 
   /** Get last measurement vector sent to observer.
    *
@@ -465,7 +469,6 @@ private:
 
   boost::circular_buffer<stateObservation::kine::Kinematics> koBackupFbKinematics_ =
       boost::circular_buffer<stateObservation::kine::Kinematics>(100);
-  // std::queue<stateObservation::kine::Kinematics> backupFbKinematics_;
 
   bool contactsDetectionFromThreshold_ = false;
 

@@ -181,6 +181,9 @@ my_robots_->robot("updatedRobot"); }));
   so::Vector3 initX2 = cOri * so::Vector3::UnitZ(); // so::kine::rotationMatrixToRotationVector(cOri.transpose());
 
   estimator_.initEstimator(so::Vector3::Zero(), initX2, initX2);
+
+  int backupIterInterval = 1 / ctl.timeStep;
+  backupFbKinematics_.resize(backupIterInterval);
 }
 
 bool TiltObserver::run(const mc_control::MCController & ctl)
