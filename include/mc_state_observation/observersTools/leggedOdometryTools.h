@@ -79,6 +79,7 @@ public:
   stateObservation::kine::Kinematics currentWorldKine_;
 };
 
+// Inherits from the class ContactWithoutSensor to prevent
 class LoContactWithoutSensor : public measurements::ContactWithoutSensor
 {
   // the legged odometry requires the use of contacts associated to force sensors, this class must therefore not be
@@ -86,7 +87,8 @@ class LoContactWithoutSensor : public measurements::ContactWithoutSensor
 public:
   LoContactWithoutSensor(int id, std::string name)
   {
-    BOOST_ASSERT(false && "The legged odometry requires to use only contacts with sensors.");
+    throw std::runtime_error("The legged odometry requires to use only contacts with sensors.");
+    // BOOST_ASSERT(false && "The legged odometry requires to use only contacts with sensors.");
     id_ = id;
     name_ = name;
   }
@@ -94,10 +96,14 @@ public:
 protected:
   LoContactWithoutSensor()
   {
-    BOOST_ASSERT(false && "The legged odometry requires to use only contacts with sensors.");
+    throw std::runtime_error("The legged odometry requires to use only contacts with sensors.");
+    // BOOST_ASSERT(false && "The legged odometry requires to use only contacts with sensors.");
   }
 };
 
+/// @brief Structure that implements all the necessary functions to perform legged odometry.
+/// @details Handles the odometry from the contacts detection to the final pose estimation of the floating base. Also
+/// allows to compute the pose of an anchor frame linked to the robot.
 struct LeggedOdometryManager
 {
 public:
@@ -110,9 +116,11 @@ protected:
 
   typedef measurements::ContactsManager<LoContactWithSensor, LoContactWithoutSensor> ContactsManager;
 
+  /// @brief Adaptation of the structure ContactsManager to the legged odometry, using personalized contacts classes.
   struct LeggedOdometryContactsManager : public ContactsManager
   {
   protected:
+    // comparison function that sorts the contacts based on their measured force.
     struct sortByForce
     {
       inline bool operator()(const LoContactWithSensor & contact1, const LoContactWithSensor & contact2) const
@@ -122,6 +130,8 @@ protected:
     };
 
   public:
+    // list of contacts used for the orientation odometry. At most two contacts can be used for this estimation, and
+    // contacts at hands are not considered. The contacts with the highest measured force are used.
     std::set<std::reference_wrapper<LoContactWithSensor>, sortByForce> oriOdometryContacts_;
   };
 
@@ -377,17 +387,27 @@ protected:
   bool odometry6d_;
   // Indicates if the orientation must be estimated by this odometry.
 
+  // indicates whether we want to update the yaw using this method or not
   bool withYawEstimation_;
   // tracked pose of the floating base
   sva::PTransformd fbPose_ = sva::PTransformd::Identity();
 
 protected:
+  // contacts manager used by this odometry manager
   LeggedOdometryContactsManager contactsManager_;
+  // odometry robot that is updated by the legged odometry and can then update the real robot if required.
   std::shared_ptr<mc_rbdyn::Robots> odometryRobot_;
+  // threshold on the measured force for the contacts detection
   bool detectionFromThreshold_ = false;
+
+  // pose of the anchor frame of the robot in the world
   stateObservation::kine::Kinematics worldAnchorPose_;
 
+  // Indicates whether the velocity is updated by an upstream estimator. If yes, it is expressed in the newly obtained
+  // floating base frame. Otherwise, it is computed by finite differences.
   bool velUpdatedUpstream_ = false;
+  // Indicates whether the acceleration is updated by an upstream estimator. If yes, it is expressed in the newly
+  // obtained floating base frame. Otherwise, it is not updated.
   bool accUpdatedUpstream_ = false;
 };
 

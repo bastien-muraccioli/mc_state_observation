@@ -213,10 +213,10 @@ protected:
 };
 
 /**
- * Structure of contacts with sensors. If the contact is detected using a thresholding on the contact force, the
- *contact force cannot be obtained and the name of the contact will be the one of the force sensor. Otherwise the name
- *of the contact surface is used, allowing the creation of contacts associated to a same sensor but a different
- *surface.
+ * Structure of contacts with sensors, containing all the necessary information about the contact. If the contact is
+ *detected using a thresholding on the contact force, the contact force cannot be obtained and the name of the contact
+ *will be the one of the force sensor. Otherwise the name of the contact surface is used, allowing the creation of
+ *contacts associated to a same sensor but a different surface.
  **/
 struct ContactWithSensor : public Contact
 {
@@ -289,6 +289,9 @@ protected:
   // double lambda = 0.0;
 };
 
+/**
+ * Structure of contacts without sensors, containing all the necessary information about the contact.
+ **/
 struct ContactWithoutSensor : public Contact
 {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -304,6 +307,11 @@ public:
   }
 };
 
+/// @brief Map of contacts containing the list of all the contacts and functions facilitating their handling.
+/// @details The template allows to define other kinds of contacts and thus add custom parameters to them. Warning! This
+/// class has been tested only on contacts with sensors
+/// @tparam ContactWithSensorT Contacts associated to a sensor.
+/// @tparam ContactWithoutSensorT Contacts that are not associated to a sensor.
 template<typename ContactWithSensorT, typename ContactWithoutSensorT>
 struct MapContacts
 {
@@ -312,8 +320,9 @@ public:
   {
     BOOST_ASSERT((std::is_base_of<ContactWithSensor, ContactWithSensorT>::value)
                  && "The template class for the contacts with sensors must inherit from the ContactWithSensor class");
-    BOOST_ASSERT((std::is_base_of<ContactWithoutSensor, ContactWithoutSensorT>::value)
-                 && "The template class for the contacts with sensors must inherit from the ContactWithSensor class");
+    BOOST_ASSERT(
+        (std::is_base_of<ContactWithoutSensor, ContactWithoutSensorT>::value)
+        && "The template class for the contacts with sensors must inherit from the ContactWithoutSensor class");
   }
 
 public:
@@ -570,8 +579,13 @@ private:
   int num_ = 0;
 };
 
-// the template allows to define other kinds of contacts and thus add custom parameters to them
-// ! Warning: this class has been tested only on contacts with sensors
+/// @brief Structure that implements all the necessary functions to manage the map of contacts. Handles their detection
+/// and updates the list of the detected contacts, newly removed contacts, etc., to apply the appropriate functions on
+/// them.
+/// @details The template allows to define other kinds of contacts and thus add custom parameters to them. Warning! This
+/// class has been tested only on contacts with sensors
+/// @tparam ContactWithSensorT Contacts associated to a sensor.
+/// @tparam ContactWithoutSensorT Contacts that are not associated to a sensor.
 template<typename ContactWithSensorT, typename ContactWithoutSensorT>
 struct ContactsManager
 {
@@ -640,7 +654,7 @@ public:
   /// "fromThreshold". The contacts are not required to be given by the controller (the detection is based on a
   /// thresholding of the measured force).
   void findContactsFromThreshold(const mc_control::MCController & ctl, const std::string & robotName);
-  /// @brief Updates the detected and removed contacts.
+  /// @brief Updates the list of contacts to inform whether they are newly set, removed, etc.
   void updateContacts();
 
   void (ContactsManager::*contactsFinder_)(const mc_control::MCController &, const std::string &) = 0;
@@ -731,6 +745,7 @@ public:
   }
 
 public:
+  // map of contacts used by the manager.
   MapContacts<ContactWithSensorT, ContactWithoutSensorT> mapContacts_;
 
   // contacts found on each iteration
@@ -752,6 +767,7 @@ protected:
   std::vector<std::string> surfacesForContactDetection_;
   // list of sensors that must not be used from the start of the observer
   std::vector<std::string> contactsSensorDisabledInit_;
+  // name of the observer using this contacts manager.
   std::string observerName_;
   bool verbose_ = true;
 };
