@@ -416,7 +416,6 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
   so::kine::Kinematics updatedAnchorImuKine = updatedImuAnchorKine_.getInverse();
 
   auto k = estimator_.getCurrentTime();
-  estimator_.setMeasurement(imu.linearAcceleration(), imu.angularVelocity(), k + 1);
 
   // computation of the local linear velocity of the IMU in the world.
   if(withOdometry_)
@@ -429,14 +428,15 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
     estimator_.setControlOriginVelocityInW(worldAnchorKine_.orientation.toMatrix3().transpose()
                                            * worldAnchorKine_.linVel());
 
-    x1_ = estimator_.getVirtualLocalVelocityMeasurement();
+    estimator_.setMeasurement(imu.linearAcceleration(), imu.angularVelocity(), k + 1);
   }
   else
   {
     x1_ = worldImuKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.linVel()
           - (imu.angularVelocity()).cross(updatedImuAnchorKine_.position()) - updatedImuAnchorKine_.linVel();
 
-    estimator_.setExplicitImuLocVel(x1_); // we directly give the virtual measurement of the velocity by the IMU
+    estimator_.setMeasurement(x1_, imu.linearAcceleration(), imu.angularVelocity(), k + 1);
+    // estimator_.setMeasurement(x1_, imu.linearAcceleration(), imu.angularVelocity(), k + 1);
   }
 
   if(newWorldAnchorKine_.linVel.isSet())
@@ -455,7 +455,8 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
 
     if(odometryManager_.prevAnchorFromContacts_)
     {
-      estimator_.setExplicitImuLocVel(so::Vector3::Zero());
+      // estimator_.setMeasurement(so::Vector3::Zero(), imu.linearAcceleration(), imu.angularVelocity(), k + 1);
+      estimator_.setMeasurement(so::Vector3::Zero(), imu.linearAcceleration(), imu.angularVelocity(), k + 1);
       // estimator_.setAlpha(0);
     }
     else

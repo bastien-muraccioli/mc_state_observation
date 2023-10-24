@@ -3,7 +3,7 @@
 #include <mc_observers/Observer.h>
 #include <boost/circular_buffer.hpp>
 #include <mc_state_observation/observersTools/leggedOdometryTools.h>
-#include <state-observation/observer/tilt-estimator.hpp>
+#include <state-observation/observer/tilt-estimator-humanoid.hpp>
 #include <state-observation/tools/rigid-body-kinematics.hpp>
 
 namespace mc_state_observation
@@ -96,7 +96,7 @@ protected:
   double gamma_ = 15;
 
   std::string anchorFrameFunction_;
-  stateObservation::TiltEstimator estimator_;
+  stateObservation::TiltEstimatorHumanoid estimator_;
 
   // values used for computation
   stateObservation::kine::Kinematics updatedFbImuKine_;
