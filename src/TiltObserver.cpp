@@ -31,15 +31,11 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
     withOdometry_ = true;
   }
 
-  updateRobotName_ = robot_;
   imuSensor_ = config("imuSensor", ctl.robot().bodySensor().name());
-  updateSensorName_ = imuSensor_;
 
   config("maxAnchorFrameDiscontinuity", maxAnchorFrameDiscontinuity_);
   config("updateRobot", updateRobot_);
-  config("updateRobotName", updateRobotName_);
   config("updateSensor", updateSensor_);
-  config("updateSensorName", updateSensorName_);
 
   config("initAlpha", alpha_);
   config("initBeta", beta_);
@@ -380,8 +376,6 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
 
   const auto & imu = ctl.robot(robot_).bodySensor(imuSensor_);
   // const auto & rimu = updatedRobot.bodySensor(imuSensor_);
-
-  worldFbKine_ = kinematicsTools::poseAndVelFromSva(robot.posW(), robot.velW(), true);
 
   // In the case we do odometry, the pose and velocities of the odometry robot are still not updated but the joints are.
   // It is not a problem as this kinematics object is not used to retrieve global poses and velocities.
@@ -842,7 +836,6 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
   });
 
   kinematicsTools::addToLogger(updatedWorldFbKine_, logger, category + "_debug_updatedWorldFbKine_");
-  kinematicsTools::addToLogger(fbAnchorKine_, logger, category + "_debug_fbAnchorKine__");
   kinematicsTools::addToLogger(correctedWorldImuKine_, logger, category + "_debug_correctedWorldImuKine_");
 }
 

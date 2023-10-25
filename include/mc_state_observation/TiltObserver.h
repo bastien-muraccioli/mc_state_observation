@@ -21,11 +21,23 @@ public:
 
   bool run(const mc_control::MCController & ctl) override;
 
+  /// @brief updates the kinematics of the anchor frame of the robot in the world
+  /// @param ctl Controller
+  /// @param updatedRobot robot corresponding to the control robot with updated encoders
   void updateAnchorFrame(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot);
 
+  /// @brief updates the kinematics of the anchor frame of our odometry robot in the world
+  /// @param ctl Controller
   void updateAnchorFrameOdometry(const mc_control::MCController & ctl);
+  /// @brief updates the kinematics of the anchor frame of the robot when not performing odometry
+  /// @param ctl Controller
+  /// @param updatedRobot robot corresponding to the control robot with updated encoders
   void updateAnchorFrameNoOdometry(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot);
 
+  /// @brief updates the pose and the velcoity of the floating base in the world frame using our estimation results
+  /// @param ctl Controller
+  /// @param localWorldImuLinVel estimated local linear velocity of the IMU in the world frame
+  /// @param localWorldImuAngVelestimated measurement of the gyrometer
   void updatePoseAndVel(const mc_control::MCController & ctl,
                         const stateObservation::Vector3 & localWorldImuLinVel,
                         const stateObservation::Vector3 & localWorldImuAngVel);
@@ -36,8 +48,14 @@ public:
    */
   void runTiltEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot);
 
+  /// @brief Updates the real robot and/or the IMU signal using our estimation results
+  /// @param ctl Controller
   void update(mc_control::MCController & ctl) override;
 
+  /// @brief Backup function that returns the estimated displacement of the floating base in the world wrt to the
+  /// initial one over the backup interval.
+  /// @param ctl Controller
+  /// @return const stateObservation::kine::Kinematics
   const stateObservation::kine::Kinematics backupFb(const mc_control::MCController & ctl);
 
 protected:
@@ -69,12 +87,14 @@ protected:
                 const std::vector<std::string> & /* category */) override;
 
 protected:
-  std::string robot_;
-  bool updateRobot_ = true;
-  std::string updateRobotName_;
-  std::string imuSensor_;
-  bool updateSensor_ = true;
-  std::string updateSensorName_;
+  // container for our robots
+  std::shared_ptr<mc_rbdyn::Robots> my_robots_;
+
+  std::string robot_; // name of the robot
+  bool updateRobot_ = true; // indicates whether we use our estimation to update the real robot or not
+  std::string imuSensor_; // IMU used for the estimation
+  bool updateSensor_ = true; // indicates whether we update the IMU signal or not
+
   /*!
    * parameter related to the convergence of the linear velocity
    * of the IMU expressed in the control frame
@@ -95,84 +115,94 @@ protected:
   /// initial value of the parameter related to the orthogonality
   double gamma_ = 15;
 
-  std::string anchorFrameFunction_;
-  stateObservation::TiltEstimatorHumanoid estimator_;
-
-  // values used for computation
-  stateObservation::kine::Kinematics updatedFbImuKine_;
-  sva::MotionVecd imuVelC_ = sva::MotionVecd::Zero();
-  sva::PTransformd X_C_IMU_ = sva::PTransformd::Identity();
-  sva::PTransformd X_0_C_ = sva::PTransformd::Identity(); // control anchor frame
-  sva::PTransformd X_0_C_updated_ = sva::PTransformd::Identity(); // anchor frame updated by the other observers
-  sva::PTransformd X_0_C_updated_previous_ = sva::PTransformd::Identity(); // previous updated anchor frame
-
-  sva::PTransformd newWorldAnchorPose = sva::PTransformd::Identity(); // control anchor frame
-
+  // flag indicating the variables we want in the resulting Kinematics object
   stateObservation::kine::Kinematics::Flags::Byte flagPoseVels_ =
       stateObservation::kine::Kinematics::Flags::position | stateObservation::kine::Kinematics::Flags::orientation
       | stateObservation::kine::Kinematics::Flags::linVel | stateObservation::kine::Kinematics::Flags::angVel;
 
+  // function used to compute the anchor frame of the robot in the world.
+  std::string anchorFrameFunction_;
+  // instance of the Tilt Estimator for humanoid robots.
+  stateObservation::TiltEstimatorHumanoid estimator_;
+
+  /* kinematics used for computation */
+  // kinematics of the IMU in the floating base after the encoders update
+  stateObservation::kine::Kinematics updatedFbImuKine_;
+  // kinematics of the anchor frame of the control robot in the world. Version as a PTransform object.
+  sva::PTransformd X_0_C_ = sva::PTransformd::Identity();
+  // kinematics of the anchor frame of the control robot updated with the encoders in the world.  Version as a
+  // PTransform object.
+  sva::PTransformd X_0_C_updated_ = sva::PTransformd::Identity();
+  // previous value of X_0_C_updated_, used to compute the velocity by finite differences
+  sva::PTransformd X_0_C_updated_previous_ = sva::PTransformd::Identity();
+
+  // kinematics of the anchor frame of the control robot in the world. Version as a Kinematics object.
   stateObservation::kine::Kinematics worldAnchorKine_ =
       stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
+  // kinematics of the anchor frame of the control robot updated with the encoders in the world. Version as a Kinematics
+  // object.
   stateObservation::kine::Kinematics updatedWorldAnchorKine_ =
       stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
-  stateObservation::kine::Kinematics worldFbKine_;
+
+  // kinematics of the floating base in the world after the encoders update
   stateObservation::kine::Kinematics updatedWorldFbKine_;
-  stateObservation::kine::Kinematics correctedWorldImuKine_;
-  stateObservation::kine::Kinematics correctedWorldFbKine_;
+  // kinematics of the anchor frame in the IMU frame after the encoders update
+  stateObservation::kine::Kinematics updatedImuAnchorKine_ =
+      stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
+  // kinematics of the anchor frame in the world frame for the new iteration
+  stateObservation::kine::Kinematics newWorldAnchorKine_;
+  // kinematics of the anchor frame in the world frame for the new iteration, after the encoders update
+  stateObservation::kine::Kinematics newUpdatedWorldAnchorKine_;
+  // kinematics of the IMU in the world for the control robot
+  stateObservation::kine::Kinematics worldImuKine_;
+  // kinematics of the IMU in the world after the encoders update
+  stateObservation::kine::Kinematics updatedWorldImuKine_;
 
-  stateObservation::Vector3 estimatedWorldImuLocalLinVel_;
-  stateObservation::Vector3 virtualMeasureWorldImuLocalLinVel_;
-  stateObservation::Vector3 updatedRobotWorldImuLocalLinVel_;
-  stateObservation::Vector3 updatedRobotWorldImuLocalAngVel_;
+  /* Estimation results */
 
-  // result
   // The observed tilt of the sensor
   Eigen::Matrix3d estimatedRotationIMU_;
-
-  stateObservation::Vector3 m_pF_prev;
-  /// Instance of the Tilt Estimator
+  /// State vector estimated by the Tilt Observer
   stateObservation::Vector xk_;
+  // estimated kinematics of the floating base in the world
+  stateObservation::kine::Kinematics correctedWorldFbKine_;
+  // estimated kinematics of the IMU in the world
+  stateObservation::kine::Kinematics correctedWorldImuKine_;
 
-  bool firstSample_;
-
-private:
-  std::shared_ptr<mc_rbdyn::Robots> my_robots_;
-
+  /* Floating base's kinematics */
   Eigen::Matrix3d R_0_fb_; // estimated orientation of the floating base in the world frame
   sva::PTransformd poseW_ = sva::PTransformd::Identity(); ///< Estimated pose of the floating-base in world frame */
   sva::PTransformd prevPoseW_ = sva::PTransformd::Identity(); ///< Estimated pose of the floating-base in world frame */
-  sva::MotionVecd velW_ = sva::MotionVecd::Zero();
+  sva::MotionVecd velW_ = sva::MotionVecd::Zero(); ///< Estimated velocity of the floating-base in world frame */
 
+  // anchor frame's variables
   double maxAnchorFrameDiscontinuity_ =
       0.01; ///< Threshold (norm) above wich the anchor frame is considered to have had a discontinuity
   bool anchorFrameJumped_ = false; /** Detects whether the anchor frame had a discontinuity */
+  int iter_ = 0; // iterations ellapsed since the beginning of the  estimation. We don't compute the anchor frame
+                 // velocity while it is below "itersBeforeAnchorsVel_"
+  int itersBeforeAnchorsVel_ = 10; // iteration from which we start to compute the velocity of the anchor frame. Avoids
+                                   // initial jumps due to the finite differences.
 
-  int iter_ = 0;
-  int itersBeforeAnchorsVel_ = 10;
+  /* Odometry parameters */
+  bool withOdometry_ = false; // defines if we use odometry or stay attached to the control robot.
+  leggedOdometry::LeggedOdometryManager odometryManager_; // manager for the legged odometry
+  using LoContactsManager = leggedOdometry::LeggedOdometryManager::ContactsManager;
+  double contactDetectionThreshold_; // threshold used for the contacts detection
 
-  bool withOdometry_ = false;
+  /* Backup function's parameters */
 
-  // Debug
-  stateObservation::Vector3 x1_;
-  stateObservation::kine::Kinematics updatedWorldImuKine_;
-  stateObservation::kine::Kinematics worldImuKine_;
-  stateObservation::kine::Kinematics updatedImuAnchorKine_ =
-      stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
-  stateObservation::kine::Kinematics fbAnchorKine_;
-
-  stateObservation::kine::Kinematics newWorldAnchorKine_;
-  stateObservation::kine::Kinematics newUpdatedWorldAnchorKine_;
-
-  double contactDetectionThreshold_;
-
+  bool asBackup_ = false; // indicates if the estimator is used as a backup or not
+  // Buffer containing the estimated pose of the floating base in the world over the whole backup interval.
   boost::circular_buffer<sva::PTransformd> backupFbKinematics_ = boost::circular_buffer<sva::PTransformd>(100);
 
-  leggedOdometry::LeggedOdometryManager odometryManager_;
-
-  using LoContactsManager = leggedOdometry::LeggedOdometryManager::ContactsManager;
-
-  bool asBackup_ = false;
+  /* Debug variables */
+  // "measured" local linear velocity of the IMU
+  stateObservation::Vector3 x1_;
+  // velocity of the IMU in the anchor frame
+  sva::MotionVecd imuVelC_ = sva::MotionVecd::Zero();
+  // pose of the IMU in the anchor frame
+  sva::PTransformd X_C_IMU_ = sva::PTransformd::Identity();
 };
 
 } // namespace mc_state_observation

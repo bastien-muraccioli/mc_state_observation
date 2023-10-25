@@ -24,7 +24,8 @@ namespace mc_state_observation
  **/
 
 /// @brief Class containing the information of a contact.
-/// @details This class is enhanced with the kinematics of the contact in the floating base.
+/// @details This class is an enhancement of the ContactWithSensor class with the kinematics of the contact in the
+/// floating base and the kinematics of the frame of the sensor in the frame of the contact surface
 struct KoContactWithSensor : public measurements::ContactWithSensor
 {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -56,7 +57,9 @@ public:
   }
 
 public:
+  // kinematics of the contact frame in the floating base's frame
   stateObservation::kine::Kinematics fbContactKine_;
+  // kinematics of the sensor frame in the frame of the contact surface
   stateObservation::kine::Kinematics surfaceSensorKine_;
 };
 
@@ -67,8 +70,6 @@ struct MCKineticsObserver : public mc_observers::Observer
 
   void configure(const mc_control::MCController & ctl, const mc_rtc::Configuration &) override;
 
-  void setObserverCovariances();
-
   void reset(const mc_control::MCController & ctl) override;
 
   bool run(const mc_control::MCController & ctl) override;
@@ -76,6 +77,8 @@ struct MCKineticsObserver : public mc_observers::Observer
   void update(mc_control::MCController & ctl) override;
 
 protected:
+  /// @brief sets all the covariances required by the Kinetics Observer
+  void setObserverCovariances();
   /// @brief Update the pose and velocities of the robot in the world frame. Used only to update the ones of the robot
   /// used for the visualization of the estimation made by the Kinetics Observer.
   /// @param robot The robot to update.
@@ -344,62 +347,42 @@ public:
   }
 
 private:
-  // zero frame transformation
-
-  sva::PTransformd zeroPose_;
-  // zero velocity or acceleration
-  sva::MotionVecd zeroMotion_;
-
-  // kinematics of the CoM within the world frame of the control robot
-  stateObservation::kine::Kinematics worldCoMKine_;
-
-  std::string category_ = "MCKineticsObserver";
-  /* custom list of robots to display */
-  std::shared_ptr<mc_rbdyn::Robots> my_robots_;
-
-  // the Kinetics Observer completed the loop at least once
-  bool ekfIsSet_ = false;
-
-  // state vector resulting from the Kinetics Observer esimation
-  Eigen::VectorXd res_;
-
-  // threshold on the measured force for contact detection.
-  double contactDetectionThreshold_ = 0.0;
-
-  // For logs only. Prediction of the measurements from the newly corrected state
-  stateObservation::Vector correctedMeasurements_;
-  // For logs only. Kinematics of the centroid frame within the world frame
-  stateObservation::kine::Kinematics globalCentroidKinematics_;
-
-  bool debug_ = false;
-  bool verbose_ = true;
-
-  double mass_ = 42; // [kg]
-
   // instance of the Kinetics Observer
   stateObservation::KineticsObserver observer_;
+  // name of the estimator
+  std::string category_ = "MCKineticsObserver";
+  // name of the robot
+  std::string robot_ = "";
+  /* custom list of robots to display */
+  std::shared_ptr<mc_rbdyn::Robots> my_robots_;
+  // std::string imuSensor_ = "";
+  mc_rbdyn::BodySensorVector IMUs_; ///< list of IMUs
 
-  // velocity of the floating base within the world frame (real one, not the one of the control robot)
-  sva::MotionVecd v_fb_0_ = sva::MotionVecd::Zero();
-  // pose of the floating base within the world frame (real one, not the one of the control robot)
-  sva::PTransformd X_0_fb_ = sva::PTransformd::Identity();
-  // acceleration of the floating base within the world frame (real one, not the one of the control robot)
-  sva::MotionVecd a_fb_0_ = sva::MotionVecd::Zero();
-  /**< grouped inertia */
-  sva::RBInertiad inertiaWaist_;
-
-  // total force measured by the sensors that are not associated to a currently set contact and expressed in the
-  // floating base's frame. Used as an input for the Kinetics Observer.
-  stateObservation::Vector3 additionalUserResultingForce_ = stateObservation::Vector3::Zero();
-  // total torque measured by the sensors that are not associated to a currently set contact and expressed in the
-  // floating base's frame. Used as an input for the Kinetics Observer.
-  stateObservation::Vector3 additionalUserResultingMoment_ = stateObservation::Vector3::Zero();
-
+  /* Estimation parameters */
+  bool debug_ = false;
+  bool verbose_ = true;
   // this variable is set to true when the robot touches the ground at the beginning of the simulation. Checks that
   // contacts are detected before running the estimator.
   bool simStarted_ = false;
 
-  /* Config variables */
+  /* Estimation results */
+
+  // state vector resulting from the Kinetics Observer esimation
+  Eigen::VectorXd res_;
+  // pose of the floating base within the world frame (real one, not the one of the control robot)
+  sva::PTransformd X_0_fb_ = sva::PTransformd::Identity();
+  // velocity of the floating base within the world frame (real one, not the one of the control robot)
+  sva::MotionVecd v_fb_0_ = sva::MotionVecd::Zero();
+  // acceleration of the floating base within the world frame (real one, not the one of the control robot)
+  sva::MotionVecd a_fb_0_ = sva::MotionVecd::Zero();
+
+  /* Settings of the Kinetics Observers */
+  // mass of the robot
+  double mass_ = 42; // [kg]
+  // maximum amount of contacts that we want to use with the Kinetics Observer.
+  int maxContacts_ = 4;
+  // maximum amount of IMUs that we want to use with the Kinetics Observer.
+  int maxIMUs_ = 2;
 
   // linear stiffness of contacts
   stateObservation::Matrix3 linStiffness_;
@@ -417,61 +400,104 @@ private:
   // associated to @withOdometry_. If true, the odometry on the position will be only along the x and y axes. If
   // false, the default 6D odometry is used.
   bool withFlatOdometry_ = false;
-
-  // indicates if the forces measurement have to be filtered with a low-pass filter.
-  bool withFilteredForcesContactDetection_ = false;
-
   // indicates if we want to estimate the unmodeled wrench within the Kinetics Observer.
   bool withUnmodeledWrench_ = true;
   // indicates if we want to estimate the bias on the gyrometer measurement within the Kinetics Observer.
   bool withGyroBias_ = true;
 
-  // maximum amount of contacts that we want to use with the Kinetics Observer.
-  int maxContacts_ = 4;
-  // maximum amount of IMUs that we want to use with the Kinetics Observer.
-  int maxIMUs_ = 2;
+  /* Kalman Filter's covariances */
 
+  // initial covariance on the position estimate
   stateObservation::Matrix3 statePositionInitCovariance_;
+  // initial covariance on the orientation estimate
   stateObservation::Matrix3 stateOriInitCovariance_;
+  // initial covariance on the local linear velocity estimate
   stateObservation::Matrix3 stateLinVelInitCovariance_;
+  // initial covariance on the local angular velocity estimate
   stateObservation::Matrix3 stateAngVelInitCovariance_;
+  // initial covariance on the gyrometer bias estimate
   stateObservation::Matrix3 gyroBiasInitCovariance_;
+  // initial covariance on the unmodeled wrench estimate
   stateObservation::Matrix6 unmodeledWrenchInitCovariance_;
+  // initial covariance on the contact rest pose estimate, when no other contact is currently set
   stateObservation::Matrix12 contactInitCovarianceFirstContacts_;
+  // initial covariance on the contact rest pose estimate, when other contacts are currently set
   stateObservation::Matrix12 contactInitCovarianceNewContacts_;
 
+  // covariance on the position's state transition
   stateObservation::Matrix3 statePositionProcessCovariance_;
+  // covariance on the orientation's state transition
   stateObservation::Matrix3 stateOriProcessCovariance_;
+  // covariance on the local linear velocity's state transition
   stateObservation::Matrix3 stateLinVelProcessCovariance_;
+  // covariance on the angular velocity's state transition
   stateObservation::Matrix3 stateAngVelProcessCovariance_;
+  // covariance on the gyrometer bias' state transition
   stateObservation::Matrix3 gyroBiasProcessCovariance_;
+  // covariance on the unmodeled wrench's state transition
   stateObservation::Matrix6 unmodeledWrenchProcessCovariance_;
+  // covariance on the contact rest pose's state transition
   stateObservation::Matrix12 contactProcessCovariance_;
 
+  // covariance on the absolute position measurement
   stateObservation::Matrix3 positionSensorCovariance_;
+  // covariance on the absolute orientation measurement
   stateObservation::Matrix3 orientationSensorCoVariance_;
+  // covariance on the accelerometer measurement
   stateObservation::Matrix3 acceleroSensorCovariance_;
+  // covariance on the gyrometer measurement
   stateObservation::Matrix3 gyroSensorCovariance_;
+  // covariance on the contact's force sensors measurement
   stateObservation::Matrix6 contactSensorCovariance_;
 
+  /* Contacts manager variables */
   using KoContactsManager = measurements::ContactsManager<KoContactWithSensor, measurements::ContactWithoutSensor>;
   KoContactsManager contactsManager_;
+  // indicates if the forces measurement have to be filtered with a low-pass filter.
+  bool withFilteredForcesContactDetection_ = false;
+  // threshold on the measured force for contact detection.
+  double contactDetectionThreshold_ = 0.0;
+
+  /* IMU variables */
+  // manager for the IMUs
   measurements::MapIMUs mapIMUs_;
 
-  int lastBackupIter_ = 0;
-  int backupIterInterval_ = 0;
+  /* Utilitary variables */
+  // zero frame transformation
+  sva::PTransformd zeroPose_;
+  // zero velocity or acceleration
+  sva::MotionVecd zeroMotion_;
+  // kinematics of the CoM within the world frame of the input robot
+  stateObservation::kine::Kinematics worldCoMKine_;
+  /**< grouped inertia */
+  sva::RBInertiad inertiaWaist_;
+  // total force measured by the sensors that are not associated to a currently set contact and expressed in the
+  // floating base's frame. Used as an input for the Kinetics Observer.
+  stateObservation::Vector3 additionalUserResultingForce_ = stateObservation::Vector3::Zero();
+  // total torque measured by the sensors that are not associated to a currently set contact and expressed in the
+  // floating base's frame. Used as an input for the Kinetics Observer.
+  stateObservation::Vector3 additionalUserResultingMoment_ = stateObservation::Vector3::Zero();
 
+  /* Variables for the backup */
+  // iteration on which the backup was required for the last time
+  int lastBackupIter_ = 0;
+  // number of iterations on which we perform the backup
+  int backupIterInterval_ = 0;
   // time during which the Kinetics Observer is still getting updated by the Tilt Observer after the need of a backup,
   // so the Kalman Filter has time to converge again
   int invincibilityFrame_ = 0;
+  // iterations ellapsed within the invincibility frame
   int invincibilityIter_ = 0;
 
+  // Buffer containing the estimated pose of the floating base in the world over the whole backup interval.
   boost::circular_buffer<stateObservation::kine::Kinematics> koBackupFbKinematics_ =
       boost::circular_buffer<stateObservation::kine::Kinematics>(100);
 
-  bool contactsDetectionFromThreshold_ = false;
-
-  /* Config variables */
+  /* Debug variables */
+  // For logs only. Prediction of the measurements from the newly corrected state
+  stateObservation::Vector correctedMeasurements_;
+  // For logs only. Kinematics of the centroid frame within the world frame
+  stateObservation::kine::Kinematics globalCentroidKinematics_;
 };
 
 } // namespace mc_state_observation

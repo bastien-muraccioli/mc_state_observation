@@ -87,10 +87,6 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   }
 
   std::vector<std::string> contactsSensorDisabledInit = config("contactsSensorDisabledInit");
-  if(contactsDetectionMethod == KoContactsManager::ContactsDetection::fromThreshold)
-  {
-    contactsDetectionFromThreshold_ = true;
-  }
 
   if(contactsDetectionMethod == KoContactsManager::ContactsDetection::fromSurfaces)
   {
@@ -218,10 +214,12 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
 
   if(!ctl.datastore().has("runBackup"))
   {
+    // if the datastore must contain the backup function provided by the Tilt Observer
     mc_rtc::log::error_and_throw<std::runtime_error>(
         "The Tilt Observer must be used before the Kinetics Observer when used as a backup");
   }
-  // interval (in s) on which the backuo will recover
+
+  // interval (in s) on which the backup will recover
   int backupInterval = config("backupInterval", 1);
   auto & datastore = (const_cast<mc_control::MCController &>(ctl)).datastore();
   datastore.make<int>("KoBackupInterval", backupInterval);
@@ -383,13 +381,6 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
   /* Step once, and return result */
 
   res_ = observer_.update();
-
-  if(!ekfIsSet_ && withDebugLogs_)
-  {
-    // plotVariablesAfterUpdate(logger);
-  }
-
-  ekfIsSet_ = true;
 
   // Kinematics of the floating base in the real world frame (our estimation goal)
   so::kine::Kinematics mcko_K_0_fb;
@@ -718,7 +709,7 @@ const so::kine::Kinematics MCKineticsObserver::getContactWorldKinematics(KoConta
   // kinematics of the frame of the force sensor in the world frame
   so::kine::Kinematics worldSensorKine = worldBodyKine * bodyContactSensorKine;
 
-  if(contactsDetectionFromThreshold_)
+  if(KoContactsManager().getContactsDetection() == KoContactsManager::ContactsDetection::fromThreshold)
   {
     // If the contact is detecting using thresholds, we will then consider the sensor frame as
     // the contact surface frame directly.
@@ -765,7 +756,7 @@ const so::kine::Kinematics MCKineticsObserver::getContactWorldKinematics(KoConta
 
   so::kine::Kinematics worldSensorKine = worldBodyKine * bodyContactSensorKine;
 
-  if(contactsDetectionFromThreshold_)
+  if(KoContactsManager().getContactsDetection() == KoContactsManager::ContactsDetection::fromThreshold)
   {
     // If the contact is detecting using thresholds, we will then consider the sensor frame as
     // the contact surface frame directly.
