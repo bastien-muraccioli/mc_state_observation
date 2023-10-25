@@ -36,6 +36,9 @@ MCKineticsObserver::MCKineticsObserver(const std::string & type, double dt)
 void MCKineticsObserver::configure(const mc_control::MCController & ctl, const mc_rtc::Configuration & config)
 {
   robot_ = config("robot", ctl.robot().name());
+
+  const auto & robot = ctl.robot(robot_);
+
   IMUs_ = config("imuSensor", ctl.robot().bodySensors());
   config("debug", debug_);
   config("verbose", verbose_);
@@ -44,16 +47,12 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
 
   if(odometryType != "None")
   {
+    withOdometry_ = true;
     if(odometryType == "flatOdometry")
     {
-      withOdometry_ = true;
       withFlatOdometry_ = true;
     }
-    else if(odometryType == "6dOdometry")
-    {
-      withOdometry_ = true;
-    }
-    else
+    else if(odometryType != "6dOdometry")
     {
       mc_rtc::log::error_and_throw<std::runtime_error>(
           "Odometry type not allowed. Please pick among : [None, flatOdometry, 6dOdometry]");
@@ -61,12 +60,58 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   }
 
   config("withDebugLogs", withDebugLogs_);
-  config("contactDetectionPropThreshold", contactDetectionPropThreshold_);
+
   config("withFilteredForcesContactDetection", withFilteredForcesContactDetection_);
+
+  /* configuration of the contacts manager */
+
+  contactsManager_.init(ctl, robot_, "MCKineticsObserver", true);
+
+  double contactDetectionPropThreshold = config("contactDetectionPropThreshold", 0.11);
+  contactDetectionThreshold_ = robot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold;
+
+  std::string contactsDetection = static_cast<std::string>(config("contactsDetection"));
+
+  KoContactsManager::ContactsDetection contactsDetectionMethod = KoContactsManager::ContactsDetection::undefined;
+  if(contactsDetection == "fromThreshold")
+  {
+    contactsDetectionMethod = KoContactsManager::ContactsDetection::fromThreshold;
+  }
+  else if(contactsDetection == "fromSurfaces")
+  {
+    contactsDetectionMethod = KoContactsManager::ContactsDetection::fromSurfaces;
+  }
+  else if(contactsDetection == "fromSolver")
+  {
+    contactsDetectionMethod = KoContactsManager::ContactsDetection::fromSolver;
+  }
+
+  std::vector<std::string> contactsSensorDisabledInit = config("contactsSensorDisabledInit");
+  if(contactsDetectionMethod == KoContactsManager::ContactsDetection::fromThreshold)
+  {
+    contactsDetectionFromThreshold_ = true;
+  }
+
+  if(contactsDetectionMethod == KoContactsManager::ContactsDetection::fromSurfaces)
+  {
+    std::vector<std::string> surfacesForContactDetection = config("surfacesForContactDetection");
+
+    contactsManager_.initDetection(ctl, robot_, contactsDetectionMethod, surfacesForContactDetection,
+                                   contactsSensorDisabledInit, contactDetectionThreshold_);
+  }
+  else
+  {
+    contactsManager_.initDetection(ctl, robot_, contactsDetectionMethod, contactsSensorDisabledInit,
+                                   contactDetectionThreshold_);
+  }
+
   if(withFilteredForcesContactDetection_)
   {
     mc_rtc::log::error_and_throw<std::runtime_error>("The forces filtering has an error, please don't use it now");
   }
+
+  /* Configuration of the Kinetics Observer's parameters */
+
   config("withUnmodeledWrench", withUnmodeledWrench_);
   config("withGyroBias", withGyroBias_);
 
@@ -169,52 +214,15 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
 
   setObserverCovariances();
 
-  const auto & robot = ctl.robot(robot_);
+  /* Configuration of the backup based on the Tilt Observer */
 
-  contactsManager_.init(ctl, robot_, "MCKineticsObserver", true);
-
-  double contactDetectionThreshold = robot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_;
-
-  std::string contactsDetection = static_cast<std::string>(config("contactsDetection"));
-
-  KoContactsManager::ContactsDetection contactsDetectionMethod = KoContactsManager::ContactsDetection::undefined;
-  if(contactsDetection == "fromThreshold")
+  if(!ctl.datastore().has("runBackup"))
   {
-    contactsDetectionMethod = KoContactsManager::ContactsDetection::fromThreshold;
+    mc_rtc::log::error_and_throw<std::runtime_error>(
+        "The Tilt Observer must be used before the Kinetics Observer when used as a backup");
   }
-  else if(contactsDetection == "fromSurfaces")
-  {
-    contactsDetectionMethod = KoContactsManager::ContactsDetection::fromSurfaces;
-  }
-  else if(contactsDetection == "fromSolver")
-  {
-    contactsDetectionMethod = KoContactsManager::ContactsDetection::fromSolver;
-  }
-
-  std::vector<std::string> contactsSensorDisabledInit = config("contactsSensorDisabledInit");
-  if(contactsDetectionMethod == KoContactsManager::ContactsDetection::fromThreshold)
-  {
-    contactsDetectionFromThreshold_ = true;
-  }
-
-  if(contactsDetectionMethod == KoContactsManager::ContactsDetection::fromSurfaces)
-  {
-    std::vector<std::string> surfacesForContactDetection = config("surfacesForContactDetection");
-
-    contactsManager_.initDetection(ctl, robot_, contactsDetectionMethod, surfacesForContactDetection,
-                                   contactsSensorDisabledInit, contactDetectionThreshold);
-  }
-  else
-  {
-    contactsManager_.initDetection(ctl, robot_, contactsDetectionMethod, contactsSensorDisabledInit,
-                                   contactDetectionThreshold);
-  }
-
-  /* Use of the Tilt Observer as a backup */
-  BOOST_ASSERT(ctl.datastore().has("runBackup")
-               && "The Tilt Observer must be used before the Kinetics Observer when used as a backup");
-
-  int backupInterval = 1;
+  // interval (in s) on which the backuo will recover
+  int backupInterval = config("backupInterval", 1);
   auto & datastore = (const_cast<mc_control::MCController &>(ctl)).datastore();
   datastore.make<int>("KoBackupInterval", backupInterval);
 
@@ -493,7 +501,7 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
       }
 
       invincibilityIter_ = 0;
-      lastBackupIter_ = logger.t() / ctl.timeStep;
+      lastBackupIter_ = int(logger.t() / ctl.timeStep);
     }
 
     observer_.nanDetected_ = false;
@@ -639,7 +647,6 @@ void MCKineticsObserver::inputAdditionalWrench(const mc_rbdyn::Robot & inputRobo
 
 void MCKineticsObserver::updateIMUs(const mc_rbdyn::Robot & measRobot, const mc_rbdyn::Robot & inputRobot)
 {
-  unsigned i = 0;
   for(const auto & imu : IMUs_)
   {
     /** Position of accelerometer **/
@@ -658,8 +665,6 @@ void MCKineticsObserver::updateIMUs(const mc_rbdyn::Robot & measRobot, const mc_
 
     observer_.setIMU(measRobot.bodySensor().linearAcceleration(), measRobot.bodySensor().angularVelocity(),
                      acceleroSensorCovariance_, gyroSensorCovariance_, fbImuKine, mapIMUs_.getNumFromName(imu.name()));
-
-    ++i;
   }
 }
 
@@ -1018,8 +1023,7 @@ void MCKineticsObserver::addToLogger(const mc_control::MCController & ctl,
 
   logger.addLogEntry(category + "_constants_mass", [this]() -> double { return observer_.getMass(); });
 
-  logger.addLogEntry(category + "_constants_forceThreshold",
-                     [this]() -> double { return mass_ * so::cst::gravityConstant * contactDetectionPropThreshold_; });
+  logger.addLogEntry(category + "_constants_forceThreshold", [this]() -> double { return contactDetectionThreshold_; });
   logger.addLogEntry(category + "_debug_invincibilityFrame", [this]() -> std::string {
     if(invincibilityIter_ != 0 && invincibilityIter_ < invincibilityFrame_)
     {

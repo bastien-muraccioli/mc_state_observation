@@ -147,13 +147,15 @@ public:
   /// @param withYawEstimation Indicates if the orientation must be estimated by this odometry.
   /// @param velUpdatedUpstream Informs whether the 6D velocity was updated by upstream observers
   /// @param accUpdatedUpstream Informs whether the acceleration was updated by upstream observers
+  /// @param verbose
   void init(const mc_control::MCController & ctl,
             const std::string & robotName,
             const std::string & odometryName,
             const bool odometry6d,
             const bool withYawEstimation,
             const bool velUpdatedUpstream,
-            const bool accUpdatedUpstream);
+            const bool accUpdatedUpstream,
+            const bool verbose);
 
   void initDetection(const mc_control::MCController & ctl,
                      const std::string & robotName,

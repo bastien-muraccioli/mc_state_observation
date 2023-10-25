@@ -19,7 +19,8 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
                                  const bool odometry6d,
                                  const bool withYawEstimation,
                                  const bool velUpdatedUpstream,
-                                 const bool accUpdatedUpstream)
+                                 const bool accUpdatedUpstream,
+                                 const bool verbose)
 {
   robotName_ = robotName;
   odometry6d_ = odometry6d;
@@ -33,7 +34,7 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
 
   fbPose_.translation() = robot.posW().translation();
   fbPose_.rotation() = robot.posW().rotation();
-  contactsManager_.init(ctl, robotName, odometryName, true);
+  contactsManager_.init(ctl, robotName, odometryName, verbose);
 
   if(!ctl.datastore().has("KinematicAnchorFrame::" + ctl.robot(robotName).name()))
   {
@@ -452,8 +453,6 @@ void LeggedOdometryManager::updateOdometryRobot(const mc_control::MCController &
 
 void LeggedOdometryManager::updateFbKinematics(sva::PTransformd & pose, sva::MotionVecd & vel, sva::MotionVecd & acc)
 {
-  // updateOdometryRobot(ctl, true, true);
-
   pose.rotation() = odometryRobot().posW().rotation();
   pose.translation() = odometryRobot().posW().translation();
 
@@ -468,8 +467,6 @@ void LeggedOdometryManager::updateFbKinematics(sva::PTransformd & pose, sva::Mot
 
 void LeggedOdometryManager::updateFbKinematics(sva::PTransformd & pose, sva::MotionVecd & vel)
 {
-  // updateOdometryRobot(ctl, true, false);
-
   pose.rotation() = odometryRobot().posW().rotation();
   pose.translation() = odometryRobot().posW().translation();
 
@@ -481,8 +478,6 @@ void LeggedOdometryManager::updateFbKinematics(sva::PTransformd & pose, sva::Mot
 
 void LeggedOdometryManager::updateFbKinematics(sva::PTransformd & pose)
 {
-  // updateOdometryRobot(ctl, false, false);
-
   pose.rotation() = odometryRobot().posW().rotation();
   pose.translation() = odometryRobot().posW().translation();
 }

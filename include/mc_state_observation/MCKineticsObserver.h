@@ -363,8 +363,6 @@ private:
   // state vector resulting from the Kinetics Observer esimation
   Eigen::VectorXd res_;
 
-  // rate to apply on the measured force to obtain the threshold for contact detection.
-  double contactDetectionPropThreshold_ = 0.0;
   // threshold on the measured force for contact detection.
   double contactDetectionThreshold_ = 0.0;
 

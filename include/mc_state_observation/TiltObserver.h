@@ -164,7 +164,7 @@ private:
   stateObservation::kine::Kinematics newWorldAnchorKine_;
   stateObservation::kine::Kinematics newUpdatedWorldAnchorKine_;
 
-  double contactDetectionPropThreshold_ = 0.11;
+  double contactDetectionThreshold_;
 
   boost::circular_buffer<sva::PTransformd> backupFbKinematics_ = boost::circular_buffer<sva::PTransformd>(100);
 

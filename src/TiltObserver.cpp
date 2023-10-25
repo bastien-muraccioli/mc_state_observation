@@ -29,37 +29,17 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
   if(odometryType != "None")
   {
     withOdometry_ = true;
-
-    if(odometryType == "flatOdometry")
-    {
-      odometry6d = false;
-    }
-    else if(odometryType == "6dOdometry")
-    {
-      odometry6d = true;
-    }
-    else
-    {
-      mc_rtc::log::error_and_throw<std::runtime_error>(
-          "Odometry type not allowed. Please pick among : [None, flatOdometry, 6dOdometry]");
-    }
-  }
-
-  // if(ctl.datastore().has("KoBackupInterval")) // not working because called before MCKO
-  bool asBackup = false;
-  config("asBackup", asBackup);
-  if(asBackup)
-  {
-    // BOOST_ASSERT(withOdometry_ && "The odometry must be used to perform backup");
-    auto & datastore = (const_cast<mc_control::MCController &>(ctl)).datastore();
-    ctl.gui()->addElement({"OdometryBackup"}, mc_rtc::gui::Button("OdometryBackup", [this, &ctl]() { backupFb(ctl); }));
-
-    datastore.make_call("runBackup", [this, &ctl]() -> const so::kine::Kinematics { return backupFb(ctl); });
   }
 
   updateRobotName_ = robot_;
   imuSensor_ = config("imuSensor", ctl.robot().bodySensor().name());
   updateSensorName_ = imuSensor_;
+
+  config("maxAnchorFrameDiscontinuity", maxAnchorFrameDiscontinuity_);
+  config("updateRobot", updateRobot_);
+  config("updateRobotName", updateRobotName_);
+  config("updateSensor", updateSensor_);
+  config("updateSensorName", updateSensorName_);
 
   config("initAlpha", alpha_);
   config("initBeta", beta_);
@@ -79,19 +59,37 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
     }
   }
 
-  config("maxAnchorFrameDiscontinuity", maxAnchorFrameDiscontinuity_);
-  config("updateRobot", updateRobot_);
-  config("updateRobotName", updateRobotName_);
-  config("updateSensor", updateSensor_);
-  config("updateSensorName", updateSensorName_);
-  desc_ = fmt::format("{}", name_);
-
   if(withOdometry_)
   {
-    std::vector<std::string> surfacesForContactDetection = config("surfacesForContactDetection");
+    if(odometryType == "flatOdometry")
+    {
+      odometry6d = false;
+    }
+    else if(odometryType == "6dOdometry")
+    {
+      odometry6d = true;
+    }
+    else
+    {
+      mc_rtc::log::error_and_throw<std::runtime_error>(
+          "Odometry type not allowed. Please pick among : [None, flatOdometry, 6dOdometry]");
+    }
 
-    bool withYawEstimation = config("withYawEstimation");
-    std::vector<std::string> contactsSensorsDisabledInit = config("contactsSensorDisabledInit");
+    bool velUpdatedUpstream = config("velUpdatedUpstream");
+    bool accUpdatedUpstream = config("accUpdatedUpstream");
+    bool verbose = config("verbose", true);
+    bool withYawEstimation = config("withYawEstimation", true);
+
+    odometryManager_.init(ctl, robot_, "TiltObserver", odometry6d, withYawEstimation, velUpdatedUpstream,
+                          accUpdatedUpstream, verbose);
+
+    // surfaces used for the contact detection. If the desired detection method doesn't use surfaces, we make sure this
+    // list is not filled in the configuration file to avoid the use of an undesired method.
+    std::vector<std::string> surfacesForContactDetection;
+    config("surfacesForContactDetection", surfacesForContactDetection);
+
+    std::vector<std::string> contactsSensorsDisabledInit =
+        config("contactsSensorDisabledInit", std::vector<std::string>());
 
     std::string contactsDetection = static_cast<std::string>(config("contactsDetection"));
 
@@ -133,29 +131,36 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
 
     const auto & robot = ctl.robot(robot_);
 
-    double contactDetectionPropThreshold_ = config("contactDetectionPropThreshold", 0.11);
+    double contactDetectionPropThreshold = config("contactDetectionPropThreshold", 0.11);
 
-    double contactDetectionThreshold = robot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold_;
+    contactDetectionThreshold_ = robot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold;
 
     std::vector<std::string> contactsSensorDisabledInit = config("contactsSensorDisabledInit");
-
-    bool velUpdatedUpstream = config("velUpdatedUpstream");
-    bool accUpdatedUpstream = config("accUpdatedUpstream");
-
-    odometryManager_.init(ctl, robot_, "TiltObserver", odometry6d, withYawEstimation, velUpdatedUpstream,
-                          accUpdatedUpstream);
 
     if(contactsDetectionMethod == LoContactsManager::ContactsDetection::fromSurfaces)
     {
       odometryManager_.initDetection(ctl, robot_, contactsDetectionMethod, surfacesForContactDetection,
-                                     contactsSensorDisabledInit, contactDetectionThreshold);
+                                     contactsSensorDisabledInit, contactDetectionThreshold_);
     }
     else
     {
 
       odometryManager_.initDetection(ctl, robot_, contactsDetectionMethod, contactsSensorDisabledInit,
-                                     contactDetectionThreshold);
+                                     contactDetectionThreshold_);
     }
+  }
+
+  /* Configuration of the use as a backup */
+
+  // we check if this estimator is used as a backup of the Kinetics Observer
+  bool asBackup = config("asBackup", false);
+  if(asBackup)
+  {
+    // BOOST_ASSERT(withOdometry_ && "The odometry must be used to perform backup");
+    auto & datastore = (const_cast<mc_control::MCController &>(ctl)).datastore();
+    ctl.gui()->addElement({"OdometryBackup"}, mc_rtc::gui::Button("OdometryBackup", [this, &ctl]() { backupFb(ctl); }));
+
+    datastore.make_call("runBackup", [this, &ctl]() -> const so::kine::Kinematics { return backupFb(ctl); });
   }
 }
 
@@ -210,14 +215,6 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
   const auto & robot = ctl.robot(robot_);
   const auto & realRobot = ctl.realRobot(robot_);
   auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
-
-  /*
-  my_robots_->robot("updatedRobot").mbc().q = realRobot.mbc().q;
-
-  my_robots_->robot("updatedRobot").posW(robot.posW());
-  my_robots_->robot("updatedRobot").velW(robot.velW());
-  my_robots_->robot("updatedRobot").accW(robot.accW());
-  */
 
   std::vector<double> q0 = robot.mbc().q[0];
   my_robots_->robot("updatedRobot").mbc().q = realRobot.mbc().q;
@@ -538,12 +535,6 @@ void TiltObserver::updatePoseAndVel(const mc_control::MCController & ctl,
   }
   else
   {
-    // we combine the yaw estimated by the odometry with the newly estimated tilt
-    /*
-    poseW_.rotation() = (so::kine::mergeRoll1Pitch1WithYaw2AxisAgnostic(
-                             R_0_fb_, odometryManager_.odometryRobot().posW().rotation().transpose()))
-                            .transpose();
-                            */
     correctedWorldFbKine_ = kinematicsTools::poseFromSva(poseW_, so::kine::Kinematics::Flags::pose);
   }
 
@@ -840,7 +831,7 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
   kinematicsTools::addToLogger(worldImuKine_, logger, category + "_debug_worldImuKine");
   kinematicsTools::addToLogger(updatedWorldAnchorKine_, logger, category + "_debug_updatedWorldAnchorKine");
   kinematicsTools::addToLogger(updatedImuAnchorKine_, logger, category + "_debug_updatedImuAnchorKine_");
-  logger.addLogEntry(category + "_debug_ctlImuAnchorKine.linVel()", [this, &ctl]() -> so::Vector3 {
+  logger.addLogEntry(category + "_debug_ctlImuAnchorKine.linVel()", [this]() -> so::Vector3 {
     so::kine::Kinematics imuAnchorKine = worldImuKine_.getInverse() * worldAnchorKine_;
     return imuAnchorKine.linVel();
   });
