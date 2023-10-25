@@ -144,21 +144,16 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
     }
     else
     {
-
       odometryManager_.initDetection(ctl, robot_, contactsDetectionMethod, contactsSensorDisabledInit,
                                      contactDetectionThreshold_);
     }
   }
 
-  /* Configuration of the use as a backup */
-
-  // we check if this estimator is used as a backup of the Kinetics Observer
-  bool asBackup = config("asBackup", false);
-  if(asBackup)
+  // check if this observer is used as a backup. If yes we add the backup function to the datastore.
+  config("asBackup", asBackup_);
+  if(asBackup_)
   {
-    // BOOST_ASSERT(withOdometry_ && "The odometry must be used to perform backup");
     auto & datastore = (const_cast<mc_control::MCController &>(ctl)).datastore();
-    ctl.gui()->addElement({"OdometryBackup"}, mc_rtc::gui::Button("OdometryBackup", [this, &ctl]() { backupFb(ctl); }));
 
     datastore.make_call("runBackup", [this, &ctl]() -> const so::kine::Kinematics { return backupFb(ctl); });
   }
@@ -206,8 +201,18 @@ my_robots_->robot("updatedRobot"); }));
 
   estimator_.initEstimator(so::Vector3::Zero(), initX2, initX2);
 
-  int backupIterInterval = int(1 / ctl.timeStep);
-  backupFbKinematics_.resize(backupIterInterval);
+  /* Configuration of the use as a backup */
+
+  // we check if this estimator is used as a backup of the Kinetics Observer
+
+  if(asBackup_)
+  {
+    // BOOST_ASSERT(withOdometry_ && "The odometry must be used to perform backup");
+    int backupIterInterval = ctl.datastore().get<int>("koBackupIterInterval");
+
+    backupFbKinematics_.resize(backupIterInterval);
+    ctl.gui()->addElement({"OdometryBackup"}, mc_rtc::gui::Button("OdometryBackup", [this, &ctl]() { backupFb(ctl); }));
+  }
 }
 
 bool TiltObserver::run(const mc_control::MCController & ctl)

@@ -171,6 +171,8 @@ private:
   leggedOdometry::LeggedOdometryManager odometryManager_;
 
   using LoContactsManager = leggedOdometry::LeggedOdometryManager::ContactsManager;
+
+  bool asBackup_ = false;
 };
 
 } // namespace mc_state_observation

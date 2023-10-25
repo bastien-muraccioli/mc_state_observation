@@ -229,6 +229,8 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   backupIterInterval_ = int(backupInterval / ctl.timeStep);
 
   koBackupFbKinematics_.resize(backupIterInterval_);
+
+  datastore.make<int>("koBackupIterInterval", backupIterInterval_);
   datastore.make<boost::circular_buffer<stateObservation::kine::Kinematics> *>("koBackupFbKinematics",
                                                                                &koBackupFbKinematics_);
 
