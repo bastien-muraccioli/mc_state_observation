@@ -107,14 +107,15 @@ protected:
 struct LeggedOdometryManager
 {
 public:
+  typedef measurements::ContactsManager<LoContactWithSensor, LoContactWithoutSensor> ContactsManager;
+
+public:
   LeggedOdometryManager() {}
 
 protected:
   ///////////////////////////////////////////////////////////////////////
   /// ------------------------Contacts Manager---------------------------
   ///////////////////////////////////////////////////////////////////////
-
-  typedef measurements::ContactsManager<LoContactWithSensor, LoContactWithoutSensor> ContactsManager;
 
   /// @brief Adaptation of the structure ContactsManager to the legged odometry, using personalized contacts classes.
   struct LeggedOdometryContactsManager : public ContactsManager
@@ -137,31 +138,6 @@ protected:
 
 public:
   /// @brief Initializer for the odometry manager.
-  /// @details Version for the contact detection using surfaces.
-  /// @param ctl Controller
-  /// @param robotName Name of the robot
-  /// @param odometryName Name of the odometry, used in logs and in the gui.
-  /// @param odometry6d Indicates if the desired odometry must be a flat or a 6D odometry.
-  /// @param withYawEstimation Indicates if the orientation must be estimated by this odometry.
-  /// @param contactsDetection Desired contacts detection method.
-  /// @param surfacesForContactDetection Admissible surfaces for the contacts detection.
-  /// @param contactsSensorDisabledInit Contacts that must not be enabled since the beginning (faulty one for example).
-  /// @param contactDetectionThreshold Threshold used for the contact detection
-  /// @param velUpdatedUpstream Informs whether the 6D velocity was updated by upstream observers
-  /// @param accUpdatedUpstream Informs whether the acceleration was updated by upstream observers
-  void init(const mc_control::MCController & ctl,
-            const std::string robotName,
-            const std::string & odometryName,
-            const bool odometry6d,
-            const bool withYawEstimation,
-            const std::string contactsDetection,
-            std::vector<std::string> surfacesForContactDetection,
-            std::vector<std::string> contactsSensorDisabledInit,
-            const double contactDetectionThreshold,
-            const bool velUpdatedUpstream,
-            const bool accUpdatedUpstream);
-
-  /// @brief Initializer for the odometry manager.
   /// @details Version for the contact detection using a thresholding on the contact force sensors measurements or by
   /// direct input from the solver.
   /// @param ctl Controller
@@ -169,21 +145,28 @@ public:
   /// @param odometryName Name of the odometry, used in logs and in the gui.
   /// @param odometry6d Indicates if the desired odometry must be a flat or a 6D odometry.
   /// @param withYawEstimation Indicates if the orientation must be estimated by this odometry.
-  /// @param contactsDetection Desired contacts detection method.
-  /// @param contactsSensorDisabledInit Contacts that must not be enabled since the beginning (faulty one for example).
-  /// @param contactDetectionThreshold Threshold used for the contact detection
   /// @param velUpdatedUpstream Informs whether the 6D velocity was updated by upstream observers
   /// @param accUpdatedUpstream Informs whether the acceleration was updated by upstream observers
   void init(const mc_control::MCController & ctl,
-            const std::string robotName,
+            const std::string & robotName,
             const std::string & odometryName,
             const bool odometry6d,
             const bool withYawEstimation,
-            const std::string contactsDetection,
-            std::vector<std::string> contactsSensorDisabledInit,
-            const double contactDetectionThreshold,
             const bool velUpdatedUpstream,
             const bool accUpdatedUpstream);
+
+  void initDetection(const mc_control::MCController & ctl,
+                     const std::string & robotName,
+                     const ContactsManager::ContactsDetection & contactsDetection,
+                     const std::vector<std::string> & surfacesForContactDetection,
+                     const std::vector<std::string> & contactsSensorDisabledInit,
+                     const double & contactDetectionThreshold);
+
+  void initDetection(const mc_control::MCController & ctl,
+                     const std::string & robotName,
+                     const ContactsManager::ContactsDetection & contactsDetection,
+                     const std::vector<std::string> & contactsSensorDisabledInit,
+                     const double & contactDetectionThreshold);
 
   /// @brief @copybrief run(const mc_control::MCController &, mc_rtc::Logger &, sva::PTransformd &, sva::MotionVecd &,
   /// sva::MotionVecd &, stateObservation::Matrix3). This version uses the tilt estimated by the upstream observers.
@@ -397,8 +380,6 @@ protected:
   LeggedOdometryContactsManager contactsManager_;
   // odometry robot that is updated by the legged odometry and can then update the real robot if required.
   std::shared_ptr<mc_rbdyn::Robots> odometryRobot_;
-  // threshold on the measured force for the contacts detection
-  bool detectionFromThreshold_ = false;
 
   // pose of the anchor frame of the robot in the world
   stateObservation::kine::Kinematics worldAnchorPose_;

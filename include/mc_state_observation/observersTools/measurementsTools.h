@@ -174,9 +174,8 @@ protected:
     resetContact();
   }
   // constructor if the contact is associated to a surface
-  Contact(int id, std::string name, std::string surface)
+  Contact(int id, std::string name, std::string surface) : Contact(id, name)
   {
-    Contact(id, name);
     surfaceName(surface);
   }
 
@@ -332,7 +331,6 @@ public:
   /// @return contactsWithSensorT&
   inline ContactWithSensorT & contactWithSensor(const std::string & name)
   {
-
     BOOST_ASSERT(checkAlreadyExists(name, true) && "The requested sensor doesn't exist");
     return mapContactsWithSensors_.at(name);
   }
@@ -589,6 +587,14 @@ private:
 template<typename ContactWithSensorT, typename ContactWithoutSensorT>
 struct ContactsManager
 {
+public:
+  enum ContactsDetection
+  {
+    fromSolver,
+    fromSurfaces,
+    fromThreshold,
+    undefined
+  };
 
 public:
   ContactsManager()
@@ -602,41 +608,44 @@ public:
 
   // initialization for a detection based on contact surfaces
   void init(const mc_control::MCController & ctl,
+
             const std::string & robotName,
             const std::string & observerName,
-            const std::string contactsDetection,
-            std::vector<std::string> surfacesForContactDetection,
-            std::vector<std::string> contactsSensorDisabledInit,
-            const double contactDetectionThreshold,
             const bool verbose = true);
+
+  // initialization for a detection based on contact surfaces
+  void initDetection(const mc_control::MCController & ctl,
+                     const std::string & robotName,
+                     const ContactsDetection & contactsDetection,
+                     const std::vector<std::string> & surfacesForContactDetection,
+                     const std::vector<std::string> & contactsSensorDisabledInit,
+                     const double & contactDetectionThreshold);
+
   // initialization for a detection based on a threshold on the measured contact forces or for contacts given by the
   // controller
-  void init(const mc_control::MCController & ctl,
-            const std::string & robotName,
-            const std::string & observerName,
-            const std::string contactsDetection,
-            std::vector<std::string> contactsSensorDisabledInit,
-            const double contactDetectionThreshold,
-            const bool verbose = true);
+  void initDetection(const mc_control::MCController & ctl,
+                     const std::string & robotName,
+                     const ContactsDetection & contactsDetection,
+                     const std::vector<std::string> & contactsSensorDisabledInit,
+                     const double & contactDetectionThreshold);
+
+  /// @brief Adds the contact to the GUI to enable or disable it easily.
+  /// @details Version for a contact associated to a force sensor.
+  /// @param ctl The controller.
+  /// @param sensorName Sensor attached to the contact.
+  void addContactToGui(const mc_control::MCController & ctl, const std::string & sensorName);
+
+  /// @brief Adds the contact to the GUI to enable or disable it easily.
+  /// @details Version for a contact associated to a surface.
+  /// @param ctl The controller.
+  /// @param surface Surface of the contact.
+  /// @param forSurfaceContact Indicates that the contact is attached to a surface. Allows to differentiate from
+  /// addContactToGui(const mc_control::MCController &, const std::string &).
+  void addContactToGui(const mc_control::MCController & ctl, const std::string & surface, bool forSurfaceContact);
 
   typedef std::set<int> ContactsSet;
-  std::string to_string(const ContactsSet & contactSet)
-  {
-    if(contactSet.cbegin() == contactSet.cend())
-    {
-      return "";
-    }
-    std::ostringstream out;
-    out.precision(std::numeric_limits<int>::digits10);
-    out << std::fixed << mapContacts_.getNameFromNum(*contactSet.cbegin());
 
-    for(auto it = std::next(contactSet.cbegin()); it != contactSet.cend(); ++it)
-    {
-      out << ", ";
-      out << std::fixed << mapContacts_.getNameFromNum(*it);
-    }
-    return out.str();
-  }
+  std::string set_to_string(const ContactsSet & contactSet);
 
   /// @brief Updates the list of currently set contacts and returns it.
   /// @return std::set<FoundContactsListType> &
@@ -744,11 +753,14 @@ public:
     return removedContacts_;
   }
 
+  inline const ContactsDetection & getContactsDetection()
+  {
+    return contactsDetectionMethod_;
+  }
+
 public:
   // map of contacts used by the manager.
   MapContacts<ContactWithSensorT, ContactWithoutSensorT> mapContacts_;
-
-  // contacts found on each iteration
 
 protected:
   double contactDetectionThreshold_;
@@ -769,6 +781,8 @@ protected:
   std::vector<std::string> contactsSensorDisabledInit_;
   // name of the observer using this contacts manager.
   std::string observerName_;
+  // method used to detect the contacts
+  ContactsDetection contactsDetectionMethod_ = undefined;
   bool verbose_ = true;
 };
 

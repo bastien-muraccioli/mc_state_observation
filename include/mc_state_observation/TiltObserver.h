@@ -169,6 +169,8 @@ private:
   boost::circular_buffer<sva::PTransformd> backupFbKinematics_ = boost::circular_buffer<sva::PTransformd>(100);
 
   leggedOdometry::LeggedOdometryManager odometryManager_;
+
+  using LoContactsManager = leggedOdometry::LeggedOdometryManager::ContactsManager;
 };
 
 } // namespace mc_state_observation

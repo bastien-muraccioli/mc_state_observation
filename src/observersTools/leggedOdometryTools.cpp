@@ -14,14 +14,10 @@ namespace leggedOdometry
 ///////////////////////////////////////////////////////////////////////
 
 void LeggedOdometryManager::init(const mc_control::MCController & ctl,
-                                 const std::string robotName,
+                                 const std::string & robotName,
                                  const std::string & odometryName,
                                  const bool odometry6d,
                                  const bool withYawEstimation,
-                                 const std::string contactsDetection,
-                                 std::vector<std::string> surfacesForContactDetection,
-                                 std::vector<std::string> contactsSensorDisabledInit,
-                                 const double contactDetectionThreshold,
                                  const bool velUpdatedUpstream,
                                  const bool accUpdatedUpstream)
 {
@@ -37,8 +33,7 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
 
   fbPose_.translation() = robot.posW().translation();
   fbPose_.rotation() = robot.posW().rotation();
-  contactsManager_.init(ctl, robotName, odometryName_, contactsDetection, surfacesForContactDetection,
-                        contactsSensorDisabledInit, contactDetectionThreshold);
+  contactsManager_.init(ctl, robotName, odometryName, true);
 
   if(!ctl.datastore().has("KinematicAnchorFrame::" + ctl.robot(robotName).name()))
   {
@@ -69,64 +64,25 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
                      [this]() -> sva::MotionVecd { return odometryRobot().accW(); });
 }
 
-void LeggedOdometryManager::init(const mc_control::MCController & ctl,
-                                 const std::string robotName,
-                                 const std::string & odometryName,
-                                 const bool odometry6d,
-                                 const bool withYawEstimation,
-                                 const std::string contactsDetection,
-                                 std::vector<std::string> contactsSensorDisabledInit,
-                                 const double contactDetectionThreshold,
-                                 const bool velUpdatedUpstream,
-                                 const bool accUpdatedUpstream)
+void LeggedOdometryManager::initDetection(const mc_control::MCController & ctl,
+                                          const std::string & robotName,
+                                          const ContactsManager::ContactsDetection & contactsDetection,
+                                          const std::vector<std::string> & surfacesForContactDetection,
+                                          const std::vector<std::string> & contactsSensorDisabledInit,
+                                          const double & contactsDetectionThreshold)
 {
-  robotName_ = robotName;
-  odometry6d_ = odometry6d;
-  withYawEstimation_ = withYawEstimation;
-  odometryName_ = odometryName;
-  velUpdatedUpstream_ = velUpdatedUpstream;
-  accUpdatedUpstream_ = accUpdatedUpstream;
-  const auto & robot = ctl.robot(robotName);
-  odometryRobot_ = mc_rbdyn::Robots::make();
-  odometryRobot_->robotCopy(robot, "odometryRobot");
-  fbPose_.translation() = robot.posW().translation();
-  fbPose_.rotation() = robot.posW().rotation();
-  odometryRobot().posW(fbPose_);
+  contactsManager_.initDetection(ctl, robotName, contactsDetection, surfacesForContactDetection,
+                                 contactsSensorDisabledInit, contactsDetectionThreshold);
+}
 
-  if(contactsDetection == "fromThreshold")
-  {
-    detectionFromThreshold_ = true;
-  }
-  contactsManager_.init(ctl, robotName, odometryName_, contactsDetection, contactsSensorDisabledInit,
-                        contactDetectionThreshold);
-
-  if(!ctl.datastore().has("KinematicAnchorFrame::" + ctl.robot(robotName).name()))
-  {
-    double leftFootRatio = robot.indirectSurfaceForceSensor("LeftFootCenter").force().z()
-                           / (robot.indirectSurfaceForceSensor("LeftFootCenter").force().z()
-                              + robot.indirectSurfaceForceSensor("RightFootCenter").force().z());
-
-    worldAnchorPose_ = kinematicsTools::poseFromSva(
-        sva::interpolate(robot.surfacePose("RightFootCenter"), robot.surfacePose("LeftFootCenter"), leftFootRatio),
-        so::kine::Kinematics::Flags::pose);
-  }
-  else
-  {
-    worldAnchorPose_ =
-        kinematicsTools::poseFromSva(ctl.datastore().call<sva::PTransformd>(
-                                         "KinematicAnchorFrame::" + ctl.robot(robotName).name(), ctl.robot(robotName)),
-                                     so::kine::Kinematics::Flags::pose);
-  }
-
-  auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
-  logger.addLogEntry(odometryName_ + "_odometryRobot_posW",
-                     [this]() -> sva::PTransformd { return odometryRobot().posW(); });
-
-  logger.addLogEntry(odometryName_ + "_odometryRobot_velW",
-                     [this]() -> sva::MotionVecd { return odometryRobot().velW(); });
-
-  logger.addLogEntry(odometryName_ + "_odometryRobot_accW",
-                     [this]() -> sva::MotionVecd { return odometryRobot().accW(); });
+void LeggedOdometryManager::initDetection(const mc_control::MCController & ctl,
+                                          const std::string & robotName,
+                                          const ContactsManager::ContactsDetection & contactsDetection,
+                                          const std::vector<std::string> & contactsSensorDisabledInit,
+                                          const double & contactsDetectionThreshold)
+{
+  contactsManager_.initDetection(ctl, robotName, contactsDetection, contactsSensorDisabledInit,
+                                 contactsDetectionThreshold);
 }
 
 void LeggedOdometryManager::updateJointsConfiguration(const mc_control::MCController & ctl)
@@ -536,7 +492,7 @@ void LeggedOdometryManager::setNewContact(LoContactWithSensor & contact, const m
   const mc_rbdyn::ForceSensor & forceSensor = measurementsRobot.forceSensor(contact.forceSensorName());
   // If the contact is not detected using surfaces, we must consider that the frame of the sensor is the one of the
   // surface).
-  if(detectionFromThreshold_)
+  if(contactsManager_.getContactsDetection() == ContactsManager::ContactsDetection::fromThreshold)
   {
     so::kine::Kinematics worldNewContactKineOdometryRobot;
     so::kine::Kinematics worldContactKineRef;
@@ -594,7 +550,7 @@ const so::kine::Kinematics & LeggedOdometryManager::getCurrentContactKinematics(
 
   so::kine::Kinematics worldSensorKineOdometryRobot = worldBodyKineOdometryRobot * bodyContactSensorKine;
 
-  if(detectionFromThreshold_)
+  if(contactsManager_.getContactsDetection() == ContactsManager::ContactsDetection::fromThreshold)
   {
     // If the contact is detecting using thresholds, we will then consider the sensor frame as
     // the contact surface frame directly.

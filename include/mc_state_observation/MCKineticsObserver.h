@@ -456,7 +456,8 @@ private:
   stateObservation::Matrix3 gyroSensorCovariance_;
   stateObservation::Matrix6 contactSensorCovariance_;
 
-  measurements::ContactsManager<KoContactWithSensor, measurements::ContactWithoutSensor> contactsManager_;
+  using KoContactsManager = measurements::ContactsManager<KoContactWithSensor, measurements::ContactWithoutSensor>;
+  KoContactsManager contactsManager_;
   measurements::MapIMUs mapIMUs_;
 
   int lastBackupIter_ = 0;
