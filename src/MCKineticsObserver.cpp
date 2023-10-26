@@ -15,8 +15,6 @@
 
 #include <typeinfo>
 
-#include <iostream>
-
 #include <mc_state_observation/observersTools/kinematicsTools.h>
 
 namespace so = stateObservation;
@@ -413,12 +411,21 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
   {
     auto & datastore = (const_cast<mc_control::MCController &>(ctl)).datastore();
 
-    // We add an empty Kinematics object to the floating base pose buffer. This is because the buffer of the tilt
-    // observer already contacins the last estimation of the floating base so we prevent a disalignment of the two
-    // buffers. This empty Kinematics is filled and returned by the "runBackup" function.
-    koBackupFbKinematics_.push_back(so::kine::Kinematics::zeroKinematics(so::kine::Kinematics::Flags::pose));
-
-    mcko_K_0_fb = datastore.call<const so::kine::Kinematics>("runBackup");
+    if(observer_.nanDetected_)
+    {
+      // We add an empty Kinematics object to the floating base pose buffer. This is because the buffer of the tilt
+      // observer already contains the last estimation of the floating base so we prevent a disalignment of the two
+      // buffers. This empty Kinematics is filled and returned by the "runBackup" function.
+      koBackupFbKinematics_.push_back(so::kine::Kinematics::zeroKinematics(so::kine::Kinematics::Flags::pose));
+      mcko_K_0_fb = datastore.call<const so::kine::Kinematics>("runBackup");
+    }
+    else
+    {
+      // we apply the last transformation estimated by the Tilt Observer to our previous pose to keep updating the
+      // floating base with the Tilt Observer.
+      mcko_K_0_fb = datastore.call<so::kine::Kinematics>("applyLastTransformation", koBackupFbKinematics_.back());
+      koBackupFbKinematics_.push_back(mcko_K_0_fb);
+    }
 
     X_0_fb_.rotation() = mcko_K_0_fb.orientation.toMatrix3().transpose();
     X_0_fb_.translation() = mcko_K_0_fb.position();

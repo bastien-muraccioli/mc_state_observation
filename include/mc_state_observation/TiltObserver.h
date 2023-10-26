@@ -58,6 +58,13 @@ public:
   /// @return const stateObservation::kine::Kinematics
   const stateObservation::kine::Kinematics backupFb(const mc_control::MCController & ctl);
 
+  /// @brief Computes the pose transformation estimated by the Tilt Observer between the last two iterations and
+  /// applies it to the given kinematics.
+  /// @details Also fills the velocity with the velocity estimated by the Tilt Observer (expressed in the new frame)
+  /// @param kine The kinematics on which to apply the transformation
+  /// @return stateObservation::kine::Kinematics
+  stateObservation::kine::Kinematics applyLastTransformation(const stateObservation::kine::Kinematics & kine);
+
 protected:
   /*! \brief update the robot pose in the world only for visualization purpose
    *

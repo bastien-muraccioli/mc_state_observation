@@ -1,6 +1,5 @@
 #include <mc_control/MCController.h>
 #include <mc_observers/ObserverMacros.h>
-#include <iostream>
 #include <mc_state_observation/TiltObserver.h>
 #include <mc_state_observation/gui_helpers.h>
 #include <mc_state_observation/observersTools/kinematicsTools.h>
@@ -152,6 +151,9 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
     auto & datastore = (const_cast<mc_control::MCController &>(ctl)).datastore();
 
     datastore.make_call("runBackup", [this, &ctl]() -> const so::kine::Kinematics { return backupFb(ctl); });
+    datastore.make_call("applyLastTransformation", [this](so::kine::Kinematics & kine) -> so::kine::Kinematics {
+      return applyLastTransformation(kine);
+    });
   }
 }
 
@@ -621,6 +623,29 @@ const so::kine::Kinematics TiltObserver::backupFb(const mc_control::MCController
   koBackupFbKinematics->back().angVel = koBackupFbKinematics->back().orientation.toMatrix3() * tiltLocalAngVel;
 
   return koBackupFbKinematics->back();
+}
+
+so::kine::Kinematics TiltObserver::applyLastTransformation(const so::kine::Kinematics & previousKine)
+{
+  so::kine::Kinematics worldFbPreviousBackup = kinematicsTools::poseFromSva(
+      backupFbKinematics_.at(backupFbKinematics_.size() - 2), so::kine::Kinematics::Flags::pose);
+
+  so::kine::Kinematics fbWorldPreviousBackup = worldFbPreviousBackup.getInverse();
+  so::kine::Kinematics worldFbFinalBackup =
+      kinematicsTools::poseFromSva(backupFbKinematics_.back(), so::kine::Kinematics::Flags::pose);
+
+  so::kine::Kinematics lastTransformation = fbWorldPreviousBackup * worldFbFinalBackup;
+
+  so::kine::Kinematics newKine = previousKine * lastTransformation;
+
+  so::Vector3 tiltLocalLinVel = poseW_.rotation() * velW_.linear();
+  so::Vector3 tiltLocalAngVel = poseW_.rotation() * velW_.angular();
+
+  // koBackupFbKinematics->back() is the new last pose of the kinetics observer
+  newKine.linVel = newKine.orientation.toMatrix3() * tiltLocalLinVel;
+  newKine.angVel = newKine.orientation.toMatrix3() * tiltLocalAngVel;
+
+  return newKine;
 }
 
 void TiltObserver::addToLogger(const mc_control::MCController & ctl,

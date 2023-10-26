@@ -215,11 +215,6 @@ protected:
   /// @param name The name of the contact to update.
   void updateContact(const mc_control::MCController & ctl, const int & contactIndex, mc_rtc::Logger & logger);
 
-protected:
-  std::string robot_ = "";
-  // std::string imuSensor_ = "";
-  mc_rbdyn::BodySensorVector IMUs_; ///< list of IMUs
-
 public:
   /** Get robot mass.
    *
