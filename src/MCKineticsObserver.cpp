@@ -549,13 +549,13 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
         KoContactWithSensor contact = contactsManager_.contactWithSensor(contactIndex);
 
         // Update of the force measurements (the offset due to the gravity changed)
-        const mc_rbdyn::ForceSensor & forceSensor = robot.forceSensor(contact.forceSensorName());
+        const mc_rbdyn::ForceSensor & forceSensor = inputRobot.forceSensor(contact.forceSensorName());
 
         so::kine::Kinematics bodySensorKine =
             kinematicsTools::poseFromSva(forceSensor.X_p_f(), so::kine::Kinematics::Flags::vel);
 
         so::kine::Kinematics bodySurfaceKine = kinematicsTools::poseFromSva(
-            robot.surface(contact.surfaceName()).X_b_s(), so::kine::Kinematics::Flags::vel);
+            inputRobot.surface(contact.surfaceName()).X_b_s(), so::kine::Kinematics::Flags::vel);
 
         so::kine::Kinematics surfaceSensorKine = bodySurfaceKine.getInverse() * bodySensorKine;
 
@@ -715,7 +715,7 @@ const measurements::ContactsManager<KoContactWithSensor, measurements::ContactWi
 }
 
 const so::kine::Kinematics MCKineticsObserver::getContactWorldKinematics(KoContactWithSensor & contact,
-                                                                         const mc_rbdyn::Robot & robot,
+                                                                         const mc_rbdyn::Robot & currentRobot,
                                                                          const mc_rbdyn::ForceSensor & fs,
                                                                          const sva::ForceVecd & measuredWrench)
 {
@@ -734,9 +734,9 @@ const so::kine::Kinematics MCKineticsObserver::getContactWorldKinematics(KoConta
       kinematicsTools::poseFromSva(bodyContactSensorPose, so::kine::Kinematics::Flags::vel);
 
   // kinematics of the sensor's parent body in the world
-  so::kine::Kinematics worldBodyKine =
-      kinematicsTools::poseAndVelFromSva(robot.mbc().bodyPosW[robot.bodyIndexByName(fs.parentBody())],
-                                         robot.mbc().bodyVelW[robot.bodyIndexByName(fs.parentBody())], true);
+  so::kine::Kinematics worldBodyKine = kinematicsTools::poseAndVelFromSva(
+      currentRobot.mbc().bodyPosW[currentRobot.bodyIndexByName(fs.parentBody())],
+      currentRobot.mbc().bodyVelW[currentRobot.bodyIndexByName(fs.parentBody())], true);
 
   // kinematics of the frame of the force sensor in the world frame
   so::kine::Kinematics worldSensorKine = worldBodyKine * bodyContactSensorKine;
@@ -751,7 +751,7 @@ const so::kine::Kinematics MCKineticsObserver::getContactWorldKinematics(KoConta
   else // the kinematics of the contacts are the ones of the surface, but we must transport the measured wrench
   {
     // pose of the surface in the world / floating base's frame
-    sva::PTransformd worldSurfacePose = robot.surfacePose(contact.surfaceName());
+    sva::PTransformd worldSurfacePose = currentRobot.surfacePose(contact.surfaceName());
     // Kinematics of the surface in the world / floating base's frame
     worldContactKine = kinematicsTools::poseFromSva(worldSurfacePose, so::kine::Kinematics::Flags::vel);
 
@@ -764,7 +764,7 @@ const so::kine::Kinematics MCKineticsObserver::getContactWorldKinematics(KoConta
 }
 
 const so::kine::Kinematics MCKineticsObserver::getContactWorldKinematics(KoContactWithSensor & contact,
-                                                                         const mc_rbdyn::Robot & robot,
+                                                                         const mc_rbdyn::Robot & currentRobot,
                                                                          const mc_rbdyn::ForceSensor & fs)
 {
   /*
@@ -782,9 +782,9 @@ const so::kine::Kinematics MCKineticsObserver::getContactWorldKinematics(KoConta
       kinematicsTools::poseFromSva(bodyContactSensorPose, so::kine::Kinematics::Flags::vel);
 
   // kinematics of the sensor's parent body in the world frame
-  so::kine::Kinematics worldBodyKine =
-      kinematicsTools::poseAndVelFromSva(robot.mbc().bodyPosW[robot.bodyIndexByName(fs.parentBody())],
-                                         robot.mbc().bodyVelW[robot.bodyIndexByName(fs.parentBody())], true);
+  so::kine::Kinematics worldBodyKine = kinematicsTools::poseAndVelFromSva(
+      currentRobot.mbc().bodyPosW[currentRobot.bodyIndexByName(fs.parentBody())],
+      currentRobot.mbc().bodyVelW[currentRobot.bodyIndexByName(fs.parentBody())], true);
 
   so::kine::Kinematics worldSensorKine = worldBodyKine * bodyContactSensorKine;
 
@@ -797,7 +797,7 @@ const so::kine::Kinematics MCKineticsObserver::getContactWorldKinematics(KoConta
   else // the kinematics of the contacts are the ones of the surface.
   {
     // pose of the surface in the world / floating base's frame
-    sva::PTransformd worldSurfacePose = robot.surfacePose(contact.surfaceName());
+    sva::PTransformd worldSurfacePose = currentRobot.surfacePose(contact.surfaceName());
     // Kinematics of the surface in the world / floating base's frame
     worldContactKine = kinematicsTools::poseFromSva(worldSurfacePose, so::kine::Kinematics::Flags::vel);
   }
@@ -909,9 +909,9 @@ void MCKineticsObserver::updateContact(const mc_control::MCController & ctl,
 
   const auto & robot = ctl.robot(robot_);
   KoContactWithSensor & contact = contactsManager_.contactWithSensor(contactIndex);
-  const mc_rbdyn::ForceSensor & forceSensor = robot.forceSensor(contact.forceSensorName());
 
-  sva::ForceVecd measuredWrench = forceSensor.wrenchWithoutGravity(inputRobot);
+  sva::ForceVecd measuredWrench = robot.forceSensor(contact.forceSensorName()).wrenchWithoutGravity(inputRobot);
+  const mc_rbdyn::ForceSensor & forceSensor = robot.forceSensor(contact.forceSensorName());
 
   // when used on input robot, returns the kinematics of the contact in the frame of the floating base
   contact.fbContactKine_ = getContactWorldKinematics(contact, inputRobot, forceSensor, measuredWrench);
