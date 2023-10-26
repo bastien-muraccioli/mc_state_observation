@@ -271,8 +271,6 @@ void MCKineticsObserver::reset(const mc_control::MCController & ctl)
 {
   // if true, the contact detection has started
   simStarted_ = false;
-  // the Kinetics Observer completed at least one iteration
-  ekfIsSet_ = false;
 
   const auto & robot = ctl.robot(robot_);
   const auto & realRobot = ctl.realRobot(robot_);
@@ -500,9 +498,10 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
     observer_.nanDetected_ = false;
 
     invincibilityIter_++;
-    // when we reach the end of the invicibility frame, we give again the pose of the floating base corrected by the
-    // tilt estimator to the Kinetics Observer. Thus we don't get affected by the drift that occured during the
-    // convergence. But this time we don't reset the covariances.
+    // While converging again after being reset, the estimation made by the Kinetics Observer is very inaccurate and
+    // cannot be used. So we let it converge during the invincibility frame while using the estimation of the Tilt to
+    // update the real robot. Then we start over using the Kinetics Observer starting from the final kinematics obtained
+    // from the Tilt Observer.
     if(invincibilityIter_ == invincibilityFrame_)
     {
       update(inputRobot);
@@ -527,7 +526,7 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
         const mc_rbdyn::ForceSensor & forceSensor = robot.forceSensor(contact.forceSensorName());
 
         // the tilt of the robot changed so the contribution of the gravity to the measurements changed too
-        if(contactsDetectionFromThreshold_)
+        if(KoContactsManager().getContactsDetection() == KoContactsManager::ContactsDetection::fromThreshold)
         {
           updateContactForceMeasurement(contact, forceSensor.wrenchWithoutGravity(inputRobot));
         }
