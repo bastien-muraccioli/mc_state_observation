@@ -342,6 +342,15 @@ public:
   }
 
 private:
+  enum EstimationState
+  {
+    noIssue,
+    errorDetected,
+    invincibilityFrame
+  };
+
+  EstimationState estimationState_;
+
   // instance of the Kinetics Observer
   stateObservation::KineticsObserver observer_;
   // name of the estimator

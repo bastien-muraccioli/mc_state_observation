@@ -381,66 +381,119 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
   // Kinematics of the floating base in the real world frame (our estimation goal)
   so::kine::Kinematics mcko_K_0_fb;
 
-  // if no anomaly is detected and if we aren't in the "invicibility frame", we update the floating base with the
-  // results of the Kinetics Observer
-  if(!(observer_.nanDetected_ || (invincibilityIter_ != 0 && invincibilityIter_ < invincibilityFrame_)))
+  if(observer_.nanDetected_)
   {
-    /* Core */
-    so::kine::Kinematics fbFb; // "Zero" Kinematics
-    fbFb.setZero(so::kine::Kinematics::Flags::all);
-
-    // Given, the Kinematics of the floating base inside its own frame (zero kinematics) which is our user
-    // frame, the Kinetics Observer will return the kinematics of the floating base in the real world frame.
-    mcko_K_0_fb = observer_.getGlobalKinematicsOf(fbFb);
-
-    koBackupFbKinematics_.push_back(mcko_K_0_fb);
-
-    X_0_fb_.rotation() = mcko_K_0_fb.orientation.toMatrix3().transpose();
-    X_0_fb_.translation() = mcko_K_0_fb.position();
-
-    /* Bring velocity of the IMU to the origin of the joint : we want the
-     * velocity of joint 0, so stop one before the first joint */
-
-    v_fb_0_.angular() = mcko_K_0_fb.angVel();
-    v_fb_0_.linear() = mcko_K_0_fb.linVel();
-
-    a_fb_0_.angular() = mcko_K_0_fb.angAcc();
-    a_fb_0_.linear() = mcko_K_0_fb.linAcc();
+    estimationState_ = errorDetected;
+  }
+  else if(invincibilityIter_ > 0 && invincibilityIter_ < invincibilityFrame_)
+  {
+    estimationState_ = invincibilityFrame;
   }
   else
   {
-    auto & datastore = (const_cast<mc_control::MCController &>(ctl)).datastore();
+    estimationState_ = noIssue;
+  }
 
-    if(observer_.nanDetected_)
+  // if no anomaly is detected and if we aren't in the "invicibility frame", we update the floating base with the
+  // results of the Kinetics Observer
+  switch(estimationState_)
+  {
+    case noIssue:
     {
-      // We add an empty Kinematics object to the floating base pose buffer. This is because the buffer of the tilt
-      // observer already contains the last estimation of the floating base so we prevent a disalignment of the two
-      // buffers. This empty Kinematics is filled and returned by the "runBackup" function.
-      koBackupFbKinematics_.push_back(so::kine::Kinematics::zeroKinematics(so::kine::Kinematics::Flags::pose));
-      mcko_K_0_fb = datastore.call<const so::kine::Kinematics>("runBackup");
+      /* Core */
+      so::kine::Kinematics fbFb; // "Zero" Kinematics
+      fbFb.setZero(so::kine::Kinematics::Flags::all);
+
+      // Given, the Kinematics of the floating base inside its own frame (zero kinematics) which is our user
+      // frame, the Kinetics Observer will return the kinematics of the floating base in the real world frame.
+      mcko_K_0_fb = observer_.getGlobalKinematicsOf(fbFb);
+
+      koBackupFbKinematics_.push_back(mcko_K_0_fb);
+
+      X_0_fb_.rotation() = mcko_K_0_fb.orientation.toMatrix3().transpose();
+      X_0_fb_.translation() = mcko_K_0_fb.position();
+
+      /* Bring velocity of the IMU to the origin of the joint : we want the
+       * velocity of joint 0, so stop one before the first joint */
+
+      v_fb_0_.angular() = mcko_K_0_fb.angVel();
+      v_fb_0_.linear() = mcko_K_0_fb.linVel();
+
+      a_fb_0_.angular() = mcko_K_0_fb.angAcc();
+      a_fb_0_.linear() = mcko_K_0_fb.linAcc();
+      break;
     }
-    else
+    case invincibilityFrame:
     {
+      auto & datastore = (const_cast<mc_control::MCController &>(ctl)).datastore();
       // we apply the last transformation estimated by the Tilt Observer to our previous pose to keep updating the
       // floating base with the Tilt Observer.
       mcko_K_0_fb = datastore.call<so::kine::Kinematics>("applyLastTransformation", koBackupFbKinematics_.back());
       koBackupFbKinematics_.push_back(mcko_K_0_fb);
+
+      X_0_fb_.rotation() = mcko_K_0_fb.orientation.toMatrix3().transpose();
+      X_0_fb_.translation() = mcko_K_0_fb.position();
+
+      // the tilt observer doesn't estimate the acceleration so we get it by finite differences
+      a_fb_0_.angular() = (mcko_K_0_fb.angVel() - v_fb_0_.angular()) / ctl.timeStep;
+      a_fb_0_.linear() = (mcko_K_0_fb.linVel() - v_fb_0_.linear()) / ctl.timeStep;
+
+      v_fb_0_.angular() = mcko_K_0_fb.angVel();
+      v_fb_0_.linear() = mcko_K_0_fb.linVel();
+
+      invincibilityIter_++;
+      // While converging again after being reset, the estimation made by the Kinetics Observer is very inaccurate and
+      // cannot be used. So we let it converge during the invincibility frame while using the estimation of the Tilt to
+      // update the real robot. Then we start over using the Kinetics Observer starting from the final kinematics
+      // obtained from the Tilt Observer.
+      if(invincibilityIter_ == invincibilityFrame_)
+      {
+        update(inputRobot);
+        inputRobot.forwardKinematics();
+        so::kine::Kinematics fbFb; // "Zero" Kinematics
+        fbFb.setZero(so::kine::Kinematics::Flags::all);
+        so::kine::Kinematics newWorldCentroidKine;
+        newWorldCentroidKine.position = inputRobot.com();
+        // the orientation of the centroid frame is the one of the floating base
+        newWorldCentroidKine.orientation = mcko_K_0_fb.orientation;
+
+        newWorldCentroidKine.linVel = inputRobot.comVelocity();
+        newWorldCentroidKine.angVel = mcko_K_0_fb.angVel();
+
+        observer_.setWorldCentroidStateKinematics(newWorldCentroidKine, false);
+
+        for(const int & contactIndex : contactsManager_.contactsFound())
+        {
+          KoContactWithSensor contact = contactsManager_.contactWithSensor(contactIndex);
+
+          // Update of the force measurements (the contribution of the gravity changed)
+          const mc_rbdyn::ForceSensor & forceSensor = robot.forceSensor(contact.forceSensorName());
+
+          // the tilt of the robot changed so the contribution of the gravity to the measurements changed too
+          if(KoContactsManager().getContactsDetection() == KoContactsManager::ContactsDetection::fromThreshold)
+          {
+            updateContactForceMeasurement(contact, forceSensor.wrenchWithoutGravity(inputRobot));
+          }
+          else // the kinematics of the contact are the ones of the associated surface
+          {
+            updateContactForceMeasurement(contact, contact.surfaceSensorKine_,
+                                          forceSensor.wrenchWithoutGravity(inputRobot));
+          }
+
+          so::kine::Kinematics newWorldContactKineRef;
+
+          getOdometryWorldContactRest(ctl, contact, newWorldContactKineRef);
+
+          observer_.setStateContact(contactIndex, newWorldContactKineRef, contact.contactWrenchVector_, false);
+        }
+      }
+
+      break;
     }
-
-    X_0_fb_.rotation() = mcko_K_0_fb.orientation.toMatrix3().transpose();
-    X_0_fb_.translation() = mcko_K_0_fb.position();
-
-    // the tilt observer doesn't estimate the acceleration so we get it by finite differences
-    a_fb_0_.angular() = (mcko_K_0_fb.angVel() - v_fb_0_.angular()) / ctl.timeStep;
-    a_fb_0_.linear() = (mcko_K_0_fb.linVel() - v_fb_0_.linear()) / ctl.timeStep;
-
-    v_fb_0_.angular() = mcko_K_0_fb.angVel();
-    v_fb_0_.linear() = mcko_K_0_fb.linVel();
-
-    // a NaN was just detected, we reset the state vector and covariances and start the invicibility frame, during which
-    // we let the Kinetics Observer converge before using it again.
-    if(observer_.nanDetected_)
+    case errorDetected:
     {
+      // an error was just detected, we reset the state vector and covariances and start the invicibility frame, during
+      // which we let the Kinetics Observer converge before using it again.
       auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
       if(logger.t() / ctl.timeStep < backupIterInterval_)
       {
@@ -455,6 +508,23 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
                              "performed using the last {} seconds",
                              logger.t() - lastBackupIter_ * ctl.timeStep);
       }
+
+      auto & datastore = (const_cast<mc_control::MCController &>(ctl)).datastore();
+      // We add an empty Kinematics object to the floating base pose buffer. This is because the buffer of the tilt
+      // observer already contains the last estimation of the floating base so we prevent a disalignment of the two
+      // buffers. This empty Kinematics is filled and returned by the "runBackup" function.
+      koBackupFbKinematics_.push_back(so::kine::Kinematics::zeroKinematics(so::kine::Kinematics::Flags::pose));
+      mcko_K_0_fb = datastore.call<const so::kine::Kinematics>("runBackup");
+
+      X_0_fb_.rotation() = mcko_K_0_fb.orientation.toMatrix3().transpose();
+      X_0_fb_.translation() = mcko_K_0_fb.position();
+
+      // the tilt observer doesn't estimate the acceleration so we get it by finite differences
+      a_fb_0_.angular() = (mcko_K_0_fb.angVel() - v_fb_0_.angular()) / ctl.timeStep;
+      a_fb_0_.linear() = (mcko_K_0_fb.linVel() - v_fb_0_.linear()) / ctl.timeStep;
+
+      v_fb_0_.angular() = mcko_K_0_fb.angVel();
+      v_fb_0_.linear() = mcko_K_0_fb.linVel();
 
       // we update update robot as it will be updated at the beginning of the next iteration anyway
       update(inputRobot);
@@ -498,57 +568,13 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
         observer_.setStateContact(contactIndex, newWorldContactKineRef, contact.contactWrenchVector_, true);
       }
 
-      invincibilityIter_ = 0;
+      // this variable indicates that we entered the invincibility frame
+      invincibilityIter_ = 1;
       lastBackupIter_ = int(logger.t() / ctl.timeStep);
-    }
 
-    observer_.nanDetected_ = false;
+      observer_.nanDetected_ = false;
 
-    invincibilityIter_++;
-    // While converging again after being reset, the estimation made by the Kinetics Observer is very inaccurate and
-    // cannot be used. So we let it converge during the invincibility frame while using the estimation of the Tilt to
-    // update the real robot. Then we start over using the Kinetics Observer starting from the final kinematics obtained
-    // from the Tilt Observer.
-    if(invincibilityIter_ == invincibilityFrame_)
-    {
-      update(inputRobot);
-      inputRobot.forwardKinematics();
-      so::kine::Kinematics fbFb; // "Zero" Kinematics
-      fbFb.setZero(so::kine::Kinematics::Flags::all);
-      so::kine::Kinematics newWorldCentroidKine;
-      newWorldCentroidKine.position = inputRobot.com();
-      // the orientation of the centroid frame is the one of the floating base
-      newWorldCentroidKine.orientation = mcko_K_0_fb.orientation;
-
-      newWorldCentroidKine.linVel = inputRobot.comVelocity();
-      newWorldCentroidKine.angVel = mcko_K_0_fb.angVel();
-
-      observer_.setWorldCentroidStateKinematics(newWorldCentroidKine, false);
-
-      for(const int & contactIndex : contactsManager_.contactsFound())
-      {
-        KoContactWithSensor contact = contactsManager_.contactWithSensor(contactIndex);
-
-        // Update of the force measurements (the contribution of the gravity changed)
-        const mc_rbdyn::ForceSensor & forceSensor = robot.forceSensor(contact.forceSensorName());
-
-        // the tilt of the robot changed so the contribution of the gravity to the measurements changed too
-        if(KoContactsManager().getContactsDetection() == KoContactsManager::ContactsDetection::fromThreshold)
-        {
-          updateContactForceMeasurement(contact, forceSensor.wrenchWithoutGravity(inputRobot));
-        }
-        else // the kinematics of the contact are the ones of the associated surface
-        {
-          updateContactForceMeasurement(contact, contact.surfaceSensorKine_,
-                                        forceSensor.wrenchWithoutGravity(inputRobot));
-        }
-
-        so::kine::Kinematics newWorldContactKineRef;
-
-        getOdometryWorldContactRest(ctl, contact, newWorldContactKineRef);
-
-        observer_.setStateContact(contactIndex, newWorldContactKineRef, contact.contactWrenchVector_, false);
-      }
+      break;
     }
   }
 
@@ -566,7 +592,7 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
   update(my_robots_->robot());
 
   return true;
-}
+} // namespace mc_state_observation
 
 ///////////////////////////////////////////////////////////////////////
 /// -------------------------Called functions--------------------------
@@ -1023,15 +1049,19 @@ void MCKineticsObserver::addToLogger(const mc_control::MCController & ctl,
   logger.addLogEntry(category + "_constants_mass", [this]() -> double { return observer_.getMass(); });
 
   logger.addLogEntry(category + "_constants_forceThreshold", [this]() -> double { return contactDetectionThreshold_; });
-  logger.addLogEntry(category + "_debug_invincibilityFrame", [this]() -> std::string {
-    if(invincibilityIter_ != 0 && invincibilityIter_ < invincibilityFrame_)
+  logger.addLogEntry(category + "_debug_estimationState", [this]() -> std::string {
+    switch(estimationState_)
     {
-      return "invincibilityFrame";
+      case noIssue:
+        return "noIssue";
+        break;
+      case invincibilityFrame:
+        return "invincibilityFrame";
+        break;
+      case errorDetected:
+        return "errorDetected";
+        break;
     }
-    else
-    {
-      return "no invincibility";
-    };
   });
 
   /* Plots of the updated state */
