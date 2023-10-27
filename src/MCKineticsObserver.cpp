@@ -615,9 +615,14 @@ void MCKineticsObserver::initObserverStateVector(const mc_rbdyn::Robot & robot)
 void MCKineticsObserver::update(mc_control::MCController & ctl) // this function is called by the pipeline if the
                                                                 // update is set to true in the configuration file
 {
+  auto & datastore = (const_cast<mc_control::MCController &>(ctl)).datastore();
+  // this function checks that the backup estimator uses the same odometry type than the Kinetics Observer
+  datastore.call<>("checkCorrectBackupConf", withOdometry_);
+
   auto & realRobot = ctl.realRobot(robot_);
   update(realRobot);
   realRobot.forwardKinematics();
+  realRobot.forwardVelocity();
 }
 
 // used only to update the visual representation of the estimated robot

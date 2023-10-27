@@ -65,6 +65,8 @@ public:
   /// @return stateObservation::kine::Kinematics
   stateObservation::kine::Kinematics applyLastTransformation(const stateObservation::kine::Kinematics & kine);
 
+  void checkCorrectBackupConf(bool koWithOdometry);
+
 protected:
   /*! \brief update the robot pose in the world only for visualization purpose
    *

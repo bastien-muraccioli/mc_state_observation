@@ -154,6 +154,8 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
     datastore.make_call("applyLastTransformation", [this](so::kine::Kinematics & kine) -> so::kine::Kinematics {
       return applyLastTransformation(kine);
     });
+    datastore.make_call("checkCorrectBackupConf",
+                        [this](bool koWithOdometry) { checkCorrectBackupConf(koWithOdometry); });
   }
 }
 
@@ -553,9 +555,12 @@ void TiltObserver::updatePoseAndVel(const mc_control::MCController & ctl,
   velW_.linear() = correctedWorldFbKine_.linVel();
   velW_.angular() = correctedWorldFbKine_.angVel();
 
-  // the velocity of the odometry robot was obtained using finite differences. We give it our estimated velocity which
-  // is more accurate.
-  odometryManager_.odometryRobot().velW(velW_);
+  if(withOdometry_)
+  {
+    // the velocity of the odometry robot was obtained using finite differences. We give it our estimated velocity which
+    // is more accurate.
+    odometryManager_.odometryRobot().velW(velW_);
+  }
 }
 
 void TiltObserver::update(mc_control::MCController & ctl)
@@ -646,6 +651,25 @@ so::kine::Kinematics TiltObserver::applyLastTransformation(const so::kine::Kinem
   newKine.angVel = newKine.orientation.toMatrix3() * tiltLocalAngVel;
 
   return newKine;
+}
+
+void TiltObserver::checkCorrectBackupConf(bool koWithOdometry)
+{
+  static bool wasExecuted = false;
+  if(wasExecuted)
+  {
+    return;
+  }
+  else
+  {
+    if(withOdometry_ != koWithOdometry)
+    {
+      mc_rtc::log::error_and_throw<std::runtime_error>("The odometry types used for the Tilt Observer and the Kinetics "
+                                                       "Observer don't match, the backup is not possible.");
+    }
+    wasExecuted = true;
+    return;
+  }
 }
 
 void TiltObserver::addToLogger(const mc_control::MCController & ctl,

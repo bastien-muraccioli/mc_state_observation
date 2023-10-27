@@ -200,8 +200,7 @@ protected:
 
   /// @brief Computes the rest pose of the contact in the world using the visco-elastic model.
   /// @details Uses the measured wrench to obtain the rest pose of the contact from the one obtained by forward
-  /// kinematics. The visco-elastic model allows to compute the slight displacement resulting form the applied wrench.
-
+  /// kinematics. The visco-elastic model allows to compute the slight displacement resulting from the applied wrench.
   /// @param ctl Controller
   /// @param contact Contact for which we compute the rest pose.
   /// @param worldContactKineRef rest pose of the contact in the world, which is modified by this function.
@@ -349,6 +348,8 @@ private:
     invincibilityFrame
   };
 
+  // indicates if the current iteration encountered no issue, encountered one, or is inside the invincibility frame
+  // (recovery frame after an error)
   EstimationState estimationState_;
 
   // instance of the Kinetics Observer
