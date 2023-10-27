@@ -11,15 +11,11 @@ namespace measurements
 ///////////////////////////////////////////////////////////////////////
 
 template<typename ContactWithSensorT, typename ContactWithoutSensorT>
-void ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::init(const mc_control::MCController & ctl,
-                                                                      const std::string & robotName,
-                                                                      const std::string & observerName,
+void ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::init(const std::string & observerName,
                                                                       const bool verbose)
 {
   observerName_ = observerName;
   verbose_ = verbose;
-
-  const auto & robot = ctl.robot(robotName);
 }
 
 template<typename ContactWithSensorT, typename ContactWithoutSensorT>

@@ -35,11 +35,9 @@ public:
   void updateAnchorFrameNoOdometry(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot);
 
   /// @brief updates the pose and the velcoity of the floating base in the world frame using our estimation results
-  /// @param ctl Controller
   /// @param localWorldImuLinVel estimated local linear velocity of the IMU in the world frame
   /// @param localWorldImuAngVelestimated measurement of the gyrometer
-  void updatePoseAndVel(const mc_control::MCController & ctl,
-                        const stateObservation::Vector3 & localWorldImuLinVel,
+  void updatePoseAndVel(const stateObservation::Vector3 & localWorldImuLinVel,
                         const stateObservation::Vector3 & localWorldImuAngVel);
 
   /*! \brief update the robot pose in the world only for visualization purpose

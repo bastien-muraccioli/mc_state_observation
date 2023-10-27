@@ -63,7 +63,7 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
 
   /* configuration of the contacts manager */
 
-  contactsManager_.init(ctl, robot_, "MCKineticsObserver", true);
+  contactsManager_.init("MCKineticsObserver", true);
 
   double contactDetectionPropThreshold = config("contactDetectionPropThreshold", 0.11);
   contactDetectionThreshold_ = robot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold;
@@ -1067,6 +1067,7 @@ void MCKineticsObserver::addToLogger(const mc_control::MCController & ctl,
         return "errorDetected";
         break;
     }
+    return "default";
   });
 
   /* Plots of the updated state */

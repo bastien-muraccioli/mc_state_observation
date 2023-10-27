@@ -606,12 +606,8 @@ public:
   }
   ~ContactsManager() {}
 
-  // initialization for a detection based on contact surfaces
-  void init(const mc_control::MCController & ctl,
-
-            const std::string & robotName,
-            const std::string & observerName,
-            const bool verbose = true);
+  // initialization of the odometry
+  void init(const std::string & observerName, const bool verbose = true);
 
   // initialization for a detection based on contact surfaces
   void initDetection(const mc_control::MCController & ctl,

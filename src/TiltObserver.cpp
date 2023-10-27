@@ -509,7 +509,7 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
     odometryManager_.run(ctl, logger, poseW_, R_0_fb_);
   }
 
-  updatePoseAndVel(ctl, xk_.head(3), imu.angularVelocity());
+  updatePoseAndVel(xk_.head(3), imu.angularVelocity());
   backupFbKinematics_.push_back(poseW_);
 
   // update the velocities as MotionVecd for the logs
@@ -521,9 +521,7 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
   X_C_IMU_.rotation() = updatedAnchorImuKine.orientation.toMatrix3().transpose();
 }
 
-void TiltObserver::updatePoseAndVel(const mc_control::MCController & ctl,
-                                    const so::Vector3 & localWorldImuLinVel,
-                                    const so::Vector3 & localWorldImuAngVel)
+void TiltObserver::updatePoseAndVel(const so::Vector3 & localWorldImuLinVel, const so::Vector3 & localWorldImuAngVel)
 {
   // if we use odometry, the pose will already updated in odometryManager_.run(...)
   if(!withOdometry_)
@@ -743,16 +741,6 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
     return worldImuKine_.orientation.toMatrix3().transpose() * worldImuKine_.angVel();
   });
 
-  /*
-  logger.addLogEntry(category + "_debug_realAnchorPos",
-                     [this, &ctl]() -> sva::PTransformd
-                     {
-                       const auto & realRobot = ctl.realRobot(robot_);
-
-                       return ctl.datastore().call<sva::PTransformd>(anchorFrameFunction_, ctl.realRobot(robot_));
-                     });
-                     */
-
   logger.addLogEntry(category + "_debug_ctlWorldAnchorVelExpressedInImu", [this, &ctl]() -> so::Vector3 {
     const auto & robot = ctl.robot(robot_);
 
@@ -762,12 +750,7 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
     return imuXbs.rotation() * worldAnchorKine_.linVel();
   });
 
-  logger.addLogEntry(category + "_debug_updatedWorldAnchorVelExpressedInImu", [this, &ctl]() -> so::Vector3 {
-    const auto & robot = ctl.robot(robot_);
-
-    const auto & imu = robot.bodySensor(imuSensor_);
-    const sva::PTransformd & imuXbs = imu.X_b_s();
-
+  logger.addLogEntry(category + "_debug_updatedWorldAnchorVelExpressedInImu", [this]() -> so::Vector3 {
     return updatedWorldImuKine_.orientation.toMatrix3().transpose() * updatedWorldAnchorKine_.linVel();
   });
 

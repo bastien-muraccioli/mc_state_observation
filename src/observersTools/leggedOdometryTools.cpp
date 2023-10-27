@@ -34,7 +34,7 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
 
   fbPose_.translation() = robot.posW().translation();
   fbPose_.rotation() = robot.posW().rotation();
-  contactsManager_.init(ctl, robotName, odometryName, verbose);
+  contactsManager_.init(odometryName, verbose);
 
   if(!ctl.datastore().has("KinematicAnchorFrame::" + ctl.robot(robotName).name()))
   {
