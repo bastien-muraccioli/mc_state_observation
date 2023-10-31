@@ -130,16 +130,14 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
 
     contactDetectionThreshold_ = robot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold;
 
-    std::vector<std::string> contactsSensorDisabledInit = config("contactsSensorDisabledInit");
-
     if(contactsDetectionMethod == LoContactsManager::ContactsDetection::fromSurfaces)
     {
       odometryManager_.initDetection(ctl, robot_, contactsDetectionMethod, surfacesForContactDetection,
-                                     contactsSensorDisabledInit, contactDetectionThreshold_);
+                                     contactsSensorsDisabledInit, contactDetectionThreshold_);
     }
     else
     {
-      odometryManager_.initDetection(ctl, robot_, contactsDetectionMethod, contactsSensorDisabledInit,
+      odometryManager_.initDetection(ctl, robot_, contactsDetectionMethod, contactsSensorsDisabledInit,
                                      contactDetectionThreshold_);
     }
   }
@@ -674,6 +672,9 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
                                mc_rtc::Logger & logger,
                                const std::string & category)
 {
+  logger.addLogEntry(category + "_constants_alpha", [this]() -> const double & { return alpha_; });
+  logger.addLogEntry(category + "_constants_beta", [this]() -> const double & { return beta_; });
+  logger.addLogEntry(category + "_constants_gamma", [this]() -> const double & { return gamma_; });
   logger.addLogEntry(category + "_controlAnchorFrame", [this]() -> const sva::PTransformd & { return X_0_C_; });
   logger.addLogEntry(category + "_updatedRobot", [this]() -> const sva::PTransformd & {
     const auto & updatedRobot = my_robots_->robot("updatedRobot");

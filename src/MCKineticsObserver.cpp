@@ -84,18 +84,19 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
     contactsDetectionMethod = KoContactsManager::ContactsDetection::fromSolver;
   }
 
-  std::vector<std::string> contactsSensorDisabledInit = config("contactsSensorDisabledInit");
+  std::vector<std::string> contactsSensorsDisabledInit =
+      config("contactsSensorDisabledInit", std::vector<std::string>());
 
   if(contactsDetectionMethod == KoContactsManager::ContactsDetection::fromSurfaces)
   {
     std::vector<std::string> surfacesForContactDetection = config("surfacesForContactDetection");
 
     contactsManager_.initDetection(ctl, robot_, contactsDetectionMethod, surfacesForContactDetection,
-                                   contactsSensorDisabledInit, contactDetectionThreshold_);
+                                   contactsSensorsDisabledInit, contactDetectionThreshold_);
   }
   else
   {
-    contactsManager_.initDetection(ctl, robot_, contactsDetectionMethod, contactsSensorDisabledInit,
+    contactsManager_.initDetection(ctl, robot_, contactsDetectionMethod, contactsSensorsDisabledInit,
                                    contactDetectionThreshold_);
   }
 
@@ -845,10 +846,10 @@ void MCKineticsObserver::getOdometryWorldContactRest(const mc_control::MCControl
   const so::Vector3 & contactForceMeas = contact.contactWrenchVector_.segment<3>(0); // retrieving the force measurement
   const so::Vector3 & contactTorqueMeas =
       contact.contactWrenchVector_.segment<3>(3); // retrieving the torque measurement
+
   // we get the kinematics of the contact in the real world from the ones of the centroid estimated by the Kinetics
   // Observer. These kinematics are not the reference kinematics of the contact as they take into account the
   // visco-elastic model of the contacts.
-
   const so::kine::Kinematics worldContactKine = observer_.getGlobalKinematicsOf(contact.fbContactKine_);
 
   // we get the reference position of the contact by removing the contribution of the visco-elastic model
