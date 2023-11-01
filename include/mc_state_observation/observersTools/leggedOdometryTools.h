@@ -143,7 +143,7 @@ public:
   /// @param ctl Controller
   /// @param robotName Name of the robot
   /// @param odometryName Name of the odometry, used in logs and in the gui.
-  /// @param odometry6d Indicates if the desired odometry must be a flat or a 6D odometry.
+  /// @param odometryType Indicates if the desired odometry must be a flat or a 6D odometry.
   /// @param withYawEstimation Indicates if the orientation must be estimated by this odometry.
   /// @param velUpdatedUpstream Informs whether the 6D velocity was updated by upstream observers
   /// @param accUpdatedUpstream Informs whether the acceleration was updated by upstream observers
@@ -151,7 +151,7 @@ public:
   void init(const mc_control::MCController & ctl,
             const std::string & robotName,
             const std::string & odometryName,
-            const bool odometry6d,
+            measurements::OdometryType & odometryType,
             const bool withYawEstimation,
             const bool velUpdatedUpstream,
             const bool accUpdatedUpstream,
@@ -385,8 +385,8 @@ protected:
   // Name of the robot
   std::string robotName_;
   // Indicates if the desired odometry must be a flat or a 6D odometry.
-  bool odometry6d_;
-  // Indicates if the orientation must be estimated by this odometry.
+  using OdometryType = measurements::OdometryType;
+  measurements::OdometryType odometryType_;
 
   // indicates whether we want to update the yaw using this method or not
   bool withYawEstimation_;
@@ -398,7 +398,6 @@ protected:
   LeggedOdometryContactsManager contactsManager_;
   // odometry robot that is updated by the legged odometry and can then update the real robot if required.
   std::shared_ptr<mc_rbdyn::Robots> odometryRobot_;
-
   // pose of the anchor frame of the robot in the world
   stateObservation::kine::Kinematics worldAnchorPose_;
 

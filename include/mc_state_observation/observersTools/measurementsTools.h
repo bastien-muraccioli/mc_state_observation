@@ -799,6 +799,14 @@ protected:
   bool verbose_ = true;
 };
 
+// allowed odometry types
+enum OdometryType
+{
+  odometry6d,
+  flatOdometry,
+  None
+};
+
 } // namespace measurements
 } // namespace mc_state_observation
 

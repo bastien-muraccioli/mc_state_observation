@@ -41,20 +41,24 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   config("debug", debug_);
   config("verbose", verbose_);
 
-  std::string odometryType = static_cast<std::string>(config("odometryType"));
+  std::string typeOfOdometry = static_cast<std::string>(config("odometryType"));
 
-  if(odometryType != "None")
+  if(typeOfOdometry == "flatOdometry")
   {
-    withOdometry_ = true;
-    if(odometryType == "flatOdometry")
-    {
-      withFlatOdometry_ = true;
-    }
-    else if(odometryType != "6dOdometry")
-    {
-      mc_rtc::log::error_and_throw<std::runtime_error>(
-          "Odometry type not allowed. Please pick among : [None, flatOdometry, 6dOdometry]");
-    }
+    odometryType_ = measurements::flatOdometry;
+  }
+  else if(typeOfOdometry == "6dOdometry")
+  {
+    odometryType_ = measurements::odometry6d;
+  }
+  else if(typeOfOdometry == "None")
+  {
+    odometryType_ = measurements::None;
+  }
+  else
+  {
+    mc_rtc::log::error_and_throw<std::runtime_error>(
+        "Odometry type not allowed. Please pick among : [None, flatOdometry, 6dOdometry]");
   }
 
   config("withDebugLogs", withDebugLogs_);
@@ -640,7 +644,7 @@ void MCKineticsObserver::update(mc_control::MCController & ctl) // this function
 {
   auto & datastore = (const_cast<mc_control::MCController &>(ctl)).datastore();
   // this function checks that the backup estimator uses the same odometry type than the Kinetics Observer
-  datastore.call<>("checkCorrectBackupConf", withOdometry_);
+  datastore.call<>("checkCorrectBackupConf", odometryType_);
 
   auto & realRobot = ctl.realRobot(robot_);
   update(realRobot);
@@ -899,8 +903,8 @@ void MCKineticsObserver::getOdometryWorldContactRest(const mc_control::MCControl
   so::Matrix3 flexRotMatrix = so::kine::Orientation(flexRotAngleAxis).toMatrix3();
   worldContactKineRef.orientation = so::Matrix3(flexRotMatrix.transpose() * worldContactKine.orientation.toMatrix3());
 
-  if(withFlatOdometry_) // if true, the position odometry is made only along the x and y axis, the position along z
-                        // is assumed to be the one of the control robot
+  if(odometryType_ == measurements::flatOdometry) // if true, the position odometry is made only along the x and y axis,
+                                                  // the position along z is assumed to be the one of the control robot
   {
     // kinematics of the contact of the control robot in the world frame
     so::kine::Kinematics worldContactKineControl =
@@ -969,8 +973,8 @@ void MCKineticsObserver::updateContact(const mc_control::MCController & ctl,
       // reference of the contact in the world / floating base of the input robot
       so::kine::Kinematics worldContactKineRef;
 
-      if(withOdometry_) // the Kinetics Observer performs odometry. The estimated state is used to provide
-                        // the new contacts references.
+      if(odometryType_ != measurements::None) // the Kinetics Observer performs odometry. The estimated state is used to
+                                              // provide the new contacts references.
       {
         getOdometryWorldContactRest(ctl, contact, worldContactKineRef);
       }

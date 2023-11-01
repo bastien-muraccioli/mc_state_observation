@@ -411,11 +411,9 @@ private:
 
   // indicates if the debug logs have to be added.
   bool withDebugLogs_ = true;
-  // indicates if we want to perform odometry along the stabilization or not.
-  bool withOdometry_ = false;
-  // associated to @withOdometry_. If true, the odometry on the position will be only along the x and y axes. If
-  // false, the default 6D odometry is used.
-  bool withFlatOdometry_ = false;
+  // indicates if we want to perform odometry, and if yes, flat or 6d odometry
+  using OdometryType = measurements::OdometryType;
+  OdometryType odometryType_;
   // indicates if we want to estimate the unmodeled wrench within the Kinetics Observer.
   bool withUnmodeledWrench_ = true;
   // indicates if we want to estimate the bias on the gyrometer measurement within the Kinetics Observer.

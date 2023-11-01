@@ -16,14 +16,14 @@ namespace leggedOdometry
 void LeggedOdometryManager::init(const mc_control::MCController & ctl,
                                  const std::string & robotName,
                                  const std::string & odometryName,
-                                 const bool odometry6d,
+                                 OdometryType & odometryType,
                                  const bool withYawEstimation,
                                  const bool velUpdatedUpstream,
                                  const bool accUpdatedUpstream,
                                  const bool verbose)
 {
   robotName_ = robotName;
-  odometry6d_ = odometry6d;
+  odometryType_ = odometryType;
   withYawEstimation_ = withYawEstimation;
   odometryName_ = odometryName;
   velUpdatedUpstream_ = velUpdatedUpstream;
@@ -525,7 +525,7 @@ void LeggedOdometryManager::setNewContact(LoContactWithSensor & contact, const m
     contact.worldRefKine_.orientation = so::Matrix3(worldSurfacePoseOdometryRobot.rotation().transpose());
   }
 
-  if(!odometry6d_)
+  if(odometryType_ == measurements::flatOdometry)
   {
     contact.worldRefKine_.position()(2) = 0.0;
   }

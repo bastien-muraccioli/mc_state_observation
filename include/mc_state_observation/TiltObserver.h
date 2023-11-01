@@ -63,7 +63,9 @@ public:
   /// @return stateObservation::kine::Kinematics
   stateObservation::kine::Kinematics applyLastTransformation(const stateObservation::kine::Kinematics & kine);
 
-  void checkCorrectBackupConf(bool koWithOdometry);
+  /// @brief checks that the odometry type used for the Kinetics Observer and the Tilt Observer match for the backup
+  /// @param koOdometryType type of odometry used by the Kinetics Observer
+  void checkCorrectBackupConf(measurements::OdometryType & koOdometryType);
 
 protected:
   /*! \brief update the robot pose in the world only for visualization purpose
@@ -189,7 +191,9 @@ protected:
                                    // initial jumps due to the finite differences.
 
   /* Odometry parameters */
-  bool withOdometry_ = false; // defines if we use odometry or stay attached to the control robot.
+  using OdometryType = measurements::OdometryType;
+  OdometryType odometryType_;
+
   leggedOdometry::LeggedOdometryManager odometryManager_; // manager for the legged odometry
   using LoContactsManager = leggedOdometry::LeggedOdometryManager::ContactsManager;
   double contactDetectionThreshold_; // threshold used for the contacts detection

@@ -22,14 +22,6 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
 {
   robot_ = config("robot", ctl.robot().name());
 
-  std::string odometryType = static_cast<std::string>(config("odometryType"));
-  bool odometry6d;
-
-  if(odometryType != "None")
-  {
-    withOdometry_ = true;
-  }
-
   imuSensor_ = config("imuSensor", ctl.robot().bodySensor().name());
 
   config("maxAnchorFrameDiscontinuity", maxAnchorFrameDiscontinuity_);
@@ -54,28 +46,34 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
     }
   }
 
-  if(withOdometry_)
-  {
-    if(odometryType == "flatOdometry")
-    {
-      odometry6d = false;
-    }
-    else if(odometryType == "6dOdometry")
-    {
-      odometry6d = true;
-    }
-    else
-    {
-      mc_rtc::log::error_and_throw<std::runtime_error>(
-          "Odometry type not allowed. Please pick among : [None, flatOdometry, 6dOdometry]");
-    }
+  std::string typeOfOdometry = static_cast<std::string>(config("odometryType"));
 
+  if(typeOfOdometry == "flatOdometry")
+  {
+    odometryType_ = measurements::flatOdometry;
+  }
+  else if(typeOfOdometry == "6dOdometry")
+  {
+    odometryType_ = measurements::odometry6d;
+  }
+  else if(typeOfOdometry == "None")
+  {
+    odometryType_ = measurements::None;
+  }
+  else
+  {
+    mc_rtc::log::error_and_throw<std::runtime_error>(
+        "Odometry type not allowed. Please pick among : [None, flatOdometry, 6dOdometry]");
+  }
+
+  if(odometryType_ != measurements::None)
+  {
     bool velUpdatedUpstream = config("velUpdatedUpstream");
     bool accUpdatedUpstream = config("accUpdatedUpstream");
     bool verbose = config("verbose", true);
     bool withYawEstimation = config("withYawEstimation", true);
 
-    odometryManager_.init(ctl, robot_, "TiltObserver", odometry6d, withYawEstimation, velUpdatedUpstream,
+    odometryManager_.init(ctl, robot_, "TiltObserver", odometryType_, withYawEstimation, velUpdatedUpstream,
                           accUpdatedUpstream, verbose);
 
     // surfaces used for the contact detection. If the desired detection method doesn't use surfaces, we make sure this
@@ -155,7 +153,7 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
       return applyLastTransformation(kine);
     });
     datastore.make_call("checkCorrectBackupConf",
-                        [this](bool koWithOdometry) { checkCorrectBackupConf(koWithOdometry); });
+                        [this](OdometryType & koOdometryType) { checkCorrectBackupConf(koOdometryType); });
   }
 }
 
@@ -247,7 +245,7 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
     gamma_ = finalGamma_;
   }
 
-  if(!withOdometry_)
+  if(odometryType_ != measurements::None)
   {
     runTiltEstimator(ctl, my_robots_->robot("updatedRobot"));
   }
@@ -268,7 +266,7 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
 void TiltObserver::updateAnchorFrame(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot)
 {
   // update of the pose of the anchor frame of the control and updatedRobot in the world.
-  if(withOdometry_)
+  if(odometryType_ != measurements::None)
   {
     // we compute the anchor frame using the lastly computed floating base so we use the previous encoders information.
     // we use the current force sensors reading.
@@ -449,7 +447,7 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
   auto k = estimator_.getCurrentTime();
 
   // computation of the local linear velocity of the IMU in the world.
-  if(withOdometry_)
+  if(odometryType_ != measurements::None)
   {
     // when using the odometry, we use the x1 computed internally by the Tilt Observer
     estimator_.setSensorPositionInC(updatedAnchorImuKine.position());
@@ -512,7 +510,7 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
   // Once we obtain the tilt (which is required by the legged odometry, estimating only the yaw), we update the pose and
   // velocities of the floating base
 
-  if(withOdometry_)
+  if(odometryType_ != measurements::None)
   {
     // we can update the estimated pose using odometry. The velocity will be updated later using the estimated local
     // linear velocity of the IMU.
@@ -536,7 +534,7 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
 void TiltObserver::updatePoseAndVel(const so::Vector3 & localWorldImuLinVel, const so::Vector3 & localWorldImuAngVel)
 {
   // if we use odometry, the pose will already updated in odometryManager_.run(...)
-  if(!withOdometry_)
+  if(odometryType_ == measurements::None)
   {
     so::kine::Kinematics updatedFbAnchorKine = updatedWorldFbKine_.getInverse() * updatedWorldAnchorKine_;
 
@@ -565,7 +563,7 @@ void TiltObserver::updatePoseAndVel(const so::Vector3 & localWorldImuLinVel, con
   velW_.linear() = correctedWorldFbKine_.linVel();
   velW_.angular() = correctedWorldFbKine_.angVel();
 
-  if(withOdometry_)
+  if(odometryType_ != measurements::None)
   {
     // the velocity of the odometry robot was obtained using finite differences. We give it our estimated velocity which
     // is more accurate.
@@ -663,7 +661,7 @@ so::kine::Kinematics TiltObserver::applyLastTransformation(const so::kine::Kinem
   return newKine;
 }
 
-void TiltObserver::checkCorrectBackupConf(bool koWithOdometry)
+void TiltObserver::checkCorrectBackupConf(OdometryType & koOdometryType)
 {
   static bool wasExecuted = false;
   if(wasExecuted)
@@ -672,7 +670,7 @@ void TiltObserver::checkCorrectBackupConf(bool koWithOdometry)
   }
   else
   {
-    if(withOdometry_ != koWithOdometry)
+    if(odometryType_ != koOdometryType)
     {
       mc_rtc::log::error_and_throw<std::runtime_error>("The odometry types used for the Tilt Observer and the Kinetics "
                                                        "Observer don't match, the backup is not possible.");

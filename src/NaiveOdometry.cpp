@@ -26,16 +26,20 @@ NaiveOdometry::NaiveOdometry(const std::string & type, double dt) : mc_observers
 void NaiveOdometry::configure(const mc_control::MCController & ctl, const mc_rtc::Configuration & config)
 {
   robot_ = config("robot", ctl.robot().name());
-  std::string odometryType = static_cast<std::string>(config("odometryType"));
-  bool with6dOdometry = true;
+  std::string typeOfOdometry = static_cast<std::string>(config("odometryType"));
+  measurements::OdometryType odometryType;
 
   bool verbose = config("verbose", true);
 
-  if(odometryType == "flatOdometry")
+  if(typeOfOdometry == "flatOdometry")
   {
-    with6dOdometry = false;
+    odometryType = measurements::flatOdometry;
   }
-  else if(odometryType != "6dOdometry")
+  else if(typeOfOdometry == "6dOdometry")
+  {
+    odometryType = measurements::odometry6d;
+  }
+  else
   {
     mc_rtc::log::error_and_throw<std::runtime_error>(
         "Odometry type not allowed. Please pick among : [flatOdometry, 6dOdometry]");
@@ -44,7 +48,7 @@ void NaiveOdometry::configure(const mc_control::MCController & ctl, const mc_rtc
   bool velUpdatedUpstream = config("velUpdatedUpstream");
   accUpdatedUpstream_ = config("accUpdatedUpstream");
 
-  odometryManager_.init(ctl, robot_, "NaiveOdometry", with6dOdometry, true, velUpdatedUpstream, accUpdatedUpstream_,
+  odometryManager_.init(ctl, robot_, "NaiveOdometry", odometryType, true, velUpdatedUpstream, accUpdatedUpstream_,
                         verbose);
 
   /* Configuration of the contacts detection */
