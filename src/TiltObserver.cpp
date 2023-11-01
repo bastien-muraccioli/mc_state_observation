@@ -245,7 +245,7 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
     gamma_ = finalGamma_;
   }
 
-  if(odometryType_ != measurements::None)
+  if(odometryType_ == measurements::None)
   {
     runTiltEstimator(ctl, my_robots_->robot("updatedRobot"));
   }
