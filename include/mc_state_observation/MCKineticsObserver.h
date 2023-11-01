@@ -380,9 +380,6 @@ private:
   /* Estimation parameters */
   bool debug_ = false;
   bool verbose_ = true;
-  // this variable is set to true when the robot touches the ground at the beginning of the simulation. Checks that
-  // contacts are detected before running the estimator.
-  bool simStarted_ = false;
 
   /* Estimation results */
 

@@ -270,9 +270,6 @@ void MCKineticsObserver::setObserverCovariances()
 
 void MCKineticsObserver::reset(const mc_control::MCController & ctl)
 {
-  // if true, the contact detection has started
-  simStarted_ = false;
-
   const auto & robot = ctl.robot(robot_);
   const auto & realRobot = ctl.realRobot(robot_);
   const auto & realRobotModule = realRobot.module();
@@ -327,6 +324,8 @@ void MCKineticsObserver::reset(const mc_control::MCController & ctl)
                         mc_rtc::gui::Robot("Real", [&ctl]() -> const mc_rbdyn::Robot & { return ctl.realRobot(); }));
 
   X_0_fb_ = robot.posW().translation();
+
+  initObserverStateVector(realRobot);
 }
 
 void MCKineticsObserver::addSensorsAsInputs(const mc_rbdyn::Robot & inputRobot,
@@ -380,11 +379,6 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
   // Observer as inputs.
   inputAdditionalWrench(inputRobot, robot);
 
-  // starts the estimation once a contact has been detected
-  if(!simStarted_)
-  {
-    return true;
-  }
   /** Accelerometers **/
   updateIMUs(robot, inputRobot);
 
@@ -725,16 +719,7 @@ void MCKineticsObserver::updateIMUs(const mc_rbdyn::Robot & measRobot, const mc_
 const measurements::ContactsManager<KoContactWithSensor, measurements::ContactWithoutSensor>::ContactsSet &
     MCKineticsObserver::findNewContacts(const mc_control::MCController & ctl)
 {
-  const auto & measRobot = ctl.robot(robot_);
-
   contactsManager_.findContacts(ctl, robot_);
-
-  // we start the observation once a contact has been detected. The estimation works only if the contact detection works.
-  if(!contactsManager_.contactsFound().empty() && !simStarted_)
-  {
-    simStarted_ = true;
-    initObserverStateVector(measRobot);
-  }
 
   return contactsManager_.contactsFound(); // list of currently set contacts
 }
