@@ -148,6 +148,8 @@ public:
   /// @param velUpdatedUpstream Informs whether the 6D velocity was updated by upstream observers
   /// @param accUpdatedUpstream Informs whether the acceleration was updated by upstream observers
   /// @param verbose
+  /// @param withModeSwitchInGui If true, adds the possiblity to switch between 6d and flat odometry from the gui.
+  /// Should be set to false if this feature is implemented in the estimator using this library.
   void init(const mc_control::MCController & ctl,
             const std::string & robotName,
             const std::string & odometryName,
@@ -155,7 +157,8 @@ public:
             const bool withYawEstimation,
             const bool velUpdatedUpstream,
             const bool accUpdatedUpstream,
-            const bool verbose);
+            const bool verbose,
+            const bool withModeSwitchInGui = false);
 
   /// @brief Initialization for a detection based on contact surfaces
   /// @param ctl Controller
@@ -352,6 +355,16 @@ public:
   /// update the anchor frame.
   /// @param ctl controller
   stateObservation::kine::Kinematics & getAnchorFramePose(const mc_control::MCController & ctl);
+
+  /// @brief Changes the type of the odometry
+  /// @param newOdometryType The new type of odometry to use.
+  void changeOdometryType(const std::string & newOdometryType);
+
+  /// @brief Changes the type of the odometry.
+  /// @details Version meant to be called by the observer using the odometry.
+  /// @param newOdometryType The new type of odometry to use.
+  void changeOdometryType(const measurements::OdometryType & newOdometryType);
+
   /// @brief Add the log entries corresponding to the contact.
   /// @param logger
   /// @param contactName
@@ -378,15 +391,15 @@ public:
   // Indicates if the mode of computation of the anchor frame changed. Might me needed by the estimator (ex;
   // TiltObserver)
   bool prevAnchorFromContacts_ = true;
+  // Indicates if the desired odometry must be a flat or a 6D odometry.
+  using OdometryType = measurements::OdometryType;
+  measurements::OdometryType odometryType_;
 
 protected:
   // Name of the odometry, used in logs and in the gui.
   std::string odometryName_;
   // Name of the robot
   std::string robotName_;
-  // Indicates if the desired odometry must be a flat or a 6D odometry.
-  using OdometryType = measurements::OdometryType;
-  measurements::OdometryType odometryType_;
 
   // indicates whether we want to update the yaw using this method or not
   bool withYawEstimation_;

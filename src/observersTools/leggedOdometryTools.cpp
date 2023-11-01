@@ -20,7 +20,8 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
                                  const bool withYawEstimation,
                                  const bool velUpdatedUpstream,
                                  const bool accUpdatedUpstream,
-                                 const bool verbose)
+                                 const bool verbose,
+                                 const bool withModeSwitchInGui)
 {
   robotName_ = robotName;
   odometryType_ = odometryType;
@@ -63,6 +64,37 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
 
   logger.addLogEntry(odometryName_ + "_odometryRobot_accW",
                      [this]() -> sva::MotionVecd { return odometryRobot().accW(); });
+  if(withModeSwitchInGui)
+  {
+    ctl.gui()->addElement({odometryName_, "Odometry"},
+                          mc_rtc::gui::ComboInput(
+                              "Choose from list", {"6dOdometry", "flatOdometry"},
+                              [this]() -> std::string {
+                                if(odometryType_ == measurements::flatOdometry)
+                                {
+                                  return "flatOdometry";
+                                }
+                                else
+                                {
+                                  return "6dOdometry";
+                                }
+                              },
+                              [this](const std::string & typeOfOdometry) { changeOdometryType(typeOfOdometry); }));
+    logger.addLogEntry(odometryName_ + "_debug_OdometryType", [this]() -> std::string {
+      switch(odometryType_)
+      {
+        case measurements::flatOdometry:
+          return "flatOdometry";
+          break;
+        case measurements::odometry6d:
+          return "6dOdometry";
+          break;
+        default:
+          break;
+      }
+      return "default";
+    });
+  }
 }
 
 void LeggedOdometryManager::initDetection(const mc_control::MCController & ctl,
@@ -824,6 +856,29 @@ so::kine::Kinematics & LeggedOdometryManager::getAnchorFramePose(const mc_contro
   }
 
   return worldAnchorPose_;
+}
+
+void LeggedOdometryManager::changeOdometryType(const std::string & newOdometryType)
+{
+  OdometryType prevOdometryType = odometryType_;
+  if(newOdometryType == "flatOdometry")
+  {
+    odometryType_ = measurements::flatOdometry;
+  }
+  else if(newOdometryType == "6dOdometry")
+  {
+    odometryType_ = measurements::odometry6d;
+  }
+
+  if(odometryType_ != prevOdometryType)
+  {
+    mc_rtc::log::info("[{}]: Odometry mode changed to: {}", odometryType_, newOdometryType);
+  }
+}
+
+void LeggedOdometryManager::changeOdometryType(const OdometryType & newOdometryType)
+{
+  odometryType_ = newOdometryType;
 }
 } // namespace leggedOdometry
 } // namespace mc_state_observation

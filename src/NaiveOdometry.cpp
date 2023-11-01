@@ -49,7 +49,7 @@ void NaiveOdometry::configure(const mc_control::MCController & ctl, const mc_rtc
   accUpdatedUpstream_ = config("accUpdatedUpstream");
 
   odometryManager_.init(ctl, robot_, "NaiveOdometry", odometryType, true, velUpdatedUpstream, accUpdatedUpstream_,
-                        verbose);
+                        verbose, true);
 
   /* Configuration of the contacts detection */
 

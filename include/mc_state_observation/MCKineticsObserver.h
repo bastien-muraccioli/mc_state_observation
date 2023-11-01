@@ -157,6 +157,11 @@ protected:
                 mc_rtc::gui::StateBuilder &,
                 const std::vector<std::string> & /* category */) override;
 
+  /// @brief Changes the type of the odometry
+  /// @param ctl Controller.
+  /// @param newOdometryType The new type of odometry to use.
+  void changeOdometryType(const mc_control::MCController & ctl, const std::string & newOdometryType);
+
 protected:
   /// @brief Updates the list of currently set contacts.
   /// @return measurements::ContactsManager<measurements::ContactWithSensor,
@@ -369,7 +374,7 @@ private:
   // instance of the Kinetics Observer
   stateObservation::KineticsObserver observer_;
   // name of the estimator
-  std::string category_ = "MCKineticsObserver";
+  std::string observerName_ = "MCKineticsObserver";
   // name of the robot
   std::string robot_ = "";
   /* custom list of robots to display */

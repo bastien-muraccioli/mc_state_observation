@@ -67,6 +67,10 @@ public:
   /// @param koOdometryType type of odometry used by the Kinetics Observer
   void checkCorrectBackupConf(measurements::OdometryType & koOdometryType);
 
+  /// @brief Changes the type of the odometry
+  /// @param newOdometryType The new type of odometry to use.
+  void changeOdometryType(const std::string & newOdometryType);
+
 protected:
   /*! \brief update the robot pose in the world only for visualization purpose
    *
@@ -96,6 +100,9 @@ protected:
                 const std::vector<std::string> & /* category */) override;
 
 protected:
+  // name of the observer
+  std::string observerName_ = "TiltObserver";
+
   // container for our robots
   std::shared_ptr<mc_rbdyn::Robots> my_robots_;
 
@@ -192,7 +199,6 @@ protected:
 
   /* Odometry parameters */
   using OdometryType = measurements::OdometryType;
-  OdometryType odometryType_;
 
   leggedOdometry::LeggedOdometryManager odometryManager_; // manager for the legged odometry
   using LoContactsManager = leggedOdometry::LeggedOdometryManager::ContactsManager;
