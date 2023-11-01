@@ -136,26 +136,23 @@ protected:
   // kinematics of the IMU in the floating base after the encoders update
   stateObservation::kine::Kinematics updatedFbImuKine_;
   // kinematics of the anchor frame of the control robot in the world. Version as a PTransform object.
-  sva::PTransformd X_0_C_ = sva::PTransformd::Identity();
+  sva::PTransformd X_0_C_;
   // kinematics of the anchor frame of the control robot updated with the encoders in the world.  Version as a
   // PTransform object.
-  sva::PTransformd X_0_C_updated_ = sva::PTransformd::Identity();
+  sva::PTransformd X_0_C_updated_;
   // previous value of X_0_C_updated_, used to compute the velocity by finite differences
-  sva::PTransformd X_0_C_updated_previous_ = sva::PTransformd::Identity();
+  sva::PTransformd X_0_C_updated_previous_;
 
   // kinematics of the anchor frame of the control robot in the world. Version as a Kinematics object.
-  stateObservation::kine::Kinematics worldAnchorKine_ =
-      stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
+  stateObservation::kine::Kinematics worldAnchorKine_;
   // kinematics of the anchor frame of the control robot updated with the encoders in the world. Version as a Kinematics
   // object.
-  stateObservation::kine::Kinematics updatedWorldAnchorKine_ =
-      stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
+  stateObservation::kine::Kinematics updatedWorldAnchorKine_;
 
   // kinematics of the floating base in the world after the encoders update
   stateObservation::kine::Kinematics updatedWorldFbKine_;
   // kinematics of the anchor frame in the IMU frame after the encoders update
-  stateObservation::kine::Kinematics updatedImuAnchorKine_ =
-      stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
+  stateObservation::kine::Kinematics updatedImuAnchorKine_;
   // kinematics of the anchor frame in the world frame for the new iteration
   stateObservation::kine::Kinematics newWorldAnchorKine_;
   // kinematics of the anchor frame in the world frame for the new iteration, after the encoders update
@@ -178,16 +175,16 @@ protected:
 
   /* Floating base's kinematics */
   Eigen::Matrix3d R_0_fb_; // estimated orientation of the floating base in the world frame
-  sva::PTransformd poseW_ = sva::PTransformd::Identity(); ///< Estimated pose of the floating-base in world frame */
-  sva::PTransformd prevPoseW_ = sva::PTransformd::Identity(); ///< Estimated pose of the floating-base in world frame */
-  sva::MotionVecd velW_ = sva::MotionVecd::Zero(); ///< Estimated velocity of the floating-base in world frame */
+  sva::PTransformd poseW_; ///< Estimated pose of the floating-base in world frame */
+  sva::PTransformd prevPoseW_; ///< Estimated pose of the floating-base in world frame */
+  sva::MotionVecd velW_; ///< Estimated velocity of the floating-base in world frame */
 
   // anchor frame's variables
   double maxAnchorFrameDiscontinuity_ =
       0.01; ///< Threshold (norm) above wich the anchor frame is considered to have had a discontinuity
-  bool anchorFrameJumped_ = false; /** Detects whether the anchor frame had a discontinuity */
-  int iter_ = 0; // iterations ellapsed since the beginning of the  estimation. We don't compute the anchor frame
-                 // velocity while it is below "itersBeforeAnchorsVel_"
+  bool anchorFrameJumped_; /** Detects whether the anchor frame had a discontinuity */
+  int iter_; // iterations ellapsed since the beginning of the  estimation. We don't compute the anchor frame
+             // velocity while it is below "itersBeforeAnchorsVel_"
   int itersBeforeAnchorsVel_ = 10; // iteration from which we start to compute the velocity of the anchor frame. Avoids
                                    // initial jumps due to the finite differences.
 
@@ -207,9 +204,9 @@ protected:
   // "measured" local linear velocity of the IMU
   stateObservation::Vector3 x1_;
   // velocity of the IMU in the anchor frame
-  sva::MotionVecd imuVelC_ = sva::MotionVecd::Zero();
+  sva::MotionVecd imuVelC_;
   // pose of the IMU in the anchor frame
-  sva::PTransformd X_C_IMU_ = sva::PTransformd::Identity();
+  sva::PTransformd X_C_IMU_;
 };
 
 } // namespace mc_state_observation

@@ -386,11 +386,11 @@ private:
   // state vector resulting from the Kinetics Observer esimation
   Eigen::VectorXd res_;
   // pose of the floating base within the world frame (real one, not the one of the control robot)
-  sva::PTransformd X_0_fb_ = sva::PTransformd::Identity();
+  sva::PTransformd X_0_fb_;
   // velocity of the floating base within the world frame (real one, not the one of the control robot)
-  sva::MotionVecd v_fb_0_ = sva::MotionVecd::Zero();
+  sva::MotionVecd v_fb_0_;
   // acceleration of the floating base within the world frame (real one, not the one of the control robot)
-  sva::MotionVecd a_fb_0_ = sva::MotionVecd::Zero();
+  sva::MotionVecd a_fb_0_;
 
   /* Settings of the Kinetics Observers */
   // mass of the robot
@@ -499,18 +499,17 @@ private:
 
   /* Variables for the backup */
   // iteration on which the backup was required for the last time
-  int lastBackupIter_ = 0;
+  int lastBackupIter_;
   // number of iterations on which we perform the backup
   int backupIterInterval_ = 0;
   // time during which the Kinetics Observer is still getting updated by the Tilt Observer after the need of a backup,
   // so the Kalman Filter has time to converge again
   int invincibilityFrame_ = 0;
   // iterations ellapsed within the invincibility frame
-  int invincibilityIter_ = 0;
+  int invincibilityIter_;
 
   // Buffer containing the estimated pose of the floating base in the world over the whole backup interval.
-  boost::circular_buffer<stateObservation::kine::Kinematics> koBackupFbKinematics_ =
-      boost::circular_buffer<stateObservation::kine::Kinematics>(100);
+  boost::circular_buffer<stateObservation::kine::Kinematics> koBackupFbKinematics_;
 
   /* Debug variables */
   // For logs only. Prediction of the measurements from the newly corrected state

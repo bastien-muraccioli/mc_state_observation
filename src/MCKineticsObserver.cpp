@@ -314,6 +314,13 @@ void MCKineticsObserver::reset(const mc_control::MCController & ctl)
     mc_rtc::log::info("inertiaWaist = {}", inertiaWaist_);
   }
 
+  /* Initialization of variables */
+  X_0_fb_ = sva::PTransformd::Identity();
+  v_fb_0_ = sva::MotionVecd::Zero();
+  a_fb_0_ = sva::MotionVecd::Zero();
+  lastBackupIter_ = 0;
+  invincibilityIter_ = 0;
+
   my_robots_ = mc_rbdyn::Robots::make();
   my_robots_->robotCopy(robot, robot.name());
   my_robots_->robotCopy(realRobot, "inputRobot");

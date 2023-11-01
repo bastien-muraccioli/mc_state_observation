@@ -162,6 +162,7 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
 void TiltObserver::reset(const mc_control::MCController & ctl)
 {
   const auto & robot = ctl.robot(robot_);
+  const auto & realRobot = ctl.realRobot(robot_);
 
   my_robots_ = mc_rbdyn::Robots::make();
   my_robots_->robotCopy(robot, robot.name());
@@ -180,8 +181,10 @@ my_robots_->robot("updatedRobot"); }));
   */
   const auto & imu = robot.bodySensor(imuSensor_);
 
-  poseW_ = ctl.robot(robot_).posW();
-  velW_ = ctl.robot(robot_).velW();
+  poseW_ = realRobot.posW();
+  velW_ = realRobot.velW();
+  prevPoseW_ = sva::PTransformd::Identity();
+  velW_ = sva::MotionVecd::Zero();
 
   so::Vector3 tilt; // not exactly the tilt but Rt * ez, corresponding to the Tilt estimator's x1
   if(imu.linearAcceleration().norm() < 1e-4)
@@ -201,10 +204,19 @@ my_robots_->robot("updatedRobot"); }));
 
   estimator_.initEstimator(so::Vector3::Zero(), initX2, initX2);
 
-  /* Configuration of the use as a backup */
+  /* Initialization of the variables */
+  X_0_C_ = sva::PTransformd::Identity();
+  X_0_C_updated_ = sva::PTransformd::Identity();
+  X_0_C_updated_previous_ = sva::PTransformd::Identity();
+  worldAnchorKine_ = stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
+  updatedWorldAnchorKine_ = stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
+  updatedImuAnchorKine_ = stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
+  anchorFrameJumped_ = false;
+  iter_ = 0;
+  imuVelC_ = sva::MotionVecd::Zero();
+  X_C_IMU_ = sva::PTransformd::Identity();
 
   // we check if this estimator is used as a backup of the Kinetics Observer
-
   if(asBackup_)
   {
     // BOOST_ASSERT(withOdometry_ && "The odometry must be used to perform backup");
