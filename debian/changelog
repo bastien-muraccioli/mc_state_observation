@@ -1,3 +1,10 @@
+mc-state-observation (1.0.4-1debian1) unstable; urgency=medium
+
+  * Add support for ROS2
+  * Add Jammy + ROS2-iron packages
+
+ -- Pierre Gergondet <pierre.gergondet+ppa@gmail.com>  Thu, 12 Oct 2023 14:46:12 +0900
+
 mc-state-observation (1.0.3-1debian1) unstable; urgency=medium
 
   * Fix minor issues in preparation for next mc_rtc release

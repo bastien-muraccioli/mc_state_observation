@@ -1,14 +1,18 @@
-#include <mc_observers/ObserverMacros.h>
-#include <mc_rtc/ros.h>
-#include <SpaceVecAlg/Conversions.h>
-#include <tf2_eigen/tf2_eigen.h>
 #include <mc_state_observation/MocapObserverROS.h>
+
+#include <mc_observers/ObserverMacros.h>
+
+#include <SpaceVecAlg/Conversions.h>
 
 namespace mc_state_observation
 {
 
 MocapObserverROS::MocapObserverROS(const std::string & type, double dt)
 : MocapObserver(type, dt), nh_(mc_rtc::ROSBridge::get_node_handle())
+#ifdef MC_STATE_OBSERVATION_ROS_IS_ROS2
+  ,
+  tfBuffer_(nh_->get_clock())
+#endif
 {
 }
 
@@ -28,10 +32,10 @@ void MocapObserverROS::reset(const mc_control::MCController & ctl)
 
 bool MocapObserverROS::run(const mc_control::MCController & ctl)
 {
-  geometry_msgs::TransformStamped transformStamped;
+  TransformStamped transformStamped;
   try
   {
-    transformStamped = tfBuffer_.lookupTransform(markerOrigin_, marker_, ros::Time(0));
+    transformStamped = tfBuffer_.lookupTransform(markerOrigin_, marker_, RosTime(0));
   }
   catch(tf2::TransformException & ex)
   {

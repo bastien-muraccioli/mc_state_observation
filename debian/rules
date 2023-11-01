@@ -2,8 +2,20 @@
 # -*- makefile -*-
 
 export ROS_DISTRO:=@ROS_DISTRO@
-export CMAKE_PREFIX_PATH:=/opt/ros/${ROS_DISTRO}:${CMAKE_PREFIX_PATH}
-export LD_LIBRARY_PATH:=/opt/ros/${ROS_DISTRO}/lib:${LD_LIBRARY_PATH}
+export ROS_VERSION:=$(shell . /opt/ros/${ROS_DISTRO}/setup.sh && echo $$ROS_VERSION)
+export ROS_PYTHON_VERSION:=$(shell . /opt/ros/${ROS_DISTRO}/setup.sh && echo $$ROS_PYTHON_VERSION)
+ifeq (${ROS_PYTHON_VERSION}, 3)
+	export PYTHONPATH:=/opt/ros/${ROS_DISTRO}/lib/python3/dist-packages:${PYTHONPATH}
+	export PYTHONPATH:=/opt/ros/${ROS_DISTRO}/lib/python$(shell python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}');")/site-packages:${PYTHONPATH}
+else
+	export PYTHONPATH:=/opt/ros/${ROS_DISTRO}/lib/python2.7/dist-packages:${PYTHONPATH}
+endif
+ifeq (${ROS_VERSION}, 2)
+	export AMENT_PREFIX_PATH:=/opt/ros/${ROS_DISTRO}
+else
+	export CMAKE_PREFIX_PATH:=/opt/ros/${ROS_DISTRO}:$CMAKE_PREFIX_PATH
+endif
+export LD_LIBRARY_PATH:=/opt/ros/${ROS_DISTRO}/lib/x86_64-linux-gnu:/opt/ros/${ROS_DISTRO}/lib:${LD_LIBRARY_PATH}
 
 %:
 	dh $@ --parallel

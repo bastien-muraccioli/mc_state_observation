@@ -35,5 +35,3 @@ Depends: ${misc:Depends}
 Multi-Arch: foreign
 Suggests: mc-state-observation, ros-@ROS_DISTRO@-mc-state-observation
 Description: Documentation for mc-state-observation
-
-

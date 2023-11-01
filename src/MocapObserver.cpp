@@ -25,10 +25,7 @@ void MocapObserver::reset(const mc_control::MCController & ctl)
 
 bool MocapObserver::run(const mc_control::MCController &)
 {
-  if(!calibrated_)
-  {
-    error_ = fmt::format("[{}] Please calibrate the body to marker pose first", name());
-  }
+  if(!calibrated_) { error_ = fmt::format("[{}] Please calibrate the body to marker pose first", name()); }
   X_0_marker_ = X_m_marker_ * X_0_mocap_;
   return calibrated_;
 }
@@ -80,17 +77,20 @@ void MocapObserver::addToGUI(const mc_control::MCController & ctl,
   gui.addElement(
       category,
       mc_rtc::gui::Button("Calibrate Marker (put robot at mocap origin)",
-                          [this, &ctl]() {
+                          [this, &ctl]()
+                          {
                             mc_rtc::log::info("[{}] Calibration triggerred", name());
                             calibrated_ = calibrateMarkerToBody(ctl);
                           }),
       mc_rtc::gui::Button("Initialize origin",
-                          [this, &ctl]() {
+                          [this, &ctl]()
+                          {
                             mc_rtc::log::info("[{}] Initialize origin triggerred", name());
                             originInitialized_ = initializeOrigin(ctl);
                           }),
       mc_rtc::gui::Button("Reset",
-                          [this, &ctl]() {
+                          [this, &ctl]()
+                          {
                             mc_rtc::log::info("[{}] Manual reset triggerred", name());
                             reset(ctl);
                           }),
@@ -98,11 +98,13 @@ void MocapObserver::addToGUI(const mc_control::MCController & ctl,
           "Mocap Origin", [this]() -> const sva::PTransformd & { return X_0_mocap_; },
           [this](const sva::PTransformd & pose) { X_0_mocap_ = pose; }),
       mc_rtc::gui::Transform("Mocap Marker World", [this]() -> const sva::PTransformd & { return X_0_marker_; }),
-      mc_rtc::gui::Transform("Mocap Marker Frame", [this, &ctl]() -> const sva::PTransformd {
-        auto & realRobot = ctl.realRobot(updateRobot_);
-        auto X_0_body = realRobot.bodyPosW(body_);
-        return X_marker_body_.inv() * X_0_body;
-      }));
+      mc_rtc::gui::Transform("Mocap Marker Frame",
+                             [this, &ctl]() -> const sva::PTransformd
+                             {
+                               auto & realRobot = ctl.realRobot(updateRobot_);
+                               auto X_0_body = realRobot.bodyPosW(body_);
+                               return X_marker_body_.inv() * X_0_body;
+                             }));
 }
 
 bool MocapObserver::checkPipelines(const mc_control::MCController & ctl)
@@ -110,10 +112,7 @@ bool MocapObserver::checkPipelines(const mc_control::MCController & ctl)
   bool pipelineSuccess = true;
   for(const auto & pipeline : ctl.observerPipelines())
   {
-    if(!pipeline.hasObserver(name_))
-    {
-      pipelineSuccess = pipelineSuccess && pipeline.success();
-    }
+    if(!pipeline.hasObserver(name_)) { pipelineSuccess = pipelineSuccess && pipeline.success(); }
   }
   return pipelineSuccess;
 }

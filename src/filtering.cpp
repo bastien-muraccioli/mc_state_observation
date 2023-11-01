@@ -17,10 +17,7 @@ Rotation::Rotation(const gram_sg::SavitzkyGolayFilterConfig & conf)
 void Rotation::reset(const Eigen::Matrix3d & r)
 {
   // Initialize to data
-  for(size_t i = 0; i < buffer.capacity(); i++)
-  {
-    buffer.push_back(r);
-  }
+  for(size_t i = 0; i < buffer.capacity(); i++) { buffer.push_back(r); }
 }
 
 void Rotation::reset()

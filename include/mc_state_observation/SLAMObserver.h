@@ -1,13 +1,13 @@
 #pragma once
 
-#include <mc_control/MCController.h>
+#include <mc_state_observation/filtering.h>
+#include <mc_state_observation/ros.h>
+
 #include <mc_observers/Observer.h>
-#include <mc_rbdyn/Robot.h>
-#include <SpaceVecAlg/SpaceVecAlg>
-#include <ros/ros.h>
+
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_ros/transform_listener.h>
-#include <mc_state_observation/filtering.h>
+
 #include <thread>
 
 namespace mc_state_observation
@@ -82,7 +82,7 @@ protected:
   sva::PTransformd X_Slam_Ground_ = sva::PTransformd::Identity(); ///< Ground frame in map frame
   /// @}
 
-  std::shared_ptr<ros::NodeHandle> nh_ = nullptr;
+  mc_rtc::NodeHandlePtr nh_ = nullptr;
   void rosSpinner();
   std::thread thread_;
   tf2_ros::Buffer tfBuffer_;

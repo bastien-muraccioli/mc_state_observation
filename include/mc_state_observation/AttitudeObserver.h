@@ -13,7 +13,7 @@ struct AttitudeObserver : public mc_observers::Observer
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   using indexes = stateObservation::kine::indexes<stateObservation::kine::rotationVector>;
 
- public:
+public:
   AttitudeObserver(const std::string & type, double dt);
 
   void configure(const mc_control::MCController & ctl, const mc_rtc::Configuration &) override;
@@ -24,7 +24,7 @@ struct AttitudeObserver : public mc_observers::Observer
 
   void update(mc_control::MCController & ctl) override;
 
- public:
+public:
   struct KalmanFilterConfig
   {
     bool compensateMode = false;
@@ -99,7 +99,6 @@ protected:
   Eigen::Matrix3d m_orientation = Eigen::Matrix3d::Identity(); ///< Result
 };
 
-
 } // namespace mc_state_observation
 
 namespace mc_rtc
@@ -120,7 +119,7 @@ struct ConfigurationLoader<mc_state_observation::AttitudeObserver::KalmanFilterC
     config("state_init_cov", c.stateInitCov);
     return c;
   }
-  static mc_rtc::Configuration save(const mc_state_observation::AttitudeObserver::KalmanFilterConfig &c)
+  static mc_rtc::Configuration save(const mc_state_observation::AttitudeObserver::KalmanFilterConfig & c)
   {
     mc_rtc::Configuration config;
     config.add("compensateMode", c.compensateMode);
@@ -134,4 +133,4 @@ struct ConfigurationLoader<mc_state_observation::AttitudeObserver::KalmanFilterC
     return config;
   }
 };
-} /* mc_rtc */
+} // namespace mc_rtc

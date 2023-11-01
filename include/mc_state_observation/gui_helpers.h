@@ -25,12 +25,10 @@ auto make_number_input(std::string name, T & value)
 
 inline auto make_rpy_input(std::string name, Eigen::Matrix3d & orientation)
 {
-  auto GetF = [&orientation]() -> Eigen::Vector3d {
-    return mc_rbdyn::rpyFromMat(orientation) * 180. / mc_rtc::constants::PI;
-  };
-  auto SetF = [&orientation](const Eigen::Vector3d & rpy) {
-    orientation = mc_rbdyn::rpyToMat(rpy * mc_rtc::constants::PI / 180);
-  };
+  auto GetF = [&orientation]() -> Eigen::Vector3d
+  { return mc_rbdyn::rpyFromMat(orientation) * 180. / mc_rtc::constants::PI; };
+  auto SetF = [&orientation](const Eigen::Vector3d & rpy)
+  { orientation = mc_rbdyn::rpyToMat(rpy * mc_rtc::constants::PI / 180); };
   return mc_rtc::gui::ArrayInput(name, {"r [deg]", "p [deg]", "y [deg]"}, GetF, SetF);
 }
 
@@ -51,9 +49,8 @@ inline auto make_admittancevecd_input(std::string name, sva::AdmittanceVecd & ve
 
 inline auto make_rpy_label(std::string name, const Eigen::Matrix3d & orientation)
 {
-  auto GetF = [&orientation]() -> Eigen::Vector3d {
-    return mc_rbdyn::rpyFromMat(orientation) * 180. / mc_rtc::constants::PI;
-  };
+  auto GetF = [&orientation]() -> Eigen::Vector3d
+  { return mc_rbdyn::rpyFromMat(orientation) * 180. / mc_rtc::constants::PI; };
   return mc_rtc::gui::ArrayLabel<decltype(GetF)>(name, {"r [deg]", "p [deg]", "y [deg]"}, GetF);
 }
 
@@ -93,4 +90,3 @@ auto make_input_element(const std::string & name, T & ref)
 } // namespace gui
 
 } // namespace mc_state_observation
-

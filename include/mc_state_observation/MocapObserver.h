@@ -1,8 +1,8 @@
 #pragma once
 
+#include <mc_control/MCController.h>
 #include <mc_observers/Observer.h>
 #include <mc_rbdyn/Robot.h>
-#include <mc_control/MCController.h>
 
 namespace mc_state_observation
 {
@@ -29,10 +29,7 @@ struct MocapObserver : public mc_observers::Observer
   }
 
   /** Pose of the mocap marker frame expressed in the mocap origin frame */
-  const sva::PTransformd & markerPose() const noexcept
-  {
-    return X_m_marker_;
-  }
+  const sva::PTransformd & markerPose() const noexcept { return X_m_marker_; }
 
   mc_rbdyn::Robot & robot(mc_control::MCController & ctl)
   {
@@ -78,9 +75,11 @@ protected:
 
   /// @{
   bool calibrated_ = false;
-  sva::PTransformd X_marker_body_ = sva::PTransformd::Identity(); ///< Extrinsic calibration from body to marker frame (auto-determined)
+  sva::PTransformd X_marker_body_ =
+      sva::PTransformd::Identity(); ///< Extrinsic calibration from body to marker frame (auto-determined)
   bool originInitialized_ = false;
-  sva::PTransformd X_0_mocap_ = sva::PTransformd::Identity(); ///< Transformation from robot world to mocap world (auto-determined)
+  sva::PTransformd X_0_mocap_ =
+      sva::PTransformd::Identity(); ///< Transformation from robot world to mocap world (auto-determined)
   /// @}
 
   // {@

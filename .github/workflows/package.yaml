@@ -12,6 +12,7 @@ on:
     - doc/**
     - README.md
     - ".github/workflows/build.yml"
+    - ".pre-commit-config.yaml"
     branches:
     - "**"
     tags:
@@ -22,7 +23,7 @@ jobs:
     with:
       matrix: |
         {
-          "dist": ["bionic", "focal"],
+          "dist": ["bionic", "focal", "jammy"],
           "arch": ["amd64"]
         }
       main-branch: main

@@ -9,7 +9,7 @@ Here is an overview of the various observers implemented:
 
 ### AttitudeObserver (estimation of IMU orientation)
 
-This observer is directly inspired by the [AttitudeEstimator](https://github.com/isri-aist/hrpsys-state-observation/blob/master/include/hrpsys-state-observation/AttitudeEstimator.h) of [hrpsys-state-observation](https://github.com/isri-aist/hrpsys-state-observation) (that provides an improved replacement for the deprecated [`KalmanFilter`](https://github.com/isri-aist/hrpsys-private/tree/master/KalmanFilter) component of [hrpsys-private](https://github.com/isri-aist/hrpsys-private)). The `AttitudeEstimator` component has been heavily used on `HRP-5P`. 
+This observer is directly inspired by the [AttitudeEstimator](https://github.com/isri-aist/hrpsys-state-observation/blob/master/include/hrpsys-state-observation/AttitudeEstimator.h) of [hrpsys-state-observation](https://github.com/isri-aist/hrpsys-state-observation) (that provides an improved replacement for the deprecated [`KalmanFilter`](https://github.com/isri-aist/hrpsys-private/tree/master/KalmanFilter) component of [hrpsys-private](https://github.com/isri-aist/hrpsys-private)). The `AttitudeEstimator` component has been heavily used on `HRP-5P`.
 
 Configuration options:
 

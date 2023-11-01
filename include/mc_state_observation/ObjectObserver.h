@@ -1,12 +1,10 @@
 #pragma once
 
-#include <mc_observers/Observer.h>
-#include <mc_rbdyn/Robot.h>
-#include <mc_control/MCController.h>
-#include <SpaceVecAlg/SpaceVecAlg>
 #include <mc_state_observation/filtering.h>
-#include <ros/ros.h>
-#include <geometry_msgs/PoseStamped.h>
+#include <mc_state_observation/ros.h>
+
+#include <mc_observers/Observer.h>
+
 #include <mutex>
 #include <thread>
 
@@ -53,7 +51,7 @@ protected:
    *
    * @param msg Message sent by the vision process containing estimated object information
    */
-  void callback(const geometry_msgs::PoseStamped & msg);
+  void callback(const PoseStamped & msg);
 
   /// @{
   std::string robot_ = ""; ///< Name of robot to estimate thanks to SLAM
@@ -64,7 +62,7 @@ protected:
   /// @{
   std::string object_ = ""; ///< Name of map TF in ROS
   std::string topic_ = ""; ///< Name of estimated camera TF in ROS
-  ros::Subscriber subscriber_; ///< Subscribe to topic_ name
+  PoseSubscriber subscriber_; ///< Subscribe to topic_ name
   std::mutex mutex_; ///< Mutex to ensure thread safe with ROS callback
   sva::PTransformd X_Camera_EstimatedObject_ = sva::PTransformd::Identity(); ///< Estimated object in camera frame
   bool isInRobotMap_ = false; ///< If true then we have X_0_EstimatedObject_ instead of X_Camera_EstimatedObject_
@@ -75,7 +73,7 @@ protected:
   bool isPublished_ = true; ///< Check if estimated robot is publish or not
   /// @}
 
-  std::shared_ptr<ros::NodeHandle> nh_ = nullptr;
+  mc_rtc::NodeHandlePtr nh_ = nullptr;
   void rosSpinner();
   std::thread thread_;
 

@@ -32,14 +32,8 @@ void AttitudeObserver::configure(const mc_control::MCController & ctl, const mc_
 {
   robot_ = config("robot", ctl.robot().name());
   imuSensor_ = config("imuSensor", ctl.robot().bodySensor().name());
-  if(config.has("updateSensor"))
-  {
-    updateSensor_ = static_cast<std::string>(config("updateSensor"));
-  }
-  else
-  {
-    updateSensor_ = imuSensor_;
-  }
+  if(config.has("updateSensor")) { updateSensor_ = static_cast<std::string>(config("updateSensor")); }
+  else { updateSensor_ = imuSensor_; }
   datastoreName_ = config("datastoreName", name());
   config("log_kf", log_kf_);
   config("init_from_control", initFromControl_);
@@ -71,14 +65,8 @@ void AttitudeObserver::reset(const mc_control::MCController & ctl)
 
   uk_.setZero();
 
-  if(filter_.stateIsSet())
-  {
-    filter_.setState(xk_, filter_.getCurrentTime());
-  }
-  else
-  {
-    filter_.setState(xk_, 0);
-  }
+  if(filter_.stateIsSet()) { filter_.setState(xk_, filter_.getCurrentTime()); }
+  else { filter_.setState(xk_, 0); }
   filter_.setStateCovariance(so::Matrix::Identity(STATE_SIZE, STATE_SIZE) * c.stateInitCov);
 
   lastStateInitCovariance_ = c.stateInitCov;
@@ -124,10 +112,7 @@ bool AttitudeObserver::run(const mc_control::MCController & ctl)
       ret = false;
     }
   }
-  else
-  {
-    measurement.head<3>() = accIn;
-  }
+  else { measurement.head<3>() = accIn; }
   measurement.tail<3>() = rateIn;
 
   auto time = filter_.getCurrentTime();
@@ -168,22 +153,17 @@ void AttitudeObserver::addToLogger(const mc_control::MCController &,
                                    mc_rtc::Logger & logger,
                                    const std::string & category)
 {
-  logger.addLogEntry(category + "_orientation", [this]() -> sva::PTransformd {
-    return sva::PTransformd{m_orientation.transpose(), Eigen::Vector3d::Zero()};
-  });
-  if(log_kf_)
-  {
-    config_.addToLogger(logger, category);
-  }
+  logger.addLogEntry(category + "_orientation",
+                     [this]() -> sva::PTransformd {
+                       return sva::PTransformd{m_orientation.transpose(), Eigen::Vector3d::Zero()};
+                     });
+  if(log_kf_) { config_.addToLogger(logger, category); }
 }
 
 void AttitudeObserver::removeFromLogger(mc_rtc::Logger & logger, const std::string & category)
 {
   logger.removeLogEntry(category + "_orientation");
-  if(log_kf_)
-  {
-    config_.removeFromLogger(logger, category);
-  }
+  if(log_kf_) { config_.removeFromLogger(logger, category); }
 }
 
 void AttitudeObserver::addToGUI(const mc_control::MCController & ctl,
@@ -196,13 +176,16 @@ void AttitudeObserver::addToGUI(const mc_control::MCController & ctl,
 
   gui.addElement(category, mc_rtc::gui::Button("Reset config to default", [this]() { config_ = defaultConfig_; }),
                  mc_rtc::gui::Button("Reset",
-                                     [this, &ctl]() {
+                                     [this, &ctl]()
+                                     {
                                        mc_rtc::log::info("[{}] Manual reset triggerred", name());
                                        reset(ctl);
                                      }),
-                 mc_rtc::gui::ArrayLabel("Result", {"r [deg]", "p [deg]", "y [deg]"}, [this]() -> Eigen::Vector3d {
-                   return mc_rbdyn::rpyFromMat(m_orientation.transpose()) * 180. / mc_rtc::constants::PI;
-                 }));
+                 mc_rtc::gui::ArrayLabel("Result", {"r [deg]", "p [deg]", "y [deg]"},
+                                         [this]() -> Eigen::Vector3d {
+                                           return mc_rbdyn::rpyFromMat(m_orientation.transpose()) * 180.
+                                                  / mc_rtc::constants::PI;
+                                         }));
 }
 
 void AttitudeObserver::KalmanFilterConfig::addToLogger(mc_rtc::Logger & logger, const std::string & category)
