@@ -93,8 +93,22 @@ protected:
   /// @param inputRobot A robot whose configuration is the one of real robot, but whose pose, velocities and
   /// accelerations are set to zero in the control frame. Allows to ease computations performed in the local frame of
   /// the robot.
-  /// @param measRobot The control robot
+  /// @param measRobot The control robot. Used to retrieve the measurements.
   void inputAdditionalWrench(const mc_rbdyn::Robot & inputRobot, const mc_rbdyn::Robot & measRobot);
+
+  /// @brief Adds the measurement of the desired sensors to the external force given as an input to the Kinetics
+  /// Observer
+  /// @details The force sensors must be given with the list forceSensorsAsInput_
+  /// @param inputRobot A robot whose configuration is the one of real robot, but whose pose, velocities and
+  /// accelerations are set to zero in the control frame. Allows to ease computations performed in the local frame of
+  /// the robot.
+  /// @param measRobot The control robot. Used to retrieve the measurements.
+  /// @param inputAddtionalForce the external force given as input
+  /// @param inputAddtionalTorque the external torque given as input
+  void addSensorsAsInputs(const mc_rbdyn::Robot & inputRobot,
+                          const mc_rbdyn::Robot & measRobot,
+                          stateObservation::Vector3 & inputAddtionalForce,
+                          stateObservation::Vector3 & inputAddtionalTorque);
 
   /// @brief Update the IMUs, including the measurements, measurement covariances and kinematics in the floating
   /// base's frame (user frame)
@@ -166,7 +180,7 @@ protected:
   /// @param fs force sensor
   /// @param measuredWrench wrench measured at the sensor
   /// @return stateObservation::kine::Kinematics &
-  const stateObservation::kine::Kinematics getContactWorldKinematics(KoContactWithSensor & contact,
+  const stateObservation::kine::Kinematics getContactWorldKinematicsAndWrench(KoContactWithSensor & contact,
                                                                      const mc_rbdyn::Robot & robot,
                                                                      const mc_rbdyn::ForceSensor & fs,
                                                                      const sva::ForceVecd & measuredWrench);
@@ -462,6 +476,9 @@ private:
   bool withFilteredForcesContactDetection_ = false;
   // threshold on the measured force for contact detection.
   double contactDetectionThreshold_ = 0.0;
+  // list of the force sensors that cannot be used with contacts but we want to use their measurements as inputs to the
+  // Kinetics Observer
+  std::vector<std::string> forceSensorsAsInput_ = std::vector<std::string>();
 
   /* IMU variables */
   // manager for the IMUs

@@ -104,8 +104,9 @@ void NaiveOdometry::configure(const mc_control::MCController & ctl, const mc_rtc
   }
   else
   {
+    std::vector<std::string> forceSensorsToOmit = config("forceSensorsToOmit", std::vector<std::string>());
     odometryManager_.initDetection(ctl, robot_, contactsDetectionMethod, contactsSensorDisabledInit,
-                                   contactDetectionThreshold_);
+                                   contactDetectionThreshold_, forceSensorsToOmit);
   }
 }
 

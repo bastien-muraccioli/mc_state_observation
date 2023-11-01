@@ -86,10 +86,12 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
 
   std::vector<std::string> contactsSensorsDisabledInit =
       config("contactsSensorDisabledInit", std::vector<std::string>());
+  config("forceSensorsAsInput", forceSensorsAsInput_);
 
   if(contactsDetectionMethod == KoContactsManager::ContactsDetection::fromSurfaces)
   {
-    std::vector<std::string> surfacesForContactDetection = config("surfacesForContactDetection");
+    std::vector<std::string> surfacesForContactDetection =
+        config("surfacesForContactDetection", std::vector<std::string>());
 
     contactsManager_.initDetection(ctl, robot_, contactsDetectionMethod, surfacesForContactDetection,
                                    contactsSensorsDisabledInit, contactDetectionThreshold_);
@@ -97,7 +99,7 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   else
   {
     contactsManager_.initDetection(ctl, robot_, contactsDetectionMethod, contactsSensorsDisabledInit,
-                                   contactDetectionThreshold_);
+                                   contactDetectionThreshold_, forceSensorsAsInput_);
   }
 
   if(withFilteredForcesContactDetection_)
@@ -327,6 +329,21 @@ void MCKineticsObserver::reset(const mc_control::MCController & ctl)
   X_0_fb_ = robot.posW().translation();
 }
 
+void MCKineticsObserver::addSensorsAsInputs(const mc_rbdyn::Robot & inputRobot,
+                                            const mc_rbdyn::Robot & measRobot,
+                                            so::Vector3 & inputAddtionalForce,
+                                            so::Vector3 & inputAddtionalTorque)
+{
+  for(const std::string & fsName : forceSensorsAsInput_)
+  {
+    const mc_rbdyn::ForceSensor & forceSensor = measRobot.forceSensor(fsName);
+    sva::ForceVecd measuredWrench = forceSensor.worldWrenchWithoutGravity(inputRobot);
+
+    inputAddtionalForce += measuredWrench.force();
+    inputAddtionalTorque += measuredWrench.moment();
+  }
+}
+
 bool MCKineticsObserver::run(const mc_control::MCController & ctl)
 {
   const auto & robot = ctl.robot(robot_);
@@ -358,6 +375,10 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
    */
   // retrieves the list of contacts and set simStarted to true once a contact is detected
   updateContacts(ctl, findNewContacts(ctl), logger);
+
+  // force measurements from sensor that are not associated to a currently set contact are given to the Kinetics
+  // Observer as inputs.
+  inputAdditionalWrench(inputRobot, robot);
 
   // starts the estimation once a contact has been detected
   if(!simStarted_)
@@ -640,7 +661,6 @@ void MCKineticsObserver::inputAdditionalWrench(const mc_rbdyn::Robot & inputRobo
 
   for(auto & contactWithSensor : contactsManager_.contactsWithSensors())
   {
-
     KoContactWithSensor & contact = contactWithSensor.second;
     const std::string & fsName = contact.forceSensorName();
 
@@ -653,6 +673,9 @@ void MCKineticsObserver::inputAdditionalWrench(const mc_rbdyn::Robot & inputRobo
       additionalUserResultingMoment_ += measuredWrench.moment();
     }
   }
+
+  addSensorsAsInputs(inputRobot, measRobot, additionalUserResultingForce_, additionalUserResultingMoment_);
+
   // We pass this computed wrench as an input to the Kinetics Observer
   observer_.setAdditionalWrench(additionalUserResultingForce_, additionalUserResultingMoment_);
 
@@ -703,13 +726,9 @@ const measurements::ContactsManager<KoContactWithSensor, measurements::ContactWi
     MCKineticsObserver::findNewContacts(const mc_control::MCController & ctl)
 {
   const auto & measRobot = ctl.robot(robot_);
-  auto & inputRobot = my_robots_->robot("inputRobot");
 
   contactsManager_.findContacts(ctl, robot_);
 
-  // force measurements from sensor that are not associated to a currently set contact are given to the Kinetics
-  // Observer as inputs.
-  inputAdditionalWrench(inputRobot, measRobot);
   // we start the observation once a contact has been detected. The estimation works only if the contact detection works.
   if(!contactsManager_.contactsFound().empty() && !simStarted_)
   {
@@ -720,10 +739,10 @@ const measurements::ContactsManager<KoContactWithSensor, measurements::ContactWi
   return contactsManager_.contactsFound(); // list of currently set contacts
 }
 
-const so::kine::Kinematics MCKineticsObserver::getContactWorldKinematics(KoContactWithSensor & contact,
-                                                                         const mc_rbdyn::Robot & currentRobot,
-                                                                         const mc_rbdyn::ForceSensor & fs,
-                                                                         const sva::ForceVecd & measuredWrench)
+const so::kine::Kinematics MCKineticsObserver::getContactWorldKinematicsAndWrench(KoContactWithSensor & contact,
+                                                                                  const mc_rbdyn::Robot & currentRobot,
+                                                                                  const mc_rbdyn::ForceSensor & fs,
+                                                                                  const sva::ForceVecd & measuredWrench)
 {
   /*
   Can be used with inputRobot, a virtual robot corresponding to the real robot whose floating base's frame is
@@ -919,10 +938,9 @@ void MCKineticsObserver::updateContact(const mc_control::MCController & ctl,
   sva::ForceVecd measuredWrench = robot.forceSensor(contact.forceSensorName()).wrenchWithoutGravity(inputRobot);
   const mc_rbdyn::ForceSensor & forceSensor = robot.forceSensor(contact.forceSensorName());
 
-  // when used on input robot, returns the kinematics of the contact in the frame of the floating base
-  contact.fbContactKine_ = getContactWorldKinematics(contact, inputRobot, forceSensor, measuredWrench);
-
-  contact.fbContactKine_ = contact.fbContactKine_;
+  // As used on input robot, returns the kinematics of the contact in the frame of the floating base. Also expresses the
+  // measured wrench in the frame of the contact.
+  contact.fbContactKine_ = getContactWorldKinematicsAndWrench(contact, inputRobot, forceSensor, measuredWrench);
 
   switch(contact.wasAlreadySet_)
   {

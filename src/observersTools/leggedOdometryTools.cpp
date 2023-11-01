@@ -80,10 +80,11 @@ void LeggedOdometryManager::initDetection(const mc_control::MCController & ctl,
                                           const std::string & robotName,
                                           const ContactsManager::ContactsDetection & contactsDetection,
                                           const std::vector<std::string> & contactsSensorDisabledInit,
-                                          const double & contactsDetectionThreshold)
+                                          const double & contactsDetectionThreshold,
+                                          const std::vector<std::string> & forceSensorsToOmit)
 {
   contactsManager_.initDetection(ctl, robotName, contactsDetection, contactsSensorDisabledInit,
-                                 contactsDetectionThreshold);
+                                 contactsDetectionThreshold, forceSensorsToOmit);
 }
 
 void LeggedOdometryManager::updateJointsConfiguration(const mc_control::MCController & ctl)

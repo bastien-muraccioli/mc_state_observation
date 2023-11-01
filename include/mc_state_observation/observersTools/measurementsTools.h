@@ -14,6 +14,8 @@
 #include <mc_control/MCController.h>
 #include <mc_observers/Observer.h>
 #include <mc_rbdyn/Robot.h>
+#include <mc_rtc/log/Logger.h>
+#include <mc_rtc/logging.h>
 
 namespace mc_state_observation
 {
@@ -549,13 +551,15 @@ private:
   {
     if(std::find(insertOrder_.begin(), insertOrder_.end(), name) != insertOrder_.end()) // the contact already exists
     {
-      BOOST_ASSERT_MSG(hasSensor_.at(name), "The contact already exists and was associated to no sensor");
-      /* We should allow to have two contacts sharing the same sensor but with different surfaces
-      BOOST_ASSERT((contactWithSensor(name).surface != surface)
-                   && "The contact already exists but was associated to another surface");
-                   */
-      BOOST_ASSERT((contactWithSensor(name).sensorAttachedToSurface_ == sensorAttachedToSurface)
-                   && "You previously said that the contact sensor was not attached to the contact surface");
+      if(!hasSensor_.at(name))
+      {
+        mc_rtc::log::error_and_throw("The contact already exists and was associated to no sensor");
+      }
+      if(contactWithSensor(name).sensorAttachedToSurface_ != sensorAttachedToSurface)
+      {
+        mc_rtc::log::error_and_throw(
+            "You previously said that the contact sensor was not attached to the contact surface");
+      }
       return true;
     }
     else
@@ -609,7 +613,13 @@ public:
   // initialization of the odometry
   void init(const std::string & observerName, const bool verbose = true);
 
-  // initialization for a detection based on contact surfaces
+  /// @brief Initialization for a detection based on contact surfaces
+  /// @param ctl Controller
+  /// @param robotName name of the robot
+  /// @param contactsDetection mean of detection for the contacts
+  /// @param surfacesForContactDetection list of possible contact surfaces
+  /// @param contactsSensorDisabledInit list of the force sensors that must be disabled on initialization.
+  /// @param contactDetectionThreshold threshold on the measured force for the contact detection
   void initDetection(const mc_control::MCController & ctl,
                      const std::string & robotName,
                      const ContactsDetection & contactsDetection,
@@ -617,13 +627,20 @@ public:
                      const std::vector<std::string> & contactsSensorDisabledInit,
                      const double & contactDetectionThreshold);
 
-  // initialization for a detection based on a threshold on the measured contact forces or for contacts given by the
-  // controller
+  /// @brief initialization for a detection based on a threshold on the measured contact forces or for contacts given by
+  /// the controller
+  /// @param ctl Controller
+  /// @param robotName name of the robot
+  /// @param contactsDetection mean of detection for the contacts
+  /// @param contactsSensorDisabledInit list of the force sensors that must be disabled on initialization.
+  /// @param contactDetectionThreshold threshold on the measured force for the contact detection
+  /// @param forceSensorsToOmit list of force sensors that cannot be used for the contacts detection
   void initDetection(const mc_control::MCController & ctl,
                      const std::string & robotName,
                      const ContactsDetection & contactsDetection,
                      const std::vector<std::string> & contactsSensorDisabledInit,
-                     const double & contactDetectionThreshold);
+                     const double & contactDetectionThreshold,
+                     const std::vector<std::string> & forceSensorsToOmit);
 
   /// @brief Adds the contact to the GUI to enable or disable it easily.
   /// @details Version for a contact associated to a force sensor.

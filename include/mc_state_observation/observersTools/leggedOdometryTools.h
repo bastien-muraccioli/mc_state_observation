@@ -157,6 +157,13 @@ public:
             const bool accUpdatedUpstream,
             const bool verbose);
 
+  /// @brief Initialization for a detection based on contact surfaces
+  /// @param ctl Controller
+  /// @param robotName name of the robot
+  /// @param contactsDetection mean of detection for the contacts
+  /// @param surfacesForContactDetection list of possible contact surfaces
+  /// @param contactsSensorDisabledInit list of the force sensors that must be disabled on initialization.
+  /// @param contactDetectionThreshold threshold on the measured force for the contact detection
   void initDetection(const mc_control::MCController & ctl,
                      const std::string & robotName,
                      const ContactsManager::ContactsDetection & contactsDetection,
@@ -164,11 +171,20 @@ public:
                      const std::vector<std::string> & contactsSensorDisabledInit,
                      const double & contactDetectionThreshold);
 
+  /// @brief initialization for a detection based on a threshold on the measured contact forces or for contacts given by
+  /// the controller
+  /// @param ctl Controller
+  /// @param robotName name of the robot
+  /// @param contactsDetection mean of detection for the contacts
+  /// @param contactsSensorDisabledInit list of the force sensors that must be disabled on initialization.
+  /// @param contactDetectionThreshold threshold on the measured force for the contact detection
+  /// @param forceSensorsToOmit list of force sensors that cannot be used for the contacts detection
   void initDetection(const mc_control::MCController & ctl,
                      const std::string & robotName,
                      const ContactsManager::ContactsDetection & contactsDetection,
                      const std::vector<std::string> & contactsSensorDisabledInit,
-                     const double & contactDetectionThreshold);
+                     const double & contactDetectionThreshold,
+                     const std::vector<std::string> & forceSensorsToOmit);
 
   /// @brief @copybrief run(const mc_control::MCController &, mc_rtc::Logger &, sva::PTransformd &, sva::MotionVecd &,
   /// sva::MotionVecd &, stateObservation::Matrix3). This version uses the tilt estimated by the upstream observers.

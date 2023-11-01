@@ -94,7 +94,8 @@ void ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::initDetection(
     const std::string & robotName,
     const ContactsDetection & contactsDetection,
     const std::vector<std::string> & contactsSensorDisabledInit,
-    const double & contactDetectionThreshold)
+    const double & contactDetectionThreshold,
+    const std::vector<std::string> & forceSensorsToOmit)
 {
   if(contactsDetection == fromSolver)
   {
@@ -128,6 +129,11 @@ void ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::initDetection(
   {
     for(auto forceSensor : robot.forceSensors())
     {
+      if(std::find(forceSensorsToOmit.begin(), forceSensorsToOmit.end(), forceSensor.name())
+         != forceSensorsToOmit.end())
+      {
+        continue;
+      }
       const std::string & fsName = forceSensor.name();
 
       mapContacts_.insertContact(fsName, true);
