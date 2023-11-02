@@ -468,6 +468,8 @@ private:
   stateObservation::Matrix3 gyroSensorCovariance_;
   // covariance on the contact's force sensors measurement
   stateObservation::Matrix6 contactSensorCovariance_;
+  // covariance on the gyrometer measurement
+  stateObservation::Matrix3 absoluteOriSensorCovariance_;
 
   /* Contacts manager variables */
   using KoContactsManager = measurements::ContactsManager<KoContactWithSensor, measurements::ContactWithoutSensor>;

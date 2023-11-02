@@ -207,6 +207,7 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   orientationSensorCoVariance_ = (config("orientationSensorVariance").operator so::Vector3()).matrix().asDiagonal();
   acceleroSensorCovariance_ = (config("acceleroSensorVariance").operator so::Vector3()).matrix().asDiagonal();
   gyroSensorCovariance_ = (config("gyroSensorVariance").operator so::Vector3()).matrix().asDiagonal();
+  absoluteOriSensorCovariance_ = (config("absOriSensorVariance").operator so::Vector3()).matrix().asDiagonal();
   contactSensorCovariance_.setZero();
   contactSensorCovariance_.block<3, 3>(0, 0) =
       (config("forceSensorVariance").operator so::Vector3()).matrix().asDiagonal();
@@ -261,15 +262,14 @@ void MCKineticsObserver::setObserverCovariances()
 
   observer_.resetProcessCovarianceMat();
 
-  so::Matrix6 absPoseSensorDefCovariance = so::Matrix6::Zero();
-  absPoseSensorDefCovariance.block<int(observer_.sizePos), int(observer_.sizePos)>(0, 0) = positionSensorCovariance_;
-  absPoseSensorDefCovariance.block<int(observer_.sizeOriTangent), int(observer_.sizeOriTangent)>(
-      observer_.sizePos, observer_.sizePos) = orientationSensorCoVariance_;
-
-  observer_.setAbsolutePoseSensorDefaultCovarianceMatrix(absPoseSensorDefCovariance);
-
   observer_.setIMUDefaultCovarianceMatrix(acceleroSensorCovariance_, gyroSensorCovariance_);
   observer_.setContactWrenchSensorDefaultCovarianceMatrix(contactSensorCovariance_);
+  so::Matrix6 absPoseSensorDefCovariance = so::Matrix6::Zero();
+  absPoseSensorDefCovariance.block(0, 0, observer_.sizePos, observer_.sizePos) = positionSensorCovariance_;
+  absPoseSensorDefCovariance.block(observer_.sizePos, observer_.sizePos, observer_.sizeOriTangent,
+                                   observer_.sizeOriTangent) = orientationSensorCoVariance_;
+  observer_.setAbsolutePoseSensorDefaultCovarianceMatrix(absPoseSensorDefCovariance);
+  observer_.setAbsoluteOriSensorDefaultCovarianceMatrix(absoluteOriSensorCovariance_);
 }
 
 void MCKineticsObserver::reset(const mc_control::MCController & ctl)
@@ -393,6 +393,12 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
   /** Accelerometers **/
   updateIMUs(robot, inputRobot);
 
+  /*
+  so::kine::Orientation oriMeasurement;
+  //oriMeasurement = so::Matrix3(realRobot.posW().rotation().transpose());
+  observer_.setAbsoluteOriSensor(oriMeasurement);
+  */
+
   /** Inertias **/
   /** TODO : Merge inertias into CoM inertia and/or get it from fd() **/
 
@@ -429,7 +435,7 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
     {
       /* Core */
       so::kine::Kinematics fbFb; // "Zero" Kinematics
-      fbFb.setZero(so::kine::Kinematics::Flags::all);
+      fbFb.setZero<so::Matrix3>(so::kine::Kinematics::Flags::all);
 
       // Given, the Kinematics of the floating base inside its own frame (zero kinematics) which is our user
       // frame, the Kinetics Observer will return the kinematics of the floating base in the real world frame.
@@ -478,7 +484,7 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
         update(inputRobot);
         inputRobot.forwardKinematics();
         so::kine::Kinematics fbFb; // "Zero" Kinematics
-        fbFb.setZero(so::kine::Kinematics::Flags::all);
+        fbFb.setZero<so::Matrix3>(so::kine::Kinematics::Flags::all);
         so::kine::Kinematics newWorldCentroidKine;
         newWorldCentroidKine.position = inputRobot.com();
         // the orientation of the centroid frame is the one of the floating base
