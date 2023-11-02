@@ -449,7 +449,15 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
   auto k = estimator_.getCurrentTime();
 
   // computation of the local linear velocity of the IMU in the world.
-  if(odometryManager_.odometryType_ != measurements::None)
+
+  if(odometryManager_.odometryType_ == measurements::None) // case if we don't use odometry
+  {
+    x1_ = worldImuKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.linVel()
+          - (imu.angularVelocity()).cross(updatedImuAnchorKine_.position()) - updatedImuAnchorKine_.linVel();
+
+    estimator_.setMeasurement(x1_, imu.linearAcceleration(), imu.angularVelocity(), k + 1);
+  }
+  else
   {
     // when using the odometry, we use the x1 computed internally by the Tilt Observer
     estimator_.setSensorPositionInC(updatedAnchorImuKine.position());
@@ -460,18 +468,10 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
                                            * worldAnchorKine_.linVel());
 
     estimator_.setMeasurement(imu.linearAcceleration(), imu.angularVelocity(), k + 1);
-  }
-  else
-  {
-    x1_ = worldImuKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.linVel()
-          - (imu.angularVelocity()).cross(updatedImuAnchorKine_.position()) - updatedImuAnchorKine_.linVel();
 
-    estimator_.setMeasurement(x1_, imu.linearAcceleration(), imu.angularVelocity(), k + 1);
-  }
-
+    // If the following variable is set, it means that the mode of computation of the anchor frame changed.
   if(newWorldAnchorKine_.linVel.isSet())
   {
-    // Means that the mode of computation of the anchor frame changed.
     // The anchor frame can be obtained using 2 ways:
     // - 1: contacts are detected and can be used
     // - 2: no contact is detected, the robot is hanging. As we still need an anchor frame for the tilt estimation we
@@ -494,6 +494,7 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
     }
 
     estimator_.resetImuLocVelHat();
+    }
   }
 
   // estimation of the state with the complementary filters
