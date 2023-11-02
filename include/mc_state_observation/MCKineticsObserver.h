@@ -186,9 +186,9 @@ protected:
   /// @param measuredWrench wrench measured at the sensor
   /// @return stateObservation::kine::Kinematics &
   const stateObservation::kine::Kinematics getContactWorldKinematicsAndWrench(KoContactWithSensor & contact,
-                                                                     const mc_rbdyn::Robot & robot,
-                                                                     const mc_rbdyn::ForceSensor & fs,
-                                                                     const sva::ForceVecd & measuredWrench);
+                                                                              const mc_rbdyn::Robot & robot,
+                                                                              const mc_rbdyn::ForceSensor & fs,
+                                                                              const sva::ForceVecd & measuredWrench);
 
   /// @brief Computes the kinematics of the contact attached to the robot in the world frame.
   /// @param contact Contact of which we want to compute the kinematics
@@ -237,10 +237,7 @@ public:
   /** Get robot mass.
    *
    */
-  inline double mass() const
-  {
-    return mass_;
-  }
+  inline double mass() const { return mass_; }
 
   /** Set robot mass.
    *
@@ -271,10 +268,7 @@ public:
   /** Get accelerometer measurement noise covariance.
    *
    */
-  inline double accelNoiseCovariance() const
-  {
-    return acceleroSensorCovariance_(0, 0);
-  }
+  inline double accelNoiseCovariance() const { return acceleroSensorCovariance_(0, 0); }
 
   /** Change accelerometer measurement noise covariance.
    *
@@ -292,18 +286,12 @@ public:
    * \param flag New debug flag.
    *
    */
-  inline void debug(bool flag)
-  {
-    debug_ = flag;
-  }
+  inline void debug(bool flag) { debug_ = flag; }
 
   /** Get force-sensor measurement noise covariance.
    *
    */
-  inline double forceSensorNoiseCovariance() const
-  {
-    return contactSensorCovariance_(0, 0);
-  }
+  inline double forceSensorNoiseCovariance() const { return contactSensorCovariance_(0, 0); }
 
   /** Change force-sensor measurement noise covariance.
    *
@@ -319,10 +307,7 @@ public:
   /** Get gyrometer measurement noise covariance.
    *
    */
-  inline double gyroNoiseCovariance() const
-  {
-    return gyroSensorCovariance_(0, 0);
-  }
+  inline double gyroNoiseCovariance() const { return gyroSensorCovariance_(0, 0); }
 
   /** Change gyrometer measurement noise covariance.
    *
@@ -338,26 +323,17 @@ public:
   /** Get last measurement vector sent to observer.
    *
    */
-  inline const Eigen::VectorXd measurements() const
-  {
-    return observer_.getEKF().getLastMeasurement();
-  }
+  inline const Eigen::VectorXd measurements() const { return observer_.getEKF().getLastMeasurement(); }
 
   /** Floating-base transform estimate.
    *
    */
-  inline const sva::PTransformd & posW() const
-  {
-    return X_0_fb_;
-  }
+  inline const sva::PTransformd & posW() const { return X_0_fb_; }
 
   /** Floating-base velocity estimate.
    *
    */
-  inline const sva::MotionVecd & velW() const
-  {
-    return v_fb_0_;
-  }
+  inline const sva::MotionVecd & velW() const { return v_fb_0_; }
 
 private:
   enum EstimationState

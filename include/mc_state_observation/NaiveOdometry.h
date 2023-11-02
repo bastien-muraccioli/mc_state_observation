@@ -84,10 +84,7 @@ public:
   /** Get robot mass.
    *
    */
-  inline double mass() const
-  {
-    return mass_;
-  }
+  inline double mass() const { return mass_; }
 
   /** Set robot mass.
    *
@@ -105,18 +102,12 @@ public:
   /** Floating-base transform estimate.
    *
    */
-  inline const sva::PTransformd & posW() const
-  {
-    return X_0_fb_;
-  }
+  inline const sva::PTransformd & posW() const { return X_0_fb_; }
 
   /** Floating-base velocity estimate.
    *
    */
-  inline const sva::MotionVecd & velW() const
-  {
-    return v_fb_0_;
-  }
+  inline const sva::MotionVecd & velW() const { return v_fb_0_; }
 
 private:
   std::string category_ = "NaiveOdometry_";

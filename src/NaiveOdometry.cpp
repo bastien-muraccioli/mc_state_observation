@@ -31,14 +31,8 @@ void NaiveOdometry::configure(const mc_control::MCController & ctl, const mc_rtc
 
   bool verbose = config("verbose", true);
 
-  if(typeOfOdometry == "flatOdometry")
-  {
-    odometryType = measurements::flatOdometry;
-  }
-  else if(typeOfOdometry == "6dOdometry")
-  {
-    odometryType = measurements::odometry6d;
-  }
+  if(typeOfOdometry == "flatOdometry") { odometryType = measurements::flatOdometry; }
+  else if(typeOfOdometry == "6dOdometry") { odometryType = measurements::odometry6d; }
   else
   {
     mc_rtc::log::error_and_throw<std::runtime_error>(
@@ -133,10 +127,7 @@ void NaiveOdometry::reset(const mc_control::MCController & ctl)
   int nbJoints = static_cast<int>(realRobot.mb().joints().size());
   for(int i = 0; i < nbJoints; ++i)
   {
-    if(realRobot.mb().predecessor(i) == 0)
-    {
-      rootJoints.push_back(realRobot.mb().joint(i).name());
-    }
+    if(realRobot.mb().predecessor(i) == 0) { rootJoints.push_back(realRobot.mb().joint(i).name()); }
   }
   for(const auto & joint : rootJoints)
   {
@@ -151,9 +142,9 @@ void NaiveOdometry::reset(const mc_control::MCController & ctl)
 
   my_robots_ = mc_rbdyn::Robots::make();
   my_robots_->robotCopy(robot, robot.name());
-  ctl.gui()->addElement({"Robots"}, mc_rtc::gui::Robot("NaiveOdometry", [this]() -> const mc_rbdyn::Robot & {
-                          return my_robots_->robot();
-                        }));
+  ctl.gui()->addElement(
+      {"Robots"},
+      mc_rtc::gui::Robot("NaiveOdometry", [this]() -> const mc_rbdyn::Robot & { return my_robots_->robot(); }));
 
   X_0_fb_.translation() = realRobot.posW().translation();
   X_0_fb_.rotation() = realRobot.posW().rotation();
@@ -164,14 +155,8 @@ bool NaiveOdometry::run(const mc_control::MCController & ctl)
   auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
 
   //  if the acceleration was estimated by a previous estimator, it can be updated
-  if(accUpdatedUpstream_)
-  {
-    odometryManager_.run(ctl, logger, X_0_fb_, v_fb_0_, a_fb_0_);
-  }
-  else
-  {
-    odometryManager_.run(ctl, logger, X_0_fb_, v_fb_0_);
-  }
+  if(accUpdatedUpstream_) { odometryManager_.run(ctl, logger, X_0_fb_, v_fb_0_, a_fb_0_); }
+  else { odometryManager_.run(ctl, logger, X_0_fb_, v_fb_0_); }
 
   /* Update of the visual representation (only a visual feature) of the observed robot */
   my_robots_->robot().mbc().q = ctl.realRobot().mbc().q;

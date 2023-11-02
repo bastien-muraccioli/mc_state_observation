@@ -69,31 +69,28 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
     ctl.gui()->addElement({odometryName_, "Odometry"},
                           mc_rtc::gui::ComboInput(
                               "Choose from list", {"6dOdometry", "flatOdometry"},
-                              [this]() -> std::string {
-                                if(odometryType_ == measurements::flatOdometry)
-                                {
-                                  return "flatOdometry";
-                                }
-                                else
-                                {
-                                  return "6dOdometry";
-                                }
+                              [this]() -> std::string
+                              {
+                                if(odometryType_ == measurements::flatOdometry) { return "flatOdometry"; }
+                                else { return "6dOdometry"; }
                               },
                               [this](const std::string & typeOfOdometry) { changeOdometryType(typeOfOdometry); }));
-    logger.addLogEntry(odometryName_ + "_debug_OdometryType", [this]() -> std::string {
-      switch(odometryType_)
-      {
-        case measurements::flatOdometry:
-          return "flatOdometry";
-          break;
-        case measurements::odometry6d:
-          return "6dOdometry";
-          break;
-        default:
-          break;
-      }
-      return "default";
-    });
+    logger.addLogEntry(odometryName_ + "_debug_OdometryType",
+                       [this]() -> std::string
+                       {
+                         switch(odometryType_)
+                         {
+                           case measurements::flatOdometry:
+                             return "flatOdometry";
+                             break;
+                           case measurements::odometry6d:
+                             return "6dOdometry";
+                             break;
+                           default:
+                             break;
+                         }
+                         return "default";
+                       });
   }
 }
 
@@ -438,10 +435,7 @@ void LeggedOdometryManager::updateOdometryRobot(const mc_control::MCController &
 
       odometryRobot().accW(acc);
     }
-    else
-    {
-      mc_rtc::log::error("The acceleration must be already updated upstream.");
-    }
+    else { mc_rtc::log::error("The acceleration must be already updated upstream."); }
   }
 
   if(updateVels)
@@ -474,14 +468,8 @@ void LeggedOdometryManager::updateOdometryRobot(const mc_control::MCController &
 
   odometryRobot().forwardKinematics();
 
-  if(updateVels)
-  {
-    odometryRobot().forwardVelocity();
-  }
-  if(updateAccs)
-  {
-    odometryRobot().forwardAcceleration();
-  }
+  if(updateVels) { odometryRobot().forwardVelocity(); }
+  if(updateAccs) { odometryRobot().forwardAcceleration(); }
 }
 
 void LeggedOdometryManager::updateFbKinematics(sva::PTransformd & pose, sva::MotionVecd & vel, sva::MotionVecd & acc)
@@ -557,10 +545,7 @@ void LeggedOdometryManager::setNewContact(LoContactWithSensor & contact, const m
     contact.worldRefKine_.orientation = so::Matrix3(worldSurfacePoseOdometryRobot.rotation().transpose());
   }
 
-  if(odometryType_ == measurements::flatOdometry)
-  {
-    contact.worldRefKine_.position()(2) = 0.0;
-  }
+  if(odometryType_ == measurements::flatOdometry) { contact.worldRefKine_.position()(2) = 0.0; }
 }
 
 const so::kine::Kinematics & LeggedOdometryManager::getCurrentContactKinematics(LoContactWithSensor & contact,
@@ -682,10 +667,7 @@ so::kine::Kinematics & LeggedOdometryManager::getAnchorFramePose(const mc_contro
     }
   }
 
-  if(posUpdatable)
-  {
-    worldAnchorPose_.position = totalAnchorPosition / sumForces_position;
-  }
+  if(posUpdatable) { worldAnchorPose_.position = totalAnchorPosition / sumForces_position; }
   else
   {
     // we cannot update the anchor frame
@@ -861,14 +843,8 @@ so::kine::Kinematics & LeggedOdometryManager::getAnchorFramePose(const mc_contro
 void LeggedOdometryManager::changeOdometryType(const std::string & newOdometryType)
 {
   OdometryType prevOdometryType = odometryType_;
-  if(newOdometryType == "flatOdometry")
-  {
-    odometryType_ = measurements::flatOdometry;
-  }
-  else if(newOdometryType == "6dOdometry")
-  {
-    odometryType_ = measurements::odometry6d;
-  }
+  if(newOdometryType == "flatOdometry") { odometryType_ = measurements::flatOdometry; }
+  else if(newOdometryType == "6dOdometry") { odometryType_ = measurements::odometry6d; }
 
   if(odometryType_ != prevOdometryType)
   {

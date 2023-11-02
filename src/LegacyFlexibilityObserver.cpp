@@ -58,10 +58,7 @@ void LegacyFlexibilityObserver::reset(const mc_control::MCController & ctl)
   int nbJoints = static_cast<int>(robot.mb().joints().size());
   for(int i = 0; i < nbJoints; ++i)
   {
-    if(robot.mb().predecessor(i) == 0)
-    {
-      rootJoints.push_back(robot.mb().joint(i).name());
-    }
+    if(robot.mb().predecessor(i) == 0) { rootJoints.push_back(robot.mb().joint(i).name()); }
   }
   for(const auto & joint : rootJoints)
   {
@@ -311,10 +308,7 @@ void LegacyFlexibilityObserver::setContacts(const mc_rbdyn::Robot & robot, std::
   }
   unsigned nbContacts = static_cast<unsigned>(contacts.size());
   observer_.setContactsNumber(nbContacts);
-  if(debug_)
-  {
-    mc_rtc::log::info("nbContacts = {}", nbContacts);
-  }
+  if(debug_) { mc_rtc::log::info("nbContacts = {}", nbContacts); }
 
   updateNoiseCovariance();
 }

@@ -159,7 +159,8 @@ void ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::addContactToGui
           surface + " : " + (mapContacts_.contactWithSensor(surface).isSet_ ? "Contact is set" : "Contact is not set")
               + ": Use wrench sensor: ",
           [this, surface]() { return mapContacts_.contactWithSensor(surface).sensorEnabled_; },
-          [this, surface]() {
+          [this, surface]()
+          {
             mapContacts_.contactWithSensor(surface).sensorEnabled_ =
                 !mapContacts_.contactWithSensor(surface).sensorEnabled_;
             std::cout << std::endl
@@ -348,10 +349,7 @@ void ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::updateContacts(
   std::set_difference(oldContacts_.begin(), oldContacts_.end(), contactsFound_.begin(), contactsFound_.end(),
                       std::inserter(removedContacts_, removedContacts_.end()));
 
-  for(const auto & removedContact : removedContacts_)
-  {
-    contactWithSensor(removedContact).resetContact();
-  }
+  for(const auto & removedContact : removedContacts_) { contactWithSensor(removedContact).resetContact(); }
   // update the list of previously set contacts
   oldContacts_ = contactsFound_;
 }
@@ -359,10 +357,7 @@ void ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::updateContacts(
 template<typename ContactWithSensorT, typename ContactWithoutSensorT>
 std::string ContactsManager<ContactWithSensorT, ContactWithoutSensorT>::set_to_string(const ContactsSet & contactSet)
 {
-  if(contactSet.cbegin() == contactSet.cend())
-  {
-    return "";
-  }
+  if(contactSet.cbegin() == contactSet.cend()) { return ""; }
   std::ostringstream out;
   out.precision(std::numeric_limits<int>::digits10);
   out << std::fixed << mapContacts_.getNameFromNum(*contactSet.cbegin());

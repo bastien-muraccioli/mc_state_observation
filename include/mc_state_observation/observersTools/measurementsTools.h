@@ -34,24 +34,15 @@ namespace measurements
 struct Sensor
 {
 public:
-  inline const int & getID() const
-  {
-    return id_;
-  }
-  inline const std::string & getName() const
-  {
-    return name_;
-  }
+  inline const int & getID() const { return id_; }
+  inline const std::string & getName() const { return name_; }
 
 protected:
   Sensor() {}
   ~Sensor() {}
   Sensor(int id, std::string name) : id_(id), name_(name) {}
 
-  bool operator<(const Sensor & contact2) const
-  {
-    return (getID() < contact2.id_);
-  }
+  bool operator<(const Sensor & contact2) const { return (getID() < contact2.id_); }
 
 protected:
   int id_;
@@ -85,32 +76,20 @@ public:
   /// @brief Get the index of the IMU given its name.
   /// @param name The name of the IMU
   /// @return const int &
-  inline const int & getNumFromName(const std::string & name)
-  {
-    return mapIMUs_.find(name)->second.getID();
-  }
+  inline const int & getNumFromName(const std::string & name) { return mapIMUs_.find(name)->second.getID(); }
   /// @brief Get the name of the IMU given its index.
   /// @param num_ The index of the IMU
   /// @return const std::string &
-  inline const std::string & getNameFromNum(const int & num)
-  {
-    return insertOrder_.at(num);
-  }
+  inline const std::string & getNameFromNum(const int & num) { return insertOrder_.at(num); }
 
   /// @brief Get the list of all the IMUs.
   /// @return const std::vector<std::string> &
-  inline const std::vector<std::string> & getList()
-  {
-    return insertOrder_;
-  }
+  inline const std::vector<std::string> & getList() { return insertOrder_; }
 
   /// @brief Checks if the required IMU exists.
   /// @param name The name of the IMU
   /// @return bool
-  inline bool hasElement(const std::string & name)
-  {
-    return checkAlreadyExists(name);
-  }
+  inline bool hasElement(const std::string & name) { return checkAlreadyExists(name); }
 
   /// @brief Inserts an IMU to the map.
   /// @param name The name of the IMU
@@ -135,10 +114,7 @@ private:
   /// @brief Checks if the required IMU exists.
   /// @param name The name of the IMU
   /// @return bool
-  inline bool checkAlreadyExists(const std::string & name)
-  {
-    return mapIMUs_.find(name) != mapIMUs_.end();
-  }
+  inline bool checkAlreadyExists(const std::string & name) { return mapIMUs_.find(name) != mapIMUs_.end(); }
 
 private:
   // list of all the IMUs.
@@ -176,10 +152,7 @@ protected:
     resetContact();
   }
   // constructor if the contact is associated to a surface
-  Contact(int id, std::string name, std::string surface) : Contact(id, name)
-  {
-    surfaceName(surface);
-  }
+  Contact(int id, std::string name, std::string surface) : Contact(id, name) { surfaceName(surface); }
 
 public:
   inline void resetContact()
@@ -188,10 +161,7 @@ public:
     isSet_ = false;
   }
 
-  void surfaceName(std::string surfaceName)
-  {
-    surface_ = surfaceName;
-  }
+  void surfaceName(std::string surfaceName) { surface_ = surfaceName; }
   const std::string & surfaceName() const
   {
     BOOST_ASSERT(!surface_.empty() && "The contact was created without a surface.");
@@ -259,10 +229,7 @@ public:
     // also filtered force? see when this feature will be corrected
   }
 
-  std::string & forceSensorName()
-  {
-    return forceSensorName_;
-  }
+  std::string & forceSensorName() { return forceSensorName_; }
 
 public:
   Eigen::Matrix<double, 6, 1> wrenchInCentroid_ = Eigen::Matrix<double, 6, 1>::Zero(); // for debug only
@@ -369,10 +336,7 @@ public:
   /// @brief Get the map of all the contacts associated to a sensor
   ///
   /// @return std::unordered_map<std::string, contactsWithSensorT>&
-  inline std::unordered_map<std::string, ContactWithSensorT> & contactsWithSensors()
-  {
-    return mapContactsWithSensors_;
-  }
+  inline std::unordered_map<std::string, ContactWithSensorT> & contactsWithSensors() { return mapContactsWithSensors_; }
   /// @brief Get the map of all the contacts that are not associated to a sensor
   ///
   /// @return std::unordered_map<std::string, ContactWithoutSensorT>&
@@ -384,10 +348,7 @@ public:
   /// @brief Get the list of all the contacts (with and without sensors)
   ///
   /// @return const std::vector<std::string> &
-  inline const std::vector<std::string> & getList()
-  {
-    return insertOrder_;
-  }
+  inline const std::vector<std::string> & getList() { return insertOrder_; }
 
   /// @brief Returns true if the contact is associated to a sensor
   ///
@@ -403,10 +364,7 @@ public:
   ///
   /// @param num_ The index of the contact
   /// @return const std::string &
-  inline const std::string & getNameFromNum(const int & num)
-  {
-    return insertOrder_.at(num);
-  }
+  inline const std::string & getNameFromNum(const int & num) { return insertOrder_.at(num); }
 
   /// @brief Get the index of a contact given its name
   ///
@@ -414,14 +372,8 @@ public:
   /// @return const int &
   inline const int & getNumFromName(const std::string & name)
   {
-    if(hasSensor_.at(name))
-    {
-      return mapContactsWithSensors_.at(name).getID();
-    }
-    else
-    {
-      return mapContactsWithoutSensors_.at(name).getID();
-    }
+    if(hasSensor_.at(name)) { return mapContactsWithSensors_.at(name).getID(); }
+    else { return mapContactsWithoutSensors_.at(name).getID(); }
   }
 
   /* // ! Not working yet
@@ -446,10 +398,7 @@ public:
   ///
   /// @param element The name of the contact
   /// @return bool
-  inline bool hasElement(const std::string & element)
-  {
-    return hasSensor_.find(element) != hasSensor_.end();
-  }
+  inline bool hasElement(const std::string & element) { return hasSensor_.find(element) != hasSensor_.end(); }
 
   /// @brief Check that a contact still does not exist, if so, insert a contact to the map of contacts. The contact
   /// can either be associated to a sensor or not.
@@ -534,10 +483,7 @@ private:
 
       return true;
     }
-    else
-    {
-      return false;
-    }
+    else { return false; }
   }
 
   /// @brief Check if a contact already exists in the list. If it already exists, checks that the contact remained
@@ -562,10 +508,7 @@ private:
       }
       return true;
     }
-    else
-    {
-      return false;
-    }
+    else { return false; }
   }
 
 private:
@@ -694,19 +637,13 @@ public:
   ///
   /// @param num The index of the contact to access
   /// @return ContactWithSensor&
-  inline ContactWithSensorT & contactWithSensor(const int & num)
-  {
-    return mapContacts_.contactWithSensor(num);
-  }
+  inline ContactWithSensorT & contactWithSensor(const int & num) { return mapContacts_.contactWithSensor(num); }
 
   /// @brief Accessor for the a contact associated to a sensor contained in the map
   ///
   /// @param num The contact itself.
   /// @return ContactWithSensor&
-  inline ContactWithSensorT & contactWithSensor(ContactWithSensorT & contact)
-  {
-    return contact;
-  }
+  inline ContactWithSensorT & contactWithSensor(ContactWithSensorT & contact) { return contact; }
 
   /// @brief Accessor for the a contact that is not associated to a sensor contained in the map
   /// @param name The name of the contact to access
@@ -727,10 +664,7 @@ public:
   /// @brief Accessor for the a contact that is not associated to a sensor contained in the map
   /// @param name The contact itself.
   /// @return ContactWithoutSensor&
-  inline ContactWithoutSensorT & contactWithoutSensor(const ContactWithoutSensorT & contact)
-  {
-    return contact;
-  }
+  inline ContactWithoutSensorT & contactWithoutSensor(const ContactWithoutSensorT & contact) { return contact; }
 
   /// @brief Get the map of all the contacts associated to a sensor
   ///
@@ -749,27 +683,15 @@ public:
 
   /// @brief Get the list of all the contacts.
   /// @return const std::vector<std::string> &
-  inline const std::vector<std::string> & getList()
-  {
-    return mapContacts_.getList();
-  }
+  inline const std::vector<std::string> & getList() { return mapContacts_.getList(); }
 
   /// @brief Get the list of the currently set contacts.
   /// @return const std::vector<std::string> &
-  inline const ContactsSet & contactsFound()
-  {
-    return contactsFound_;
-  }
+  inline const ContactsSet & contactsFound() { return contactsFound_; }
 
-  inline const ContactsSet & removedContacts()
-  {
-    return removedContacts_;
-  }
+  inline const ContactsSet & removedContacts() { return removedContacts_; }
 
-  inline const ContactsDetection & getContactsDetection()
-  {
-    return contactsDetectionMethod_;
-  }
+  inline const ContactsDetection & getContactsDetection() { return contactsDetectionMethod_; }
 
 public:
   // map of contacts used by the manager.

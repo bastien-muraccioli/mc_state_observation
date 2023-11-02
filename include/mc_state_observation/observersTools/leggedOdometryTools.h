@@ -376,16 +376,10 @@ public:
   void removeContactLogEntries(mc_rtc::Logger & logger, const LoContactWithSensor & contact);
 
   /// @brief Getter for the odometry robot used for the estimation.
-  mc_rbdyn::Robot & odometryRobot()
-  {
-    return odometryRobot_->robot("odometryRobot");
-  }
+  mc_rbdyn::Robot & odometryRobot() { return odometryRobot_->robot("odometryRobot"); }
 
   /// @brief Getter for the contacts manager.
-  LeggedOdometryContactsManager & contactsManager()
-  {
-    return contactsManager_;
-  }
+  LeggedOdometryContactsManager & contactsManager() { return contactsManager_; }
 
 public:
   // Indicates if the mode of computation of the anchor frame changed. Might me needed by the estimator (ex;
