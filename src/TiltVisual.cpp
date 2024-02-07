@@ -5,7 +5,6 @@
 #include <mc_state_observation/gui_helpers.h>
 
 #include <mc_state_observation/conversions/kinematics.h>
-
 namespace mc_state_observation
 {
 
@@ -18,9 +17,6 @@ TiltVisual::TiltVisual(const std::string & type, double dt, bool asBackup, const
 : mc_observers::Observer(type, dt), estimator_(alpha_, beta_), odometryManager_(observerName)
 {
   estimator_.setSamplingTime(dt_);
-  xk_.resize(9);
-  xk_ << so::Vector3::Zero(), so::Vector3::Zero(), so::Vector3(0, 0, 1); // so::Vector3(0.49198, 0.66976, 0.55622);
-  estimator_.setState(xk_, 0);
 
   asBackup_ = asBackup;
   observerName_ = observerName;
@@ -46,6 +42,7 @@ void TiltVisual::configure(const mc_control::MCController & ctl, const mc_rtc::C
 
   estimator_.setRho1(config("rho1"));
   estimator_.setRho2(config("rho2"));
+  estimator_.setMu(config("mu"));
 
   anchorFrameFunction_ = "KinematicAnchorFrame::" + ctl.robot(robot_).name();
   // if a user-defined anchor frame function is given, we use it instead
@@ -141,20 +138,12 @@ void TiltVisual::reset(const mc_control::MCController & ctl)
   prevPoseW_ = sva::PTransformd::Identity();
   velW_ = sva::MotionVecd::Zero();
 
-  so::Vector3 tilt; // not exactly the tilt but Rt * ez, corresponding to the Tilt estimator's x1
-  if(imu.linearAcceleration().norm() < 1e-4) { tilt = ctl.robot(robot_).posW().rotation() * so::Vector3::UnitZ(); }
-  else
-  {
-    tilt = imu.linearAcceleration()
-           / imu.linearAcceleration().norm(); // we consider the acceleration as zero on the initialization
-  }
-
-  estimator_.initEstimator(so::Vector3::Zero(), tilt, tilt);
-
   const Eigen::Matrix3d cOri = (imu.X_b_s() * ctl.robot(robot_).bodyPosW(imu.parentBody())).rotation();
+
+  so::kine::Orientation initOri(cOri);
   so::Vector3 initX2 = cOri * so::Vector3::UnitZ(); // so::kine::rotationMatrixToRotationVector(cOri.transpose());
 
-  estimator_.initEstimator(so::Vector3::Zero(), initX2, initX2);
+  estimator_.initEstimator(so::Vector3::Zero(), initX2, initOri.toVector4());
 
   /* Initialization of the variables */
   X_0_C_ = sva::PTransformd::Identity();
@@ -393,13 +382,13 @@ void TiltVisual::runTiltEstimator(const mc_control::MCController & ctl, const mc
 
   // computation of the local linear velocity of the IMU in the world.
 
-  so::kine::Orientation yR(so::Matrix3(ctl.realRobot(robot_).posW().rotation().transpose()));
+  measuredOri_ = so::Matrix3(ctl.realRobot(robot_).posW().rotation().transpose());
   if(odometryManager_.odometryType_ == measurements::OdometryType::None) // case if we don't use odometry
   {
     x1_ = worldImuKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.linVel()
           - (imu.angularVelocity()).cross(updatedImuAnchorKine_.position()) - updatedImuAnchorKine_.linVel();
 
-    estimator_.setMeasurement(x1_, imu.linearAcceleration(), imu.angularVelocity(), yR.toVector4(), k + 1);
+    estimator_.setMeasurement(x1_, imu.linearAcceleration(), imu.angularVelocity(), measuredOri_.toVector4(), k + 1);
   }
   else
   {
@@ -411,15 +400,15 @@ void TiltVisual::runTiltEstimator(const mc_control::MCController & ctl, const mc
     // acceleration as zero too.
     // When switching from one mode to another, we consider x1hat = x1 before the estimation to avoid discontinuities.
 
-    // If the following variable is set, it means that no contact was detected and thus we are in the case 2 as defined
-    // above.
+    // If the following variable is set, it means that no contact was detected and thus we are in the case 2 as
+    // defined above.
     if(newWorldAnchorKine_.linVel.isSet())
     {
       estimator_.setAlpha(30);
       estimator_.setBeta(0);
       //  estimator_.setGamma(0.1);
-      estimator_.setMeasurement(so::Vector3::Zero(), imu.linearAcceleration(), imu.angularVelocity(), yR.toVector4(),
-                                k + 1);
+      estimator_.setMeasurement(so::Vector3::Zero(), imu.linearAcceleration(), imu.angularVelocity(),
+                                measuredOri_.toVector4(), k + 1);
     }
     else
     {
@@ -435,10 +424,12 @@ void TiltVisual::runTiltEstimator(const mc_control::MCController & ctl, const mc
       estimator_.setControlOriginVelocityInW(worldAnchorKine_.orientation.toMatrix3().transpose()
                                              * worldAnchorKine_.linVel());
 
-      estimator_.setMeasurement(imu.linearAcceleration(), imu.angularVelocity(), yR.toVector4(), k + 1);
+      estimator_.setMeasurement(imu.linearAcceleration(), imu.angularVelocity(), measuredOri_.toVector4(), k + 1);
     }
     x1_ = estimator_.getVirtualLocalVelocityMeasurement();
   }
+
+  measurements_ = estimator_.getMeasurement(estimator_.getMeasurementTime()).transpose();
 
   if(odometryManager_.anchorFrameMethodChanged_) { estimator_.resetImuLocVelHat(); }
 
@@ -615,9 +606,27 @@ void TiltVisual::addToLogger(const mc_control::MCController & ctl,
                              const std::string & category)
 {
   logger.addLogEntry(category + "_estimatedState_x1", [this]() -> so::Vector3 { return xk_.head(3); });
+
+  logger.addLogEntry(category + "_debug_measuredOri_",
+                     [this]() -> Eigen::Quaterniond
+                     {
+                       stateObservation::kine::Orientation ori;
+                       ori.fromVector4((measurements_.tail(4)));
+                       return ori.toQuaternion().inverse();
+                     });
+  logger.addLogEntry(category + "_debug_sigmaPart1_", [this]() -> so::Vector3 { return estimator_.getSigmaPart1(); });
+  logger.addLogEntry(category + "_debug_sigmaPart2_", [this]() -> so::Vector3 { return estimator_.getSigmaPart2(); });
+  logger.addLogEntry(category + "_debug_sigmaPart3_", [this]() -> so::Vector3 { return estimator_.getSigmaPart3(); });
+
   logger.addLogEntry(category + "_estimatedState_x2prime",
                      [this]() -> so::Vector3 { return xk_.segment(3, 3).normalized(); });
-  logger.addLogEntry(category + "_estimatedState_x2", [this]() -> so::Vector3 { return xk_.tail(3).normalized(); });
+  logger.addLogEntry(category + "_estimatedState_x2",
+                     [this]()
+                     {
+                       so::kine::Orientation ori;
+                       ori.fromVector4(xk_.tail(4));
+                       return ori.toQuaternion();
+                     });
   logger.addLogEntry(category + "_realRobotState_x1",
                      [this, &ctl]() -> so::Vector3
                      {
@@ -671,6 +680,7 @@ void TiltVisual::addToLogger(const mc_control::MCController & ctl,
   logger.addLogEntry(category + "_constants_gamma", [this]() -> double { return estimator_.getGamma(); });
   logger.addLogEntry(category + "_constants_rho1", [this]() -> double { return estimator_.getRho1(); });
   logger.addLogEntry(category + "_constants_rho2", [this]() -> double { return estimator_.getRho2(); });
+  logger.addLogEntry(category + "_constants_mu", [this]() -> double { return estimator_.getMu(); });
 
   logger.addLogEntry(category + "_debug_OdometryType",
                      [this]() -> std::string
@@ -704,78 +714,78 @@ void TiltVisual::addToLogger(const mc_control::MCController & ctl,
   logger.addLogEntry(category + "_FloatingBase_world_vel", [this]() -> const sva::MotionVecd & { return velW_; });
   logger.addLogEntry(category + "_debug_x1", [this]() -> const so::Vector3 & { return x1_; });
 
-  logger.addLogEntry(category + "_Hartley_contact1_isSet",
-                     [this]() -> int
-                     {
-                       odometry::LoContactWithSensor & contact =
-                           (*odometryManager_.contactsManager().contacts().begin()).second;
+  // logger.addLogEntry(category + "_Hartley_contact1_isSet",
+  //                    [this]() -> int
+  //                    {
+  //                      odometry::LoContactWithSensor & contact =
+  //                          (*odometryManager_.contactsManager().contacts().begin()).second;
 
-                       if(contact.isSet()) { return 1; }
-                       else { return 0; }
-                     });
-  logger.addLogEntry(category + "_Hartley_contact2_isSet",
-                     [this]() -> int
-                     {
-                       odometry::LoContactWithSensor & contact =
-                           (*std::next(odometryManager_.contactsManager().contacts().begin(), 1)).second;
-                       if(contact.isSet()) { return 1; }
-                       else { return 0; }
-                     });
+  //                      if(contact.isSet()) { return 1; }
+  //                      else { return 0; }
+  //                    });
+  // logger.addLogEntry(category + "_Hartley_contact2_isSet",
+  //                    [this]() -> int
+  //                    {
+  //                      odometry::LoContactWithSensor & contact =
+  //                          (*std::next(odometryManager_.contactsManager().contacts().begin(), 1)).second;
+  //                      if(contact.isSet()) { return 1; }
+  //                      else { return 0; }
+  //                    });
 
-  logger.addLogEntry(category + "_Hartley_contact1_position",
-                     [this, &ctl]() -> so::Vector3
-                     {
-                       auto & realRobot = ctl.realRobot(robot_);
-                       odometry::LoContactWithSensor & contact =
-                           (*odometryManager_.contactsManager().contacts().begin()).second;
-                       sva::PTransformd worldSurfacePose = realRobot.surfacePose(contact.surface());
-                       so::kine::Kinematics imuContactKine =
-                           updatedWorldImuKine_.getInverse()
-                           * conversions::kinematics::fromSva(worldSurfacePose, so::kine::Kinematics::Flags::pose);
+  // logger.addLogEntry(category + "_Hartley_contact1_position",
+  //                    [this, &ctl]() -> so::Vector3
+  //                    {
+  //                      auto & realRobot = ctl.realRobot(robot_);
+  //                      odometry::LoContactWithSensor & contact =
+  //                          (*odometryManager_.contactsManager().contacts().begin()).second;
+  //                      sva::PTransformd worldSurfacePose = realRobot.surfacePose(contact.surface());
+  //                      so::kine::Kinematics imuContactKine =
+  //                          updatedWorldImuKine_.getInverse()
+  //                          * conversions::kinematics::fromSva(worldSurfacePose, so::kine::Kinematics::Flags::pose);
 
-                       return imuContactKine.position();
-                     });
+  //                      return imuContactKine.position();
+  //                    });
 
-  logger.addLogEntry(category + "_Hartley_contact1_orientation",
-                     [this, &ctl]() -> Eigen::Quaterniond
-                     {
-                       auto & realRobot = ctl.realRobot(robot_);
-                       odometry::LoContactWithSensor & contact =
-                           (*odometryManager_.contactsManager().contacts().begin()).second;
-                       sva::PTransformd worldSurfacePose = realRobot.surfacePose(contact.surface());
-                       so::kine::Kinematics imuContactKine =
-                           updatedWorldImuKine_.getInverse()
-                           * conversions::kinematics::fromSva(worldSurfacePose, so::kine::Kinematics::Flags::pose);
+  // logger.addLogEntry(category + "_Hartley_contact1_orientation",
+  //                    [this, &ctl]() -> Eigen::Quaterniond
+  //                    {
+  //                      auto & realRobot = ctl.realRobot(robot_);
+  //                      odometry::LoContactWithSensor & contact =
+  //                          (*odometryManager_.contactsManager().contacts().begin()).second;
+  //                      sva::PTransformd worldSurfacePose = realRobot.surfacePose(contact.surface());
+  //                      so::kine::Kinematics imuContactKine =
+  //                          updatedWorldImuKine_.getInverse()
+  //                          * conversions::kinematics::fromSva(worldSurfacePose, so::kine::Kinematics::Flags::pose);
 
-                       return imuContactKine.orientation;
-                     });
-  logger.addLogEntry(category + "_Hartley_contact2_position",
-                     [this, &ctl]() -> so::Vector3
-                     {
-                       auto & realRobot = ctl.realRobot(robot_);
-                       odometry::LoContactWithSensor & contact =
-                           (*std::next(odometryManager_.contactsManager().contacts().begin(), 1)).second;
-                       sva::PTransformd worldSurfacePose = realRobot.surfacePose(contact.surface());
-                       so::kine::Kinematics imuContactKine =
-                           updatedWorldImuKine_.getInverse()
-                           * conversions::kinematics::fromSva(worldSurfacePose, so::kine::Kinematics::Flags::pose);
+  //                      return imuContactKine.orientation;
+  //                    });
+  // logger.addLogEntry(category + "_Hartley_contact2_position",
+  //                    [this, &ctl]() -> so::Vector3
+  //                    {
+  //                      auto & realRobot = ctl.realRobot(robot_);
+  //                      odometry::LoContactWithSensor & contact =
+  //                          (*std::next(odometryManager_.contactsManager().contacts().begin(), 1)).second;
+  //                      sva::PTransformd worldSurfacePose = realRobot.surfacePose(contact.surface());
+  //                      so::kine::Kinematics imuContactKine =
+  //                          updatedWorldImuKine_.getInverse()
+  //                          * conversions::kinematics::fromSva(worldSurfacePose, so::kine::Kinematics::Flags::pose);
 
-                       return imuContactKine.position();
-                     });
+  //                      return imuContactKine.position();
+  //                    });
 
-  logger.addLogEntry(category + "_Hartley_contact2_orientation",
-                     [this, &ctl]() -> Eigen::Quaterniond
-                     {
-                       auto & realRobot = ctl.realRobot(robot_);
-                       odometry::LoContactWithSensor & contact =
-                           (*std::next(odometryManager_.contactsManager().contacts().begin(), 1)).second;
-                       sva::PTransformd worldSurfacePose = realRobot.surfacePose(contact.surface());
-                       so::kine::Kinematics imuContactKine =
-                           updatedWorldImuKine_.getInverse()
-                           * conversions::kinematics::fromSva(worldSurfacePose, so::kine::Kinematics::Flags::pose);
+  // logger.addLogEntry(category + "_Hartley_contact2_orientation",
+  //                    [this, &ctl]() -> Eigen::Quaterniond
+  //                    {
+  //                      auto & realRobot = ctl.realRobot(robot_);
+  //                      odometry::LoContactWithSensor & contact =
+  //                          (*std::next(odometryManager_.contactsManager().contacts().begin(), 1)).second;
+  //                      sva::PTransformd worldSurfacePose = realRobot.surfacePose(contact.surface());
+  //                      so::kine::Kinematics imuContactKine =
+  //                          updatedWorldImuKine_.getInverse()
+  //                          * conversions::kinematics::fromSva(worldSurfacePose, so::kine::Kinematics::Flags::pose);
 
-                       return imuContactKine.orientation;
-                     });
+  //                      return imuContactKine.orientation;
+  //                    });
 
   logger.addLogEntry(category + "_debug_realWorldImuLocAngVel",
                      [this, &ctl]() -> so::Vector3

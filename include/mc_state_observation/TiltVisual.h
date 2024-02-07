@@ -220,6 +220,9 @@ protected:
   sva::MotionVecd imuVelC_;
   // pose of the IMU in the anchor frame
   sva::PTransformd X_C_IMU_;
+
+  stateObservation::kine::Orientation measuredOri_;
+  stateObservation::Vector measurements_;
 };
 
 } // namespace mc_state_observation
