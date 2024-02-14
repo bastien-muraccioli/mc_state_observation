@@ -539,6 +539,17 @@ void LeggedOdometryManager::removeContactLogEntries(mc_rtc::Logger & logger, con
   conversions::kinematics::removeFromLogger(logger, contact.currentWorldKine_);
 }
 
+void LeggedOdometryManager::correctContacts(const so::Matrix3 & measuredYaw)
+{
+  // we compute the yaw difference
+  so::Matrix3 yawDiff = odometryRobot().posW().rotation().transpose() * measuredYaw;
+
+  for(auto & [_, contact] : contactsManager_.contacts())
+  {
+    contact.worldRefKine_.orientation = so::Matrix3(yawDiff * contact.worldRefKine_.orientation.toMatrix3());
+  }
+}
+
 so::kine::Kinematics & LeggedOdometryManager::getAnchorFramePose(const mc_control::MCController & ctl,
                                                                  const std::string & bodySensorName)
 {
