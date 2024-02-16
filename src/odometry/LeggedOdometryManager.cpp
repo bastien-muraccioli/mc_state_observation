@@ -539,14 +539,22 @@ void LeggedOdometryManager::removeContactLogEntries(mc_rtc::Logger & logger, con
   conversions::kinematics::removeFromLogger(logger, contact.currentWorldKine_);
 }
 
-void LeggedOdometryManager::correctContacts(const so::Matrix3 & measuredYaw)
+void LeggedOdometryManager::correctContactsYaw(const so::Matrix3 & measuredYaw)
 {
   // we compute the yaw difference
-  so::Matrix3 yawDiff = odometryRobot().posW().rotation().transpose() * measuredYaw;
+  so::Matrix3 oriDiff = measuredYaw * odometryRobot().posW().rotation();
+
+  double yawDiff = so::kine::rotationMatrixToYawAxisAgnostic(oriDiff);
+
+  Eigen::AngleAxisd yawDiffAA;
+  yawDiffAA.angle() = yawDiff;
+  yawDiffAA.axis() = so::Vector3::UnitZ();
+
+  so::Matrix3 yawDiffMatrix = yawDiffAA.toRotationMatrix();
 
   for(auto & [_, contact] : contactsManager_.contacts())
   {
-    contact.worldRefKine_.orientation = so::Matrix3(yawDiff * contact.worldRefKine_.orientation.toMatrix3());
+    contact.worldRefKine_.orientation = so::Matrix3(yawDiffMatrix * contact.worldRefKine_.orientation.toMatrix3());
   }
 }
 
