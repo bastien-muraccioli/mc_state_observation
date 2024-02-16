@@ -451,6 +451,7 @@ const so::kine::Kinematics & LeggedOdometryManager::getCurrentContactKinematics(
     // If the contact is detecting using thresholds, we will then consider the sensor frame as
     // the contact surface frame directly.
     contact.currentWorldKine_ = worldSensorKineOdometryRobot;
+    contact.forceNorm(fs.wrenchWithoutGravity(odometryRobot()).force().norm());
   }
   else // the kinematics of the contact are the ones of the associated surface
   {
