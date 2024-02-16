@@ -408,21 +408,12 @@ void LeggedOdometryManager::setNewContact(LoContactWithSensor & contact, const m
 
     // getting the position in the world of the new contact
     const sva::PTransformd & bodyNewContactPoseRobot = forceSensor.X_p_f();
-    so::kine::Kinematics bodyNewContactKine;
-    bodyNewContactKine.setZero(so::kine::Kinematics::Flags::pose);
-    bodyNewContactKine.position = bodyNewContactPoseRobot.translation();
-    bodyNewContactKine.orientation = so::Matrix3(bodyNewContactPoseRobot.rotation().transpose());
+    so::kine::Kinematics bodyNewContactKine =
+        conversions::kinematics::fromSva(bodyNewContactPoseRobot, so::kine::Kinematics::Flags::pose);
 
-    so::kine::Kinematics worldBodyKineOdometryRobot;
-
-    worldBodyKineOdometryRobot.position =
-        odometryRobot().mbc().bodyPosW[odometryRobot().bodyIndexByName(forceSensor.parentBody())].translation();
-    worldBodyKineOdometryRobot.orientation =
-        so::Matrix3(odometryRobot()
-                        .mbc()
-                        .bodyPosW[odometryRobot().bodyIndexByName(forceSensor.parentBody())]
-                        .rotation()
-                        .transpose());
+    const sva::PTransformd & worldBodyPoseOdometryRobot = forceSensor.X_p_f();
+    so::kine::Kinematics worldBodyKineOdometryRobot =
+        conversions::kinematics::fromSva(worldBodyPoseOdometryRobot, so::kine::Kinematics::Flags::pose);
 
     worldNewContactKineOdometryRobot = worldBodyKineOdometryRobot * bodyNewContactKine;
 
