@@ -622,12 +622,12 @@ void TiltVisual::addToLogger(const mc_control::MCController & ctl,
 
   logger.addLogEntry(category + "_estimatedState_x2prime",
                      [this]() -> so::Vector3 { return xk_.segment(3, 3).normalized(); });
-  logger.addLogEntry(category + "_estimatedState_x2",
+  logger.addLogEntry(category + "_estimatedState_R",
                      [this]()
                      {
                        so::kine::Orientation ori;
                        ori.fromVector4(xk_.tail(4));
-                       return ori.toQuaternion();
+                       return ori.toQuaternion().inverse();
                      });
   logger.addLogEntry(category + "_realRobotState_x1",
                      [this, &ctl]() -> so::Vector3

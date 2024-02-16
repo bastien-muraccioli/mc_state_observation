@@ -270,7 +270,13 @@ public:
   stateObservation::kine::Kinematics & getAnchorFramePose(const mc_control::MCController & ctl,
                                                           const std::string & bodySensorName);
 
+  void correctContactsTilt(const stateObservation::Matrix3 & measuredTilt);
   void correctContactsYaw(const stateObservation::Matrix3 & measuredYaw);
+
+  void selectForPositionOdometry(double & sumForcesOrientation,
+                                 stateObservation::Vector3 & totalFbPosition,
+                                 const stateObservation::kine::Kinematics & worldFbPose,
+                                 const mc_rbdyn::Robot & robot);
 
   /// @brief Changes the type of the odometry
   /// @details Version meant to be called by the observer using the odometry during the run through the gui.

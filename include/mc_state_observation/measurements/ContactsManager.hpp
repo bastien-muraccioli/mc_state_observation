@@ -139,7 +139,11 @@ void ContactsManager<ContactT>::updateContacts(const mc_control::MCController & 
   // Handle removed contacts
   for(auto & [_, c] : listContacts_)
   {
-    if(c.wasAlreadySet() && !c.isSet()) { onRemovedContact(c); }
+    if(c.wasAlreadySet() && !c.isSet())
+    {
+      onRemovedContact(c);
+      c.wasAlreadySet(false);
+    }
   }
 }
 
