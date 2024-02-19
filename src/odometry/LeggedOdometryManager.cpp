@@ -433,7 +433,8 @@ void LeggedOdometryManager::setNewContact(LoContactWithSensor & contact, const m
     so::kine::Kinematics bodyNewContactKine =
         conversions::kinematics::fromSva(bodyNewContactPoseRobot, so::kine::Kinematics::Flags::pose);
 
-    const sva::PTransformd & worldBodyPoseOdometryRobot = forceSensor.X_p_f();
+    const sva::PTransformd & worldBodyPoseOdometryRobot =
+        odometryRobot().mbc().bodyPosW[odometryRobot().bodyIndexByName(forceSensor.parentBody())];
     so::kine::Kinematics worldBodyKineOdometryRobot =
         conversions::kinematics::fromSva(worldBodyPoseOdometryRobot, so::kine::Kinematics::Flags::pose);
 
