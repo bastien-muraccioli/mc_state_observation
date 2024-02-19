@@ -349,6 +349,9 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
   // update of the pose of the floating base of the odometry robot in the world frame before creating the new contacts
   updateOdometryRobot(ctl, vel, acc);
 
+  // we correct the reference position of the contacts in the world
+  if(posUpdatable) { correctContactsPos(robot); }
+
   // computation of the reference kinematics of the newly set contacts in the world. We cannot use the onNewContacts
   // function as it is used at the beginning of the iteration and we need to compute this at the end
   for(auto * nContact : newContacts) { setNewContact(*nContact, robot); }
@@ -548,6 +551,14 @@ void LeggedOdometryManager::removeContactLogEntries(mc_rtc::Logger & logger, con
   conversions::kinematics::removeFromLogger(logger, contact.worldRefKine_);
   conversions::kinematics::removeFromLogger(logger, contact.currentWorldFbPose_);
   conversions::kinematics::removeFromLogger(logger, contact.currentWorldKine_);
+}
+
+void LeggedOdometryManager::correctContactsPos(const mc_rbdyn::Robot & robot)
+{
+  for(auto & [_, contact] : contactsManager_.contacts())
+  {
+    if(contact.isSet()) { setNewContact(contact, robot); }
+  }
 }
 
 void LeggedOdometryManager::correctContactsTilt(const so::Matrix3 & measuredTilt)

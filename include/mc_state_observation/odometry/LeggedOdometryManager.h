@@ -273,6 +273,8 @@ public:
   void correctContactsTilt(const stateObservation::Matrix3 & measuredTilt);
   void correctContactsYaw(const stateObservation::Matrix3 & measuredYaw);
 
+  void correctContactsPos(const mc_rbdyn::Robot & robot);
+
   void selectForPositionOdometry(double & sumForcesOrientation,
                                  stateObservation::Vector3 & totalFbPosition,
                                  const stateObservation::kine::Kinematics & worldFbPose,
