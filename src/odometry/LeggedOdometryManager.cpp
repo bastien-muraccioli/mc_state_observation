@@ -153,6 +153,34 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl,
   runPvt(ctl, logger, pose, &tilt, &vel, &acc);
 }
 
+void LeggedOdometryManager::runWithFullAttitude(const mc_control::MCController & ctl,
+                                                mc_rtc::Logger & logger,
+                                                sva::PTransformd & pose,
+                                                const stateObservation::Matrix3 & attitude,
+                                                sva::MotionVecd * vel,
+                                                sva::MotionVecd * acc)
+{
+  updateJointsConfiguration(ctl);
+  odometryRobot().posW(fbPose_);
+
+  // we set the velocity and acceleration to zero as they will be compensated anyway as we compute the
+  // successive poses in the local frame
+  sva::MotionVecd zeroMotion;
+  zeroMotion.linear() = so::Vector3::Zero();
+  zeroMotion.angular() = so::Vector3::Zero();
+  odometryRobot().velW(zeroMotion);
+  odometryRobot().accW(zeroMotion);
+
+  odometryRobot().forwardKinematics();
+  odometryRobot().forwardVelocity();
+  odometryRobot().forwardAcceleration();
+
+  updateFbAndContactsWithFullAttitude(ctl, logger, attitude, vel, acc);
+
+  // updates the floating base kinematics in the observer
+  updateFbKinematicsPvt(pose, vel, acc);
+}
+
 void LeggedOdometryManager::runPvt(const mc_control::MCController & ctl,
                                    mc_rtc::Logger & logger,
                                    sva::PTransformd & pose,
@@ -279,7 +307,7 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
     posUpdatable = true;
 
     // we update the kinematics of the contact in the world obtained from the floating base and the sensor reading
-        getCurrentContactKinematics(maintainedContact, robot.forceSensor(maintainedContact.name()));
+    getCurrentContactKinematics(maintainedContact, robot.forceSensor(maintainedContact.name()));
   };
 
   auto onRemovedContact = [this, &logger](LoContactWithSensor & removedContact)
@@ -287,8 +315,6 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
 
   // detects the contacts currently set with the environment
   contactsManager().updateContacts(ctl, robotName_, onNewContact, onMaintainedContact, onRemovedContact);
-
-  correctContactsTilt(tilt);
 
   // selects the contacts to use for the yaw odometry. We cannot call it in the onMaintainedContact function as it is
   // looping over all the maintained contact and not used on each contact separately
@@ -338,6 +364,85 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
     fbPose_.rotation() =
         so::kine::mergeRoll1Pitch1WithYaw2AxisAgnostic(tilt, fbPose_.rotation().transpose()).transpose();
   }
+
+  // we update the orientation of the floating base
+  odometryRobot().posW(fbPose_);
+  odometryRobot().forwardKinematics();
+
+  correctContactsOri(robot);
+
+  // if we can update the position, we compute the weighted average of the position obtained from the contacts
+  if(posUpdatable)
+  {
+    selectForPositionOdometry(sumForces_position, totalFbPosition, worldFbPose, robot);
+    fbPose_.translation() = totalFbPosition / sumForces_position;
+  }
+
+  // update of the pose of the floating base of the odometry robot in the world frame before creating the new contacts
+  updateOdometryRobot(ctl, vel, acc);
+
+  // we correct the reference position of the contacts in the world
+  if(posUpdatable) { correctContactsPos(robot); }
+
+  // computation of the reference kinematics of the newly set contacts in the world. We cannot use the onNewContacts
+  // function as it is used at the beginning of the iteration and we need to compute this at the end
+  for(auto * nContact : newContacts) { setNewContact(*nContact, robot); }
+}
+
+void LeggedOdometryManager::updateFbAndContactsWithFullAttitude(const mc_control::MCController & ctl,
+                                                                mc_rtc::Logger & logger,
+                                                                const stateObservation::Matrix3 & attitude,
+                                                                sva::MotionVecd * vel,
+                                                                sva::MotionVecd * acc)
+{
+  // If the position and orientation of the floating base can be updated using contacts (that were already set on the
+  // previous iteration), they are updated, else we keep the previous estimation. Then we estimate the pose of new
+  // contacts using the obtained pose of the floating base.
+
+  const auto & robot = ctl.robot(robotName_);
+
+  double sumForces_position = 0.0;
+
+  // indicates if the position can be updated from the current contacts or not
+  bool posUpdatable = false;
+
+  // force weighted sum of the estimated floating base positions
+  so::Vector3 totalFbPosition = so::Vector3::Zero();
+
+  // Needed later on
+  std::vector<LoContactWithSensor *> newContacts;
+
+  // current estimate of the pose of the robot in the world
+  const so::kine::Kinematics worldFbPose =
+      conversions::kinematics::fromSva(odometryRobot().posW(), so::kine::Kinematics::Flags::pose);
+
+  auto onNewContact = [this, &logger, &newContacts](LoContactWithSensor & newContact)
+  {
+    addContactLogEntries(logger, newContact);
+    newContacts.push_back(&newContact);
+  };
+  auto onMaintainedContact = [this, &robot, &posUpdatable](LoContactWithSensor & maintainedContact)
+  {
+    // indicates that we can compute the position of the floating base using the contacts
+    posUpdatable = true;
+
+    // we update the kinematics of the contact in the world obtained from the floating base and the sensor reading
+    getCurrentContactKinematics(maintainedContact, robot.forceSensor(maintainedContact.name()));
+  };
+
+  auto onRemovedContact = [this, &logger](LoContactWithSensor & removedContact)
+  { removeContactLogEntries(logger, removedContact); };
+
+  // detects the contacts currently set with the environment
+  contactsManager().updateContacts(ctl, robotName_, onNewContact, onMaintainedContact, onRemovedContact);
+
+  // we update the orientation of the floating base
+  fbPose_.rotation() = attitude.transpose();
+  odometryRobot().posW(fbPose_);
+  odometryRobot().forwardKinematics();
+
+  // we correct the orientation of contacts
+  correctContactsOri(robot);
 
   // if we can update the position, we compute the weighted average of the position obtained from the contacts
   if(posUpdatable)
@@ -554,56 +659,26 @@ void LeggedOdometryManager::removeContactLogEntries(mc_rtc::Logger & logger, con
   conversions::kinematics::removeFromLogger(logger, contact.currentWorldKine_);
 }
 
-void LeggedOdometryManager::correctContactsPos(const mc_rbdyn::Robot & robot)
+void LeggedOdometryManager::correctContactsOri(const mc_rbdyn::Robot & robot)
 {
-  for(auto & [_, contact] : contactsManager_.contacts())
-  {
-    if(contact.isSet()) { setNewContact(contact, robot); }
-  }
-}
-
-void LeggedOdometryManager::correctContactsTilt(const so::Matrix3 & measuredTilt)
-{
-  // we compute the yaw difference
-  so::Matrix3 tiltDiff = measuredTilt * odometryRobot().posW().rotation();
-
-  // oriDiff.setIdentity();
-
   for(auto & [_, contact] : contactsManager_.contacts())
   {
     if(contact.isSet())
     {
-      so::Matrix3 fullCorrectedOri = so::Matrix3(tiltDiff * contact.worldRefKine_.orientation.toMatrix3());
-
-      contact.worldRefKine_.orientation = so::kine::mergeRoll1Pitch1WithYaw2AxisAgnostic(
-          fullCorrectedOri, contact.worldRefKine_.orientation.toMatrix3());
+      contact.worldRefKine_.orientation =
+          getCurrentContactKinematics(contact, robot.forceSensor(contact.name())).orientation.toMatrix3();
     }
   }
 }
 
-void LeggedOdometryManager::correctContactsYaw(const so::Matrix3 & measuredYaw)
+void LeggedOdometryManager::correctContactsPos(const mc_rbdyn::Robot & robot)
 {
-  // we compute the yaw difference
-  so::Matrix3 oriDiff = measuredYaw * odometryRobot().posW().rotation();
-
-  /*
-  double yawDiff = so::kine::rotationMatrixToYawAxisAgnostic(oriDiff);
-
-  Eigen::AngleAxisd yawDiffAA;
-  yawDiffAA.angle() = yawDiff;
-  yawDiffAA.axis() = so::Vector3::UnitZ();
-
-  so::Matrix3 yawDiffMatrix = yawDiffAA.toRotationMatrix();
-  */
-
   for(auto & [_, contact] : contactsManager_.contacts())
   {
     if(contact.isSet())
     {
-      so::Matrix3 fullCorrectedOri = so::Matrix3(oriDiff * contact.worldRefKine_.orientation.toMatrix3());
-
-      contact.worldRefKine_.orientation = so::kine::mergeRoll1Pitch1WithYaw2AxisAgnostic(
-          contact.worldRefKine_.orientation.toMatrix3(), fullCorrectedOri);
+      contact.worldRefKine_.position =
+          getCurrentContactKinematics(contact, robot.forceSensor(contact.name())).position();
     }
   }
 }

@@ -260,6 +260,13 @@ public:
            sva::MotionVecd & vel,
            sva::MotionVecd & acc);
 
+  void runWithFullAttitude(const mc_control::MCController & ctl,
+                           mc_rtc::Logger & logger,
+                           sva::PTransformd & pose,
+                           const stateObservation::Matrix3 & attitude,
+                           sva::MotionVecd * vel = nullptr,
+                           sva::MotionVecd * acc = nullptr);
+
   /// @brief Returns the pose of the odometry robot's anchor frame based on the current floating base and encoders.
   /// @details The anchor frame can can from 2 sources:
   /// - 1: contacts are detected and can be used to compute the anchor frame.
@@ -270,10 +277,8 @@ public:
   stateObservation::kine::Kinematics & getAnchorFramePose(const mc_control::MCController & ctl,
                                                           const std::string & bodySensorName);
 
-  void correctContactsTilt(const stateObservation::Matrix3 & measuredTilt);
-  void correctContactsYaw(const stateObservation::Matrix3 & measuredYaw);
-
   void correctContactsPos(const mc_rbdyn::Robot & robot);
+  void correctContactsOri(const mc_rbdyn::Robot & robot);
 
   void selectForPositionOdometry(double & sumForcesOrientation,
                                  stateObservation::Vector3 & totalFbPosition,
@@ -349,6 +354,12 @@ private:
                            sva::MotionVecd * vel = nullptr,
                            sva::MotionVecd * acc = nullptr);
 
+  void updateFbAndContactsWithFullAttitude(const mc_control::MCController & ctl,
+                                           mc_rtc::Logger & logger,
+                                           const stateObservation::Matrix3 & attitude,
+                                           sva::MotionVecd * vel = nullptr,
+                                           sva::MotionVecd * acc = nullptr);
+
   /// @brief Updates the floating base kinematics given as argument by the observer.
   /// @details Must be called after \ref updateFbAndContacts(const mc_control::MCController & ctl, mc_rtc::Logger &,
   /// const stateObservation::Matrix3 &, sva::MotionVecd *, sva::MotionVecd *).
@@ -368,12 +379,14 @@ private:
   /// @param measurementsRobot The robot containing the contact's force sensor
   void setNewContact(LoContactWithSensor & contact, const mc_rbdyn::Robot & measurementsRobot);
 
-  /// @brief Computes the kinematics of the contact attached to the odometry robot in the world frame.
+  /// @brief Computes the kinematics of the contact attached to the odometry robot in the world frame. Also updates the
+  /// reading of the associated force sensor.
   /// @param contact Contact of which we want to compute the kinematics
   /// @param fs The force sensor associated to the contact
   /// @return stateObservation::kine::Kinematics &
   const stateObservation::kine::Kinematics & getCurrentContactKinematics(LoContactWithSensor & contact,
                                                                          const mc_rbdyn::ForceSensor & fs);
+
   /// @brief Selects which contacts to use for the orientation odometry and computes the orientation of the floating
   /// base for each of them
   /// @details The two contacts with the highest measured force are selected. The contacts at hands are ignored because

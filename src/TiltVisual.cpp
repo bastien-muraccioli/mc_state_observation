@@ -454,9 +454,7 @@ void TiltVisual::runTiltEstimator(const mc_control::MCController & ctl, const mc
     // linear velocity of the IMU.
     auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
 
-    odometryManager_.correctContactsYaw(R_0_fb_);
-
-    odometryManager_.run(ctl, logger, poseW_, R_0_fb_);
+    odometryManager_.runWithFullAttitude(ctl, logger, poseW_, R_0_fb_);
   }
 
   updatePoseAndVel(xk_.head(3), imu.angularVelocity());
