@@ -143,7 +143,7 @@ void TiltVisual::reset(const mc_control::MCController & ctl)
   so::kine::Orientation initOri(cOri);
   so::Vector3 initX2 = cOri * so::Vector3::UnitZ(); // so::kine::rotationMatrixToRotationVector(cOri.transpose());
 
-  estimator_.initEstimator(so::Vector3::Zero(), initX2, initOri.toVector4());
+  estimator_.initEstimator(so::Vector3::Zero(), initX2, initOri.inverse().toVector4());
 
   /* Initialization of the variables */
   X_0_C_ = sva::PTransformd::Identity();
