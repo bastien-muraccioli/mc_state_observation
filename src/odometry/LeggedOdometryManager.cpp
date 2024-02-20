@@ -382,7 +382,7 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
   updateOdometryRobot(ctl, vel, acc);
 
   // we correct the reference position of the contacts in the world
-  if(posUpdatable) { correctContactsPos(robot); }
+  if(posUpdatable) { correctContactsPosition(robot); }
 
   // computation of the reference kinematics of the newly set contacts in the world. We cannot use the onNewContacts
   // function as it is used at the beginning of the iteration and we need to compute this at the end
@@ -455,7 +455,7 @@ void LeggedOdometryManager::updateFbAndContactsWithFullAttitude(const mc_control
   updateOdometryRobot(ctl, vel, acc);
 
   // we correct the reference position of the contacts in the world
-  if(posUpdatable) { correctContactsPos(robot); }
+  if(posUpdatable) { correctContactsPosition(robot); }
 
   // computation of the reference kinematics of the newly set contacts in the world. We cannot use the onNewContacts
   // function as it is used at the beginning of the iteration and we need to compute this at the end
@@ -671,7 +671,7 @@ void LeggedOdometryManager::correctContactsOri(const mc_rbdyn::Robot & robot)
   }
 }
 
-void LeggedOdometryManager::correctContactsPos(const mc_rbdyn::Robot & robot)
+void LeggedOdometryManager::correctContactsPosition(const mc_rbdyn::Robot & robot)
 {
   for(auto & [_, contact] : contactsManager_.contacts())
   {

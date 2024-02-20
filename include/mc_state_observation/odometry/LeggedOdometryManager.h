@@ -260,6 +260,16 @@ public:
            sva::MotionVecd & vel,
            sva::MotionVecd & acc);
 
+  /// @brief Core function runing the odometry. Special version that receives the full attitude as an input.
+  /// @details The given attitude will be used to track the floating base's position and correct the contacts
+  /// orientation and position on each iteration.
+  /// @param ctl Controller
+  /// @param logger Logger
+  /// @param pose The pose of the floating base in the world that we want to update
+  /// @param attitude Full attitude of the floating base
+  /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
+  /// different from noUpdate, otherwise, it will not be updated.
+  /// @param acc The acceleration of the floating base in the world that we want to update
   void runWithFullAttitude(const mc_control::MCController & ctl,
                            mc_rtc::Logger & logger,
                            sva::PTransformd & pose,
@@ -276,9 +286,6 @@ public:
   /// @param bodySensorName name of the body sensor.
   stateObservation::kine::Kinematics & getAnchorFramePose(const mc_control::MCController & ctl,
                                                           const std::string & bodySensorName);
-
-  void correctContactsPos(const mc_rbdyn::Robot & robot);
-  void correctContactsOri(const mc_rbdyn::Robot & robot);
 
   void selectForPositionOdometry(double & sumForcesOrientation,
                                  stateObservation::Vector3 & totalFbPosition,
@@ -354,11 +361,30 @@ private:
                            sva::MotionVecd * vel = nullptr,
                            sva::MotionVecd * acc = nullptr);
 
+  /// @brief Updates the pose of the contacts and estimates the floating base from them. Special version that receives
+  /// the full attitude of the floating base as input.
+  /// @details Only the position of the floating base will be updated by the odometry.
+  /// @param ctl Controller.
+  /// @param logger Logger.
+  /// @param attitude The floating base's attitude
+  /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
+  /// different from noUpdate, otherwise, it will not be updated.
+  /// @param acc The floating base's tilt (only the yaw is estimated).
   void updateFbAndContactsWithFullAttitude(const mc_control::MCController & ctl,
                                            mc_rtc::Logger & logger,
                                            const stateObservation::Matrix3 & attitude,
                                            sva::MotionVecd * vel = nullptr,
                                            sva::MotionVecd * acc = nullptr);
+
+  /// @brief Corrects the reference orientation of the contacts after the update of the floating base's orientation.
+  /// @details The new reference orientation is obtained by forward kinematics from the updated orientation of the
+  /// floating base.
+  /// @param robot robot used to access the force sensor of the contact
+  void correctContactsOri(const mc_rbdyn::Robot & robot);
+  /// @brief Corrects the reference position of the contacts after the update of the floating base's position.
+  /// @details The new reference position is obtained by forward kinematics from the updated pose of the floating base.
+  /// @param robot robot used to access the force sensor of the contact
+  void correctContactsPosition(const mc_rbdyn::Robot & robot);
 
   /// @brief Updates the floating base kinematics given as argument by the observer.
   /// @details Must be called after \ref updateFbAndContacts(const mc_control::MCController & ctl, mc_rtc::Logger &,
