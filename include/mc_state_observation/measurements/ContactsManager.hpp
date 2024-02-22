@@ -1,4 +1,5 @@
 #pragma once
+#include <mc_rtc/logging.h>
 #include <mc_state_observation/measurements/ContactsManager.h>
 
 namespace mc_state_observation::measurements
@@ -134,6 +135,9 @@ void ContactsManager<ContactT>::updateContacts(const mc_control::MCController & 
       break;
     case Solver:
       findContactsFromSolver(ctl, robotName, onNewContact, onMaintainedContact, onAddedContact);
+      break;
+    case Undefined:
+      mc_rtc::log::error_and_throw("No contacts detection method was defined.");
       break;
   }
   // Handle removed contacts

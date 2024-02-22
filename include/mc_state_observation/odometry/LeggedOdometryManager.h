@@ -1,9 +1,7 @@
 #pragma once
-
 #include <mc_state_observation/measurements/ContactsManager.h>
 #include <mc_state_observation/measurements/measurements.h>
-
-#include <state-observation/dynamics-estimators/kinetics-observer.hpp>
+#include <state-observation/tools/rigid-body-kinematics.hpp>
 
 namespace mc_state_observation::odometry
 {
@@ -192,17 +190,35 @@ public:
   /// @param ctl Controller
   /// @param pose The pose of the floating base in the world that we want to update
   /// @param logger Logger
-  void run(const mc_control::MCController & ctl, mc_rtc::Logger & logger, sva::PTransformd & pose);
+  template<typename OnNewContactObserver = std::nullptr_t,
+           typename OnMaintainedContactObserver = std::nullptr_t,
+           typename OnRemovedContactObserver = std::nullptr_t,
+           typename OnAddedContactObserver = std::nullptr_t>
+  void run(const mc_control::MCController & ctl,
+           mc_rtc::Logger & logger,
+           sva::PTransformd & pose,
+           OnNewContactObserver onNewContactObserver = {},
+           OnMaintainedContactObserver onMaintainedContactObserver = {},
+           OnRemovedContactObserver onRemovedContactObserver = {},
+           OnAddedContactObserver onAddedContactObserver = {});
 
   /// @brief Core function runing the odometry.
   /// @param ctl Controller
   /// @param logger Logger
   /// @param pose The pose of the floating base in the world that we want to update
   /// @param tilt The floating base's tilt (only the yaw is estimated).
+  template<typename OnNewContactObserver = std::nullptr_t,
+           typename OnMaintainedContactObserver = std::nullptr_t,
+           typename OnRemovedContactObserver = std::nullptr_t,
+           typename OnAddedContactObserver = std::nullptr_t>
   void run(const mc_control::MCController & ctl,
            mc_rtc::Logger & logger,
            sva::PTransformd & pose,
-           const stateObservation::Matrix3 & tilt);
+           const stateObservation::Matrix3 & tilt,
+           OnNewContactObserver onNewContactObserver = {},
+           OnMaintainedContactObserver onMaintainedContactObserver = {},
+           OnRemovedContactObserver onRemovedContactObserver = {},
+           OnAddedContactObserver onAddedContactObserver = {});
 
   /// @brief @copybrief run(const mc_control::MCController &, mc_rtc::Logger &, sva::PTransformd &, const
   /// stateObservation::Matrix3 &, sva::MotionVecd &). This version uses the tilt estimated by the upstream observers.
@@ -211,10 +227,18 @@ public:
   /// @param logger Logger
   /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
   /// different from noUpdate, otherwise, it will not be updated.
+  template<typename OnNewContactObserver = std::nullptr_t,
+           typename OnMaintainedContactObserver = std::nullptr_t,
+           typename OnRemovedContactObserver = std::nullptr_t,
+           typename OnAddedContactObserver = std::nullptr_t>
   void run(const mc_control::MCController & ctl,
            mc_rtc::Logger & logger,
            sva::PTransformd & pose,
-           sva::MotionVecd & vel);
+           sva::MotionVecd & vel,
+           OnNewContactObserver onNewContactObserver = {},
+           OnMaintainedContactObserver onMaintainedContactObserver = {},
+           OnRemovedContactObserver onRemovedContactObserver = {},
+           OnAddedContactObserver onAddedContactObserver = {});
 
   /// @brief Core function runing the odometry.
   /// @param ctl Controller
@@ -223,11 +247,19 @@ public:
   /// @param tilt The floating base's tilt (only the yaw is estimated).
   /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
   /// different from noUpdate, otherwise, it will not be updated.
+  template<typename OnNewContactObserver = std::nullptr_t,
+           typename OnMaintainedContactObserver = std::nullptr_t,
+           typename OnRemovedContactObserver = std::nullptr_t,
+           typename OnAddedContactObserver = std::nullptr_t>
   void run(const mc_control::MCController & ctl,
            mc_rtc::Logger & logger,
            sva::PTransformd & pose,
            const stateObservation::Matrix3 & tilt,
-           sva::MotionVecd & vel);
+           sva::MotionVecd & vel,
+           OnNewContactObserver onNewContactObserver = {},
+           OnMaintainedContactObserver onMaintainedContactObserver = {},
+           OnRemovedContactObserver onRemovedContactObserver = {},
+           OnAddedContactObserver onAddedContactObserver = {});
 
   /// @brief @copybrief run(const mc_control::MCController & ctl, mc_rtc::Logger &,  sva::PTransformd &, const
   /// stateObservation::Matrix3 &, sva::MotionVecd &, sva::MotionVecd &) run(const mc_control::MCController &,
@@ -239,11 +271,19 @@ public:
   /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
   /// different from noUpdate, otherwise, it will not be updated.
   /// @param acc The acceleration of the floating base in the world that we want to update
+  template<typename OnNewContactObserver = std::nullptr_t,
+           typename OnMaintainedContactObserver = std::nullptr_t,
+           typename OnRemovedContactObserver = std::nullptr_t,
+           typename OnAddedContactObserver = std::nullptr_t>
   void run(const mc_control::MCController & ctl,
            mc_rtc::Logger & logger,
            sva::PTransformd & pose,
            sva::MotionVecd & vel,
-           sva::MotionVecd & acc);
+           sva::MotionVecd & acc,
+           OnNewContactObserver onNewContactObserver = {},
+           OnMaintainedContactObserver onMaintainedContactObserver = {},
+           OnRemovedContactObserver onRemovedContactObserver = {},
+           OnAddedContactObserver onAddedContactObserver = {});
 
   /// @brief Core function runing the odometry.
   /// @param ctl Controller
@@ -253,12 +293,20 @@ public:
   /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
   /// different from noUpdate, otherwise, it will not be updated.
   /// @param acc The acceleration of the floating base in the world that we want to update
+  template<typename OnNewContactObserver = std::nullptr_t,
+           typename OnMaintainedContactObserver = std::nullptr_t,
+           typename OnRemovedContactObserver = std::nullptr_t,
+           typename OnAddedContactObserver = std::nullptr_t>
   void run(const mc_control::MCController & ctl,
            mc_rtc::Logger & logger,
            sva::PTransformd & pose,
            const stateObservation::Matrix3 & tilt,
            sva::MotionVecd & vel,
-           sva::MotionVecd & acc);
+           sva::MotionVecd & acc,
+           OnNewContactObserver onNewContactObserver = {},
+           OnMaintainedContactObserver onMaintainedContactObserver = {},
+           OnRemovedContactObserver onRemovedContactObserver = {},
+           OnAddedContactObserver onAddedContactObserver = {});
 
   /// @brief Core function runing the odometry. Special version that receives the full attitude as an input.
   /// @details The given attitude will be used to track the floating base's position and correct the contacts
@@ -270,12 +318,20 @@ public:
   /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
   /// different from noUpdate, otherwise, it will not be updated.
   /// @param acc The acceleration of the floating base in the world that we want to update
+  template<typename OnNewContactObserver = std::nullptr_t,
+           typename OnMaintainedContactObserver = std::nullptr_t,
+           typename OnRemovedContactObserver = std::nullptr_t,
+           typename OnAddedContactObserver = std::nullptr_t>
   void runWithFullAttitude(const mc_control::MCController & ctl,
                            mc_rtc::Logger & logger,
                            sva::PTransformd & pose,
                            const stateObservation::Matrix3 & attitude,
                            sva::MotionVecd * vel = nullptr,
-                           sva::MotionVecd * acc = nullptr);
+                           sva::MotionVecd * acc = nullptr,
+                           OnNewContactObserver onNewContactObserver = {},
+                           OnMaintainedContactObserver onMaintainedContactObserver = {},
+                           OnRemovedContactObserver onRemovedContactObserver = {},
+                           OnAddedContactObserver onAddedContactObserver = {});
 
   /// @brief Returns the pose of the odometry robot's anchor frame based on the current floating base and encoders.
   /// @details The anchor frame can can from 2 sources:
@@ -324,12 +380,20 @@ private:
   /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
   /// different from noUpdate, otherwise, it will not be updated.
   /// @param acc The acceleration of the floating base in the world that we want to update
+  template<typename OnNewContactObserver = std::nullptr_t,
+           typename OnMaintainedContactObserver = std::nullptr_t,
+           typename OnRemovedContactObserver = std::nullptr_t,
+           typename OnAddedContactObserver = std::nullptr_t>
   void runPvt(const mc_control::MCController & ctl,
               mc_rtc::Logger & logger,
               sva::PTransformd & pose,
               const stateObservation::Matrix3 * tilt = nullptr,
               sva::MotionVecd * vel = nullptr,
-              sva::MotionVecd * acc = nullptr);
+              sva::MotionVecd * acc = nullptr,
+              OnNewContactObserver onNewContactObserver = {},
+              OnMaintainedContactObserver onMaintainedContactObserver = {},
+              OnRemovedContactObserver onRemovedContactObserver = {},
+              OnAddedContactObserver onAddedContactObserver = {});
 
   /// @brief Updates the floating base kinematics given as argument by the observer.
   /// @details Beware, only the pose is updated by the odometry, the 6D velocity (except if not updated by an upstream
@@ -355,11 +419,19 @@ private:
   /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
   /// different from noUpdate, otherwise, it will not be updated.
   /// @param acc The floating base's tilt (only the yaw is estimated).
+  template<typename OnNewContactObserver = std::nullptr_t,
+           typename OnMaintainedContactObserver = std::nullptr_t,
+           typename OnRemovedContactObserver = std::nullptr_t,
+           typename OnAddedContactObserver = std::nullptr_t>
   void updateFbAndContacts(const mc_control::MCController & ctl,
                            mc_rtc::Logger & logger,
                            const stateObservation::Matrix3 & tilt,
                            sva::MotionVecd * vel = nullptr,
-                           sva::MotionVecd * acc = nullptr);
+                           sva::MotionVecd * acc = nullptr,
+                           OnNewContactObserver onNewContactObserver = {},
+                           OnMaintainedContactObserver onMaintainedContactObserver = {},
+                           OnRemovedContactObserver onRemovedContactObserver = {},
+                           OnAddedContactObserver onAddedContactObserver = {});
 
   /// @brief Updates the pose of the contacts and estimates the floating base from them. Special version that receives
   /// the full attitude of the floating base as input.
@@ -370,11 +442,19 @@ private:
   /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
   /// different from noUpdate, otherwise, it will not be updated.
   /// @param acc The floating base's tilt (only the yaw is estimated).
+  template<typename OnNewContactObserver = std::nullptr_t,
+           typename OnMaintainedContactObserver = std::nullptr_t,
+           typename OnRemovedContactObserver = std::nullptr_t,
+           typename OnAddedContactObserver = std::nullptr_t>
   void updateFbAndContactsWithFullAttitude(const mc_control::MCController & ctl,
                                            mc_rtc::Logger & logger,
                                            const stateObservation::Matrix3 & attitude,
                                            sva::MotionVecd * vel = nullptr,
-                                           sva::MotionVecd * acc = nullptr);
+                                           sva::MotionVecd * acc = nullptr,
+                                           OnNewContactObserver onNewContactObserver = {},
+                                           OnMaintainedContactObserver onMaintainedContactObserver = {},
+                                           OnRemovedContactObserver onRemovedContactObserver = {},
+                                           OnAddedContactObserver onAddedContactObserver = {});
 
   /// @brief Corrects the reference orientation of the contacts after the update of the floating base's orientation.
   /// @details The new reference orientation is obtained by forward kinematics from the updated orientation of the
@@ -470,3 +550,5 @@ public:
 };
 
 } // namespace mc_state_observation::odometry
+
+#include <mc_state_observation/odometry/LeggedOdometryManager.hpp>

@@ -3,8 +3,6 @@
 #include "mc_state_observation/measurements/measurements.h"
 #include <mc_state_observation/TiltVisual.h>
 #include <mc_state_observation/gui_helpers.h>
-
-#include <mc_state_observation/conversions/kinematics.h>
 namespace mc_state_observation
 {
 
