@@ -39,6 +39,8 @@ public:
   stateObservation::kine::Kinematics currentWorldFbPose_;
   // current estimation of the kinematics of the contact in the world
   stateObservation::kine::Kinematics currentWorldKine_;
+  // kinematics of the frame of the floating base in the frame of the contact, obtained by forward kinematics.
+  stateObservation::kine::Kinematics contactFbKine_;
 };
 
 /// @brief Structure that implements all the necessary functions to perform legged odometry.
@@ -392,11 +394,6 @@ public:
   stateObservation::kine::Kinematics & getAnchorFramePose(const mc_control::MCController & ctl,
                                                           const std::string & bodySensorName);
 
-  void selectForPositionOdometry(double & sumForcesOrientation,
-                                 stateObservation::Vector3 & totalFbPosition,
-                                 const stateObservation::kine::Kinematics & worldFbPose,
-                                 const mc_rbdyn::Robot & robot);
-
   /// @brief Changes the type of the odometry
   /// @details Version meant to be called by the observer using the odometry during the run through the gui.
   /// @param newOdometryType The string naming the new type of odometry to use.
@@ -530,11 +527,11 @@ private:
   /// @details The new reference orientation is obtained by forward kinematics from the updated orientation of the
   /// floating base.
   /// @param robot robot used to access the force sensor of the contact
-  void correctContactsOri(const mc_rbdyn::Robot & robot);
+  void correctContactOri(LoContactWithSensor & contact, const mc_rbdyn::Robot & robot);
   /// @brief Corrects the reference position of the contacts after the update of the floating base's position.
   /// @details The new reference position is obtained by forward kinematics from the updated pose of the floating base.
   /// @param robot robot used to access the force sensor of the contact
-  void correctContactsPosition(const mc_rbdyn::Robot & robot);
+  void correctContactPosition(LoContactWithSensor & contact, const mc_rbdyn::Robot & robot);
 
   /// @brief Updates the floating base kinematics given as argument by the observer.
   /// @details Must be called after \ref updateFbAndContacts(const mc_control::MCController & ctl, mc_rtc::Logger &,
@@ -569,11 +566,8 @@ private:
   /// their orientation is less trustable.
   /// @param oriUpdatable Indicates that contacts can be used to estimated the orientation.
   /// @param sumForcesOrientation Sum of the forces measured at the contacts used for the orientation estimation
-  /// @param worldFbPose Current estimate of the pose of the floating base in the world.
-  void selectForOrientationOdometry(bool & oriUpdatable,
-                                    double & sumForcesOrientation,
-                                    const stateObservation::kine::Kinematics & worldFbPose);
-
+  void selectForOrientationOdometry(bool & oriUpdatable, double & sumForcesOrientation);
+  void selectForPositionOdometry(double & sumForces_position, stateObservation::Vector3 & totalFbPosition);
   /// @brief Add the log entries corresponding to the contact.
   /// @param logger
   /// @param contactName

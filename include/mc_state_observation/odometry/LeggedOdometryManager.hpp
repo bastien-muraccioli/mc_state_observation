@@ -232,6 +232,7 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
 
   // Needed later on
   std::vector<LoContactWithSensor *> newContacts;
+  std::vector<LoContactWithSensor *> maintainedContacts;
 
   // current estimate of the pose of the robot in the world
   const stateObservation::kine::Kinematics worldFbPose =
@@ -239,31 +240,36 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
 
   auto onNewContact = [this, &logger, &newContacts, &onNewContactObserver](LoContactWithSensor & newContact)
   {
-    if constexpr(!std::is_same_v<OnNewContactObserver, std::nullptr_t>) { onNewContactObserver(newContact); }
     addContactLogEntries(logger, newContact);
     newContacts.push_back(&newContact);
+    if constexpr(!std::is_same_v<OnNewContactObserver, std::nullptr_t>) { onNewContactObserver(newContact); }
   };
-  auto onMaintainedContact =
-      [this, &robot, &posUpdatable, &onMaintainedContactObserver](LoContactWithSensor & maintainedContact)
+  auto onMaintainedContact = [this, &robot, &worldFbPose, &maintainedContacts, &posUpdatable,
+                              &onMaintainedContactObserver](LoContactWithSensor & maintainedContact)
   {
-    if constexpr(!std::is_same_v<OnMaintainedContactObserver, std::nullptr_t>)
-    {
-      onMaintainedContactObserver(maintainedContact);
-    }
+    maintainedContacts.push_back(&maintainedContact);
+
     // indicates that we can compute the position of the floating base using the contacts
     posUpdatable = true;
 
     // we update the kinematics of the contact in the world obtained from the floating base and the sensor reading
+    const stateObservation::kine::Kinematics & worldContactKine =
     getCurrentContactKinematics(maintainedContact, robot.forceSensor(maintainedContact.name()));
+    maintainedContact.contactFbKine_ = worldContactKine.getInverse() * worldFbPose;
+
+    if constexpr(!std::is_same_v<OnMaintainedContactObserver, std::nullptr_t>)
+    {
+      onMaintainedContactObserver(maintainedContact);
+    }
   };
 
   auto onRemovedContact = [this, &logger, &onRemovedContactObserver](LoContactWithSensor & removedContact)
   {
+    removeContactLogEntries(logger, removedContact);
     if constexpr(!std::is_same_v<OnRemovedContactObserver, std::nullptr_t>)
     {
       onRemovedContactObserver(removedContact);
     }
-    removeContactLogEntries(logger, removedContact);
   };
 
   // detects the contacts currently set with the environment
@@ -272,7 +278,7 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
 
   // selects the contacts to use for the yaw odometry. We cannot call it in the onMaintainedContact function as it is
   // looping over all the maintained contact and not used on each contact separately
-  selectForOrientationOdometry(oriUpdatable, sumForces_orientation, worldFbPose);
+  selectForOrientationOdometry(oriUpdatable, sumForces_orientation);
 
   // we update the orientation of the floating base first
   if(oriUpdatable)
@@ -325,12 +331,12 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
   odometryRobot().posW(fbPose_);
   odometryRobot().forwardKinematics();
 
-  correctContactsOri(robot);
+  for(auto * nContact : maintainedContacts) { correctContactOri(*nContact, robot); }
 
   // if we can update the position, we compute the weighted average of the position obtained from the contacts
   if(posUpdatable)
   {
-    selectForPositionOdometry(sumForces_position, totalFbPosition, worldFbPose, robot);
+    selectForPositionOdometry(sumForces_position, totalFbPosition);
     fbPose_.translation() = totalFbPosition / sumForces_position;
   }
 
@@ -338,7 +344,10 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
   updateOdometryRobot(ctl, vel, acc);
 
   // we correct the reference position of the contacts in the world
-  if(posUpdatable) { correctContactsPosition(robot); }
+  if(posUpdatable)
+  {
+    for(auto * nContact : maintainedContacts) { correctContactPosition(*nContact, robot); }
+  }
 
   // computation of the reference kinematics of the newly set contacts in the world. We cannot use the onNewContacts
   // function as it is used at the beginning of the iteration and we need to compute this at the end
