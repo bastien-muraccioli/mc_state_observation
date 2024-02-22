@@ -190,6 +190,13 @@ public:
   /// @param ctl Controller
   /// @param pose The pose of the floating base in the world that we want to update
   /// @param logger Logger
+  /// @param onNewContactObserver Function passed by the observer using this library to call when a contact just got set
+  /// with the environment.
+  /// @param onMaintainedContact Function passed by the observer using this library to call when a contact is maintained
+  /// with the environment.
+  /// @param onRemovedContact Function passed by the observer using this library to call on a removed contact
+  /// @param onAddedContact Function passed by the observer using this library to call when a contact is added to the
+  /// manager.
   template<typename OnNewContactObserver = std::nullptr_t,
            typename OnMaintainedContactObserver = std::nullptr_t,
            typename OnRemovedContactObserver = std::nullptr_t,
@@ -207,6 +214,13 @@ public:
   /// @param logger Logger
   /// @param pose The pose of the floating base in the world that we want to update
   /// @param tilt The floating base's tilt (only the yaw is estimated).
+  /// @param onNewContactObserver Function passed by the observer using this library to call when a contact just got set
+  /// with the environment.
+  /// @param onMaintainedContact Function passed by the observer using this library to call when a contact is maintained
+  /// with the environment.
+  /// @param onRemovedContact Function passed by the observer using this library to call on a removed contact
+  /// @param onAddedContact Function passed by the observer using this library to call when a contact is added to the
+  /// manager.
   template<typename OnNewContactObserver = std::nullptr_t,
            typename OnMaintainedContactObserver = std::nullptr_t,
            typename OnRemovedContactObserver = std::nullptr_t,
@@ -227,6 +241,13 @@ public:
   /// @param logger Logger
   /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
   /// different from noUpdate, otherwise, it will not be updated.
+  /// @param onNewContactObserver Function passed by the observer using this library to call when a contact just got set
+  /// with the environment.
+  /// @param onMaintainedContact Function passed by the observer using this library to call when a contact is maintained
+  /// with the environment.
+  /// @param onRemovedContact Function passed by the observer using this library to call on a removed contact
+  /// @param onAddedContact Function passed by the observer using this library to call when a contact is added to the
+  /// manager.
   template<typename OnNewContactObserver = std::nullptr_t,
            typename OnMaintainedContactObserver = std::nullptr_t,
            typename OnRemovedContactObserver = std::nullptr_t,
@@ -247,6 +268,13 @@ public:
   /// @param tilt The floating base's tilt (only the yaw is estimated).
   /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
   /// different from noUpdate, otherwise, it will not be updated.
+  /// @param onNewContactObserver Function passed by the observer using this library to call when a contact just got set
+  /// with the environment.
+  /// @param onMaintainedContact Function passed by the observer using this library to call when a contact is maintained
+  /// with the environment.
+  /// @param onRemovedContact Function passed by the observer using this library to call on a removed contact
+  /// @param onAddedContact Function passed by the observer using this library to call when a contact is added to the
+  /// manager.
   template<typename OnNewContactObserver = std::nullptr_t,
            typename OnMaintainedContactObserver = std::nullptr_t,
            typename OnRemovedContactObserver = std::nullptr_t,
@@ -271,6 +299,13 @@ public:
   /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
   /// different from noUpdate, otherwise, it will not be updated.
   /// @param acc The acceleration of the floating base in the world that we want to update
+  /// @param onNewContactObserver Function passed by the observer using this library to call when a contact just got set
+  /// with the environment.
+  /// @param onMaintainedContact Function passed by the observer using this library to call when a contact is maintained
+  /// with the environment.
+  /// @param onRemovedContact Function passed by the observer using this library to call on a removed contact
+  /// @param onAddedContact Function passed by the observer using this library to call when a contact is added to the
+  /// manager.
   template<typename OnNewContactObserver = std::nullptr_t,
            typename OnMaintainedContactObserver = std::nullptr_t,
            typename OnRemovedContactObserver = std::nullptr_t,
@@ -293,6 +328,13 @@ public:
   /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
   /// different from noUpdate, otherwise, it will not be updated.
   /// @param acc The acceleration of the floating base in the world that we want to update
+  /// @param onNewContactObserver Function passed by the observer using this library to call when a contact just got set
+  /// with the environment.
+  /// @param onMaintainedContact Function passed by the observer using this library to call when a contact is maintained
+  /// with the environment.
+  /// @param onRemovedContact Function passed by the observer using this library to call on a removed contact
+  /// @param onAddedContact Function passed by the observer using this library to call when a contact is added to the
+  /// manager.
   template<typename OnNewContactObserver = std::nullptr_t,
            typename OnMaintainedContactObserver = std::nullptr_t,
            typename OnRemovedContactObserver = std::nullptr_t,
@@ -318,6 +360,13 @@ public:
   /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
   /// different from noUpdate, otherwise, it will not be updated.
   /// @param acc The acceleration of the floating base in the world that we want to update
+  /// @param onNewContactObserver Function passed by the observer using this library to call when a contact just got set
+  /// with the environment.
+  /// @param onMaintainedContact Function passed by the observer using this library to call when a contact is maintained
+  /// with the environment.
+  /// @param onRemovedContact Function passed by the observer using this library to call on a removed contact
+  /// @param onAddedContact Function passed by the observer using this library to call when a contact is added to the
+  /// manager.
   template<typename OnNewContactObserver = std::nullptr_t,
            typename OnMaintainedContactObserver = std::nullptr_t,
            typename OnRemovedContactObserver = std::nullptr_t,
@@ -380,6 +429,13 @@ private:
   /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
   /// different from noUpdate, otherwise, it will not be updated.
   /// @param acc The acceleration of the floating base in the world that we want to update
+  /// @param onNewContactObserver Function passed by the observer using this library to call when a contact just got set
+  /// with the environment.
+  /// @param onMaintainedContact Function passed by the observer using this library to call when a contact is maintained
+  /// with the environment.
+  /// @param onRemovedContact Function passed by the observer using this library to call on a removed contact
+  /// @param onAddedContact Function passed by the observer using this library to call when a contact is added to the
+  /// manager.
   template<typename OnNewContactObserver = std::nullptr_t,
            typename OnMaintainedContactObserver = std::nullptr_t,
            typename OnRemovedContactObserver = std::nullptr_t,
@@ -419,6 +475,13 @@ private:
   /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
   /// different from noUpdate, otherwise, it will not be updated.
   /// @param acc The floating base's tilt (only the yaw is estimated).
+  /// @param onNewContactObserver Function passed by the observer using this library to call when a contact just got set
+  /// with the environment.
+  /// @param onMaintainedContact Function passed by the observer using this library to call when a contact is maintained
+  /// with the environment.
+  /// @param onRemovedContact Function passed by the observer using this library to call on a removed contact
+  /// @param onAddedContact Function passed by the observer using this library to call when a contact is added to the
+  /// manager.
   template<typename OnNewContactObserver = std::nullptr_t,
            typename OnMaintainedContactObserver = std::nullptr_t,
            typename OnRemovedContactObserver = std::nullptr_t,
@@ -442,6 +505,13 @@ private:
   /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
   /// different from noUpdate, otherwise, it will not be updated.
   /// @param acc The floating base's tilt (only the yaw is estimated).
+  /// @param onNewContactObserver Function passed by the observer using this library to call when a contact just got set
+  /// with the environment.
+  /// @param onMaintainedContact Function passed by the observer using this library to call when a contact is maintained
+  /// with the environment.
+  /// @param onRemovedContact Function passed by the observer using this library to call on a removed contact
+  /// @param onAddedContact Function passed by the observer using this library to call when a contact is added to the
+  /// manager.
   template<typename OnNewContactObserver = std::nullptr_t,
            typename OnMaintainedContactObserver = std::nullptr_t,
            typename OnRemovedContactObserver = std::nullptr_t,
