@@ -128,9 +128,13 @@ bool NaiveOdometry::run(const mc_control::MCController & ctl)
   // with finite differences)
   if(odometryManager_.velocityUpdate_ != odometry::LeggedOdometryManager::VelocityUpdate::NoUpdate)
   {
-    odometryManager_.run(ctl, logger, X_0_fb_, v_0_fb);
+    odometryManager_.run(ctl, logger, odometry::LeggedOdometryManager::RunParameters(X_0_fb_).velocity(v_0_fb));
   }
-  else { odometryManager_.run(ctl, logger, X_0_fb_); }
+  else
+  {
+    odometry::LeggedOdometryManager::RunParameters runParams(X_0_fb_);
+    odometryManager_.run(ctl, logger, runParams);
+  }
 
   /* Update of the visual representation (only a visual feature) of the observed robot */
   my_robots_->robot().mbc().q = ctl.realRobot().mbc().q;

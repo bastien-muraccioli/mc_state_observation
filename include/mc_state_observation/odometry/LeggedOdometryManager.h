@@ -51,6 +51,148 @@ struct LeggedOdometryManager
 public:
   using ContactsManager = measurements::ContactsManager<LoContactWithSensor>;
 
+  template<typename OnNewContactObserver = std::nullptr_t,
+           typename OnMaintainedContactObserver = std::nullptr_t,
+           typename OnRemovedContactObserver = std::nullptr_t,
+           typename OnAddedContactObserver = std::nullptr_t>
+  struct RunParameters
+  {
+    /// @brief Structure containing all the parameters required to run the legged odometry
+    /// @var sva::PTransformd& pose /* Pose of the floating base of the robot in the world that we want to update with
+    /// the odometry */
+    /// @var sva::MotionVecd* vel /* Velocity of the floating base of the robot in the world that we want to update with
+    /// the odometry. If updated by an upstream observer, it will be corrected with the newly estimation orientation of
+    /// the floating base. Otherwise, it will be computed by finite differences. */
+    /// @var sva::MotionVecd* acc /* acceleration of the floating base of the robot in the world that we want to update
+    /// with the odometry. This acceleration must be updated by an upstream observer. It will be corrected with the
+    /// newly estimation orientation of the floating base */
+    /// @var bool oriIsAttitude /* Informs if the rotation matrix RunParameters#tiltOrAttitude stored in this structure
+    /// is a tilt or an attitude (full orientation). */
+    /// @var Eigen::Matrix3d* tiltOrAttitude /* Input orientation of the floating base in the world, used to perform the
+    /// legged odometry. If only a tilt is provided, the yaw will come from the yaw of the contacts. */
+    /// @var OnNewContactObserver* onNewContactFn /* Function defined in the observer using the legged odometry that
+    /// must be called when a contact is newly detected. */
+    /// @var OnMaintainedContactObserver* onMaintainedContactFn /* Function defined in the observer using the legged
+    /// odometry that must be called on all the contacts maintained with the environment. */
+    /// @var OnRemovedContactObserver* onRemovedContactFn /* Function defined in the observer using the legged odometry
+    /// that must be called when a contact is broken. */
+    /// @var OnAddedContactObserver* onAddedContactFn /* Function defined in the observer using the legged odometry that
+    /// must be called when a contact is newly added to the manager (used to add it to the gui, to logs that must be
+    /// written since its first detection, etc.) */
+
+    explicit RunParameters(sva::PTransformd & pose) : pose(pose) {}
+
+    RunParameters & velocity(sva::MotionVecd & vel)
+    {
+      this->vel = &vel;
+      return *this;
+    }
+
+    RunParameters & acceleration(sva::MotionVecd & acc)
+    {
+      this->acc = &acc;
+      return *this;
+    }
+
+    RunParameters & tilt(const Eigen::Matrix3d & tilt)
+    {
+      if(tiltOrAttitude) { throw std::runtime_error("An input attitude is already set"); }
+      oriIsAttitude = false;
+      tiltOrAttitude = &tilt;
+      return *this;
+    }
+
+    RunParameters & attitude(const Eigen::Matrix3d & ori)
+    {
+      if(tiltOrAttitude) { throw std::runtime_error("An input tilt is already set"); }
+      oriIsAttitude = true;
+      tiltOrAttitude = &ori;
+      return *this;
+    }
+
+    template<typename OnNewContactOther>
+    RunParameters<OnNewContactOther, OnMaintainedContactObserver, OnRemovedContactObserver, OnAddedContactObserver>
+        onNewContact(OnNewContactOther & onNewContact)
+    {
+      auto out = RunParameters<OnNewContactOther, OnMaintainedContactObserver, OnRemovedContactObserver,
+                               OnAddedContactObserver>::fromOther(*this);
+      out.onNewContactFn = &onNewContact;
+      return out;
+    }
+
+    template<typename OnMaintainedContactOther>
+    RunParameters<OnNewContactObserver, OnMaintainedContactOther, OnRemovedContactObserver, OnAddedContactObserver>
+        onMaintainedContact(OnMaintainedContactOther & onMaintainedContact)
+    {
+      auto out = RunParameters<OnNewContactObserver, OnMaintainedContactOther, OnRemovedContactObserver,
+                               OnAddedContactObserver>::fromOther(*this);
+      out.onMaintainedContactFn = &onMaintainedContact;
+      return out;
+    }
+
+    template<typename OnRemovedContactOther>
+    RunParameters<OnNewContactObserver, OnMaintainedContactObserver, OnRemovedContactOther, OnAddedContactObserver>
+        onRemovedContact(OnRemovedContactOther & onRemovedContact)
+    {
+      auto out = RunParameters<OnNewContactObserver, OnMaintainedContactObserver, OnRemovedContactOther,
+                               OnAddedContactObserver>::fromOther(*this);
+      out.onRemovedContactFn = &onRemovedContact;
+      return out;
+    }
+
+    template<typename OnAddedContactOther>
+    RunParameters<OnNewContactObserver, OnMaintainedContactObserver, OnRemovedContactObserver, OnAddedContactOther>
+        onAddedContact(OnAddedContactOther & onAddedontact)
+    {
+      auto out = RunParameters<OnNewContactObserver, OnMaintainedContactObserver, OnRemovedContactObserver,
+                               OnAddedContactOther>::fromOther(*this);
+      out.onAddedContactFn = &onAddedontact;
+      return out;
+    }
+
+    template<typename OnNewContactOther,
+             typename OnMaintainedContactOther,
+             typename OnRemovedContactOther,
+             typename OnAddedContactOther>
+    static RunParameters fromOther(
+        const RunParameters<OnNewContactOther, OnMaintainedContactOther, OnRemovedContactOther, OnAddedContactOther> &
+            other)
+    {
+      RunParameters out(other.pose);
+      out.vel = other.vel;
+      out.acc = other.acc;
+      out.oriIsAttitude = other.oriIsAttitude;
+      out.tiltOrAttitude = other.tiltOrAttitude;
+      if constexpr(std::is_same_v<OnNewContactOther, OnNewContactObserver>)
+      {
+        out.onNewContactFn = other.onNewContactFn;
+      }
+      if constexpr(std::is_same_v<OnMaintainedContactOther, OnMaintainedContactObserver>)
+      {
+        out.onMaintainedContactFn = other.onMaintainedContactFn;
+      }
+      if constexpr(std::is_same_v<OnRemovedContactOther, OnRemovedContactObserver>)
+      {
+        out.onRemovedContactFn = other.onRemovedContactFn;
+      }
+      if constexpr(std::is_same_v<OnAddedContactOther, OnAddedContactObserver>)
+      {
+        out.onAddedContactFn = other.onAddedContactFn;
+      }
+      return out;
+    }
+
+    sva::PTransformd & pose;
+    sva::MotionVecd * vel = nullptr;
+    sva::MotionVecd * acc = nullptr;
+    bool oriIsAttitude = false;
+    const Eigen::Matrix3d * tiltOrAttitude = nullptr;
+    OnNewContactObserver * onNewContactFn = nullptr;
+    OnMaintainedContactObserver * onMaintainedContactFn = nullptr;
+    OnRemovedContactObserver * onRemovedContactFn = nullptr;
+    OnAddedContactObserver * onAddedContactFn = nullptr;
+  };
+
 protected:
   ///////////////////////////////////////////////////////////////////////
   /// ------------------------Contacts Manager---------------------------
@@ -187,202 +329,15 @@ public:
             const Configuration & odomConfig,
             const ContactsManagerConfiguration & contactsConf);
 
-  /// @brief @copybrief run(const mc_control::MCController & ctl, mc_rtc::Logger &, sva::PTransformd &, const
-  /// stateObservation::Matrix3 &). This version uses the tilt estimated by the upstream observers.
-  /// @param ctl Controller
-  /// @param pose The pose of the floating base in the world that we want to update
-  /// @param logger Logger
-  /// @param onNewContactObserver Function passed by the observer using this library to call when a contact just got set
-  /// with the environment.
-  /// @param onMaintainedContact Function passed by the observer using this library to call when a contact is maintained
-  /// with the environment.
-  /// @param onRemovedContact Function passed by the observer using this library to call on a removed contact
-  /// @param onAddedContact Function passed by the observer using this library to call when a contact is added to the
-  /// manager.
   template<typename OnNewContactObserver = std::nullptr_t,
            typename OnMaintainedContactObserver = std::nullptr_t,
            typename OnRemovedContactObserver = std::nullptr_t,
            typename OnAddedContactObserver = std::nullptr_t>
-  void run(const mc_control::MCController & ctl,
-           mc_rtc::Logger & logger,
-           sva::PTransformd & pose,
-           OnNewContactObserver onNewContactObserver = {},
-           OnMaintainedContactObserver onMaintainedContactObserver = {},
-           OnRemovedContactObserver onRemovedContactObserver = {},
-           OnAddedContactObserver onAddedContactObserver = {});
-
-  /// @brief Core function runing the odometry.
-  /// @param ctl Controller
-  /// @param logger Logger
-  /// @param pose The pose of the floating base in the world that we want to update
-  /// @param tilt The floating base's tilt (only the yaw is estimated).
-  /// @param onNewContactObserver Function passed by the observer using this library to call when a contact just got set
-  /// with the environment.
-  /// @param onMaintainedContact Function passed by the observer using this library to call when a contact is maintained
-  /// with the environment.
-  /// @param onRemovedContact Function passed by the observer using this library to call on a removed contact
-  /// @param onAddedContact Function passed by the observer using this library to call when a contact is added to the
-  /// manager.
-  template<typename OnNewContactObserver = std::nullptr_t,
-           typename OnMaintainedContactObserver = std::nullptr_t,
-           typename OnRemovedContactObserver = std::nullptr_t,
-           typename OnAddedContactObserver = std::nullptr_t>
-  void run(const mc_control::MCController & ctl,
-           mc_rtc::Logger & logger,
-           sva::PTransformd & pose,
-           const stateObservation::Matrix3 & tilt,
-           OnNewContactObserver onNewContactObserver = {},
-           OnMaintainedContactObserver onMaintainedContactObserver = {},
-           OnRemovedContactObserver onRemovedContactObserver = {},
-           OnAddedContactObserver onAddedContactObserver = {});
-
-  /// @brief @copybrief run(const mc_control::MCController &, mc_rtc::Logger &, sva::PTransformd &, const
-  /// stateObservation::Matrix3 &, sva::MotionVecd &). This version uses the tilt estimated by the upstream observers.
-  /// @param ctl Controller
-  /// @param pose The pose of the floating base in the world that we want to update
-  /// @param logger Logger
-  /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
-  /// different from noUpdate, otherwise, it will not be updated.
-  /// @param onNewContactObserver Function passed by the observer using this library to call when a contact just got set
-  /// with the environment.
-  /// @param onMaintainedContact Function passed by the observer using this library to call when a contact is maintained
-  /// with the environment.
-  /// @param onRemovedContact Function passed by the observer using this library to call on a removed contact
-  /// @param onAddedContact Function passed by the observer using this library to call when a contact is added to the
-  /// manager.
-  template<typename OnNewContactObserver = std::nullptr_t,
-           typename OnMaintainedContactObserver = std::nullptr_t,
-           typename OnRemovedContactObserver = std::nullptr_t,
-           typename OnAddedContactObserver = std::nullptr_t>
-  void run(const mc_control::MCController & ctl,
-           mc_rtc::Logger & logger,
-           sva::PTransformd & pose,
-           sva::MotionVecd & vel,
-           OnNewContactObserver onNewContactObserver = {},
-           OnMaintainedContactObserver onMaintainedContactObserver = {},
-           OnRemovedContactObserver onRemovedContactObserver = {},
-           OnAddedContactObserver onAddedContactObserver = {});
-
-  /// @brief Core function runing the odometry.
-  /// @param ctl Controller
-  /// @param logger Logger
-  /// @param pose The pose of the floating base in the world that we want to update
-  /// @param tilt The floating base's tilt (only the yaw is estimated).
-  /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
-  /// different from noUpdate, otherwise, it will not be updated.
-  /// @param onNewContactObserver Function passed by the observer using this library to call when a contact just got set
-  /// with the environment.
-  /// @param onMaintainedContact Function passed by the observer using this library to call when a contact is maintained
-  /// with the environment.
-  /// @param onRemovedContact Function passed by the observer using this library to call on a removed contact
-  /// @param onAddedContact Function passed by the observer using this library to call when a contact is added to the
-  /// manager.
-  template<typename OnNewContactObserver = std::nullptr_t,
-           typename OnMaintainedContactObserver = std::nullptr_t,
-           typename OnRemovedContactObserver = std::nullptr_t,
-           typename OnAddedContactObserver = std::nullptr_t>
-  void run(const mc_control::MCController & ctl,
-           mc_rtc::Logger & logger,
-           sva::PTransformd & pose,
-           const stateObservation::Matrix3 & tilt,
-           sva::MotionVecd & vel,
-           OnNewContactObserver onNewContactObserver = {},
-           OnMaintainedContactObserver onMaintainedContactObserver = {},
-           OnRemovedContactObserver onRemovedContactObserver = {},
-           OnAddedContactObserver onAddedContactObserver = {});
-
-  /// @brief @copybrief run(const mc_control::MCController & ctl, mc_rtc::Logger &,  sva::PTransformd &, const
-  /// stateObservation::Matrix3 &, sva::MotionVecd &, sva::MotionVecd &) run(const mc_control::MCController &,
-  /// mc_rtc::Logger &, sva::PTransformd &, sva::MotionVecd &, sva::MotionVecd &, stateObservation::Matrix3). This
-  /// version uses the tilt estimated by the upstream observers.
-  /// @param ctl Controller
-  /// @param logger Logger
-  /// @param pose The pose of the floating base in the world that we want to update
-  /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
-  /// different from noUpdate, otherwise, it will not be updated.
-  /// @param acc The acceleration of the floating base in the world that we want to update
-  /// @param onNewContactObserver Function passed by the observer using this library to call when a contact just got set
-  /// with the environment.
-  /// @param onMaintainedContact Function passed by the observer using this library to call when a contact is maintained
-  /// with the environment.
-  /// @param onRemovedContact Function passed by the observer using this library to call on a removed contact
-  /// @param onAddedContact Function passed by the observer using this library to call when a contact is added to the
-  /// manager.
-  template<typename OnNewContactObserver = std::nullptr_t,
-           typename OnMaintainedContactObserver = std::nullptr_t,
-           typename OnRemovedContactObserver = std::nullptr_t,
-           typename OnAddedContactObserver = std::nullptr_t>
-  void run(const mc_control::MCController & ctl,
-           mc_rtc::Logger & logger,
-           sva::PTransformd & pose,
-           sva::MotionVecd & vel,
-           sva::MotionVecd & acc,
-           OnNewContactObserver onNewContactObserver = {},
-           OnMaintainedContactObserver onMaintainedContactObserver = {},
-           OnRemovedContactObserver onRemovedContactObserver = {},
-           OnAddedContactObserver onAddedContactObserver = {});
-
-  /// @brief Core function runing the odometry.
-  /// @param ctl Controller
-  /// @param logger Logger
-  /// @param pose The pose of the floating base in the world that we want to update
-  /// @param tilt The floating base's tilt (only the yaw is estimated).
-  /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
-  /// different from noUpdate, otherwise, it will not be updated.
-  /// @param acc The acceleration of the floating base in the world that we want to update
-  /// @param onNewContactObserver Function passed by the observer using this library to call when a contact just got set
-  /// with the environment.
-  /// @param onMaintainedContact Function passed by the observer using this library to call when a contact is maintained
-  /// with the environment.
-  /// @param onRemovedContact Function passed by the observer using this library to call on a removed contact
-  /// @param onAddedContact Function passed by the observer using this library to call when a contact is added to the
-  /// manager.
-  template<typename OnNewContactObserver = std::nullptr_t,
-           typename OnMaintainedContactObserver = std::nullptr_t,
-           typename OnRemovedContactObserver = std::nullptr_t,
-           typename OnAddedContactObserver = std::nullptr_t>
-  void run(const mc_control::MCController & ctl,
-           mc_rtc::Logger & logger,
-           sva::PTransformd & pose,
-           const stateObservation::Matrix3 & tilt,
-           sva::MotionVecd & vel,
-           sva::MotionVecd & acc,
-           OnNewContactObserver onNewContactObserver = {},
-           OnMaintainedContactObserver onMaintainedContactObserver = {},
-           OnRemovedContactObserver onRemovedContactObserver = {},
-           OnAddedContactObserver onAddedContactObserver = {});
-
-  /// @brief Core function runing the odometry. Special version that receives the full attitude as an input.
-  /// @details The given attitude will be used to track the floating base's position and correct the contacts
-  /// orientation and position on each iteration.
-  /// @param ctl Controller
-  /// @param logger Logger
-  /// @param pose The pose of the floating base in the world that we want to update
-  /// @param attitude Full attitude of the floating base
-  /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
-  /// different from noUpdate, otherwise, it will not be updated.
-  /// @param acc The acceleration of the floating base in the world that we want to update
-  /// @param onNewContactObserver Function passed by the observer using this library to call when a contact just got set
-  /// with the environment.
-  /// @param onMaintainedContact Function passed by the observer using this library to call when a contact is maintained
-  /// with the environment.
-  /// @param onRemovedContact Function passed by the observer using this library to call on a removed contact
-  /// @param onAddedContact Function passed by the observer using this library to call when a contact is added to the
-  /// manager.
-  template<typename OnNewContactObserver = std::nullptr_t,
-           typename OnMaintainedContactObserver = std::nullptr_t,
-           typename OnRemovedContactObserver = std::nullptr_t,
-           typename OnAddedContactObserver = std::nullptr_t>
-  void runWithFullAttitude(const mc_control::MCController & ctl,
-                           mc_rtc::Logger & logger,
-                           sva::PTransformd & pose,
-                           const stateObservation::Matrix3 & attitude,
-                           sva::MotionVecd * vel = nullptr,
-                           sva::MotionVecd * acc = nullptr,
-                           OnNewContactObserver onNewContactObserver = {},
-                           OnMaintainedContactObserver onMaintainedContactObserver = {},
-                           OnRemovedContactObserver onRemovedContactObserver = {},
-                           OnAddedContactObserver onAddedContactObserver = {});
+  void run(
+      const mc_control::MCController & ctl,
+      mc_rtc::Logger & logger,
+      RunParameters<OnNewContactObserver, OnMaintainedContactObserver, OnRemovedContactObserver, OnAddedContactObserver> &
+          params);
 
   /// @brief Returns the pose of the odometry robot's anchor frame based on the current floating base and encoders.
   /// @details The anchor frame can can from 2 sources:
@@ -416,43 +371,11 @@ public:
     mc_rtc::log::error_and_throw<std::runtime_error>("[{}]: No known VelocityUpdate value for {}", odometryName, str);
   }
 
-private:
-  /// @brief Core function runing the odometry.
-  /// @param ctl Controller
-  /// @param logger Logger
-  /// @param pose The pose of the floating base in the world that we want to update
-  /// @param tilt The floating base's tilt, estimated either by the estimator using this library or by an upstream
-  /// estimator.
-  /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
-  /// different from noUpdate, otherwise, it will not be updated.
-  /// @param acc The acceleration of the floating base in the world that we want to update
-  /// @param onNewContactObserver Function passed by the observer using this library to call when a contact just got set
-  /// with the environment.
-  /// @param onMaintainedContact Function passed by the observer using this library to call when a contact is maintained
-  /// with the environment.
-  /// @param onRemovedContact Function passed by the observer using this library to call on a removed contact
-  /// @param onAddedContact Function passed by the observer using this library to call when a contact is added to the
-  /// manager.
-  template<typename OnNewContactObserver = std::nullptr_t,
-           typename OnMaintainedContactObserver = std::nullptr_t,
-           typename OnRemovedContactObserver = std::nullptr_t,
-           typename OnAddedContactObserver = std::nullptr_t>
-  void runPvt(const mc_control::MCController & ctl,
-              mc_rtc::Logger & logger,
-              sva::PTransformd & pose,
-              const stateObservation::Matrix3 * tilt = nullptr,
-              sva::MotionVecd * vel = nullptr,
-              sva::MotionVecd * acc = nullptr,
-              OnNewContactObserver onNewContactObserver = {},
-              OnMaintainedContactObserver onMaintainedContactObserver = {},
-              OnRemovedContactObserver onRemovedContactObserver = {},
-              OnAddedContactObserver onAddedContactObserver = {});
-
   /// @brief Updates the floating base kinematics given as argument by the observer.
-  /// @details Beware, only the pose is updated by the odometry, the 6D velocity (except if not updated by an upstream
-  /// observer) and acceleration update only performs a transformation from the real robot to our newly estimated
-  /// robot. If you want to update the acceleration of the floating base, you need to add an observer computing them
-  /// beforehand.
+  /// @details Beware, only the pose is updated by the odometry, the 6D velocity (except if not updated by an
+  /// upstream observer) and acceleration update only performs a transformation from the real robot to our newly
+  /// estimated robot. If you want to update the acceleration of the floating base, you need to add an observer
+  /// computing them beforehand.
   /// @param pose The pose of the floating base in the world that we want to update
   /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
   /// different from noUpdate, otherwise, it will not be updated.
@@ -468,60 +391,17 @@ private:
   /// @brief Updates the pose of the contacts and estimates the floating base from them.
   /// @param ctl Controller.
   /// @param logger Logger.
-  /// @param tilt The floating base's tilt (only the yaw is estimated).
-  /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
-  /// different from noUpdate, otherwise, it will not be updated.
-  /// @param acc The floating base's tilt (only the yaw is estimated).
-  /// @param onNewContactObserver Function passed by the observer using this library to call when a contact just got set
-  /// with the environment.
-  /// @param onMaintainedContact Function passed by the observer using this library to call when a contact is maintained
-  /// with the environment.
-  /// @param onRemovedContact Function passed by the observer using this library to call on a removed contact
-  /// @param onAddedContact Function passed by the observer using this library to call when a contact is added to the
-  /// manager.
+  /// @param runParams Parameters used to run the legged odometry.
   template<typename OnNewContactObserver = std::nullptr_t,
            typename OnMaintainedContactObserver = std::nullptr_t,
            typename OnRemovedContactObserver = std::nullptr_t,
            typename OnAddedContactObserver = std::nullptr_t>
   void updateFbAndContacts(const mc_control::MCController & ctl,
                            mc_rtc::Logger & logger,
-                           const stateObservation::Matrix3 & tilt,
-                           sva::MotionVecd * vel = nullptr,
-                           sva::MotionVecd * acc = nullptr,
-                           OnNewContactObserver onNewContactObserver = {},
-                           OnMaintainedContactObserver onMaintainedContactObserver = {},
-                           OnRemovedContactObserver onRemovedContactObserver = {},
-                           OnAddedContactObserver onAddedContactObserver = {});
-
-  /// @brief Updates the pose of the contacts and estimates the floating base from them. Special version that receives
-  /// the full attitude of the floating base as input.
-  /// @details Only the position of the floating base will be updated by the odometry.
-  /// @param ctl Controller.
-  /// @param logger Logger.
-  /// @param attitude The floating base's attitude
-  /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
-  /// different from noUpdate, otherwise, it will not be updated.
-  /// @param acc The floating base's tilt (only the yaw is estimated).
-  /// @param onNewContactObserver Function passed by the observer using this library to call when a contact just got set
-  /// with the environment.
-  /// @param onMaintainedContact Function passed by the observer using this library to call when a contact is maintained
-  /// with the environment.
-  /// @param onRemovedContact Function passed by the observer using this library to call on a removed contact
-  /// @param onAddedContact Function passed by the observer using this library to call when a contact is added to the
-  /// manager.
-  template<typename OnNewContactObserver = std::nullptr_t,
-           typename OnMaintainedContactObserver = std::nullptr_t,
-           typename OnRemovedContactObserver = std::nullptr_t,
-           typename OnAddedContactObserver = std::nullptr_t>
-  void updateFbAndContactsWithFullAttitude(const mc_control::MCController & ctl,
-                                           mc_rtc::Logger & logger,
-                                           const stateObservation::Matrix3 & attitude,
-                                           sva::MotionVecd * vel = nullptr,
-                                           sva::MotionVecd * acc = nullptr,
-                                           OnNewContactObserver onNewContactObserver = {},
-                                           OnMaintainedContactObserver onMaintainedContactObserver = {},
-                                           OnRemovedContactObserver onRemovedContactObserver = {},
-                                           OnAddedContactObserver onAddedContactObserver = {});
+                           const RunParameters<OnNewContactObserver,
+                                               OnMaintainedContactObserver,
+                                               OnRemovedContactObserver,
+                                               OnAddedContactObserver> & params);
 
   /// @brief Corrects the reference orientation of the contacts after the update of the floating base's orientation.
   /// @details The new reference orientation is obtained by forward kinematics from the updated orientation of the

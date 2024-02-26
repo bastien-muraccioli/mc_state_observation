@@ -335,10 +335,10 @@ void LeggedOdometryManager::removeContactLogEntries(mc_rtc::Logger & logger, con
 }
 
 void LeggedOdometryManager::correctContactOri(LoContactWithSensor & contact, const mc_rbdyn::Robot & robot)
-    {
-      contact.worldRefKine_.orientation =
-          getCurrentContactKinematics(contact, robot.forceSensor(contact.name())).orientation.toMatrix3();
-    }
+{
+  contact.worldRefKine_.orientation =
+      getCurrentContactKinematics(contact, robot.forceSensor(contact.name())).orientation.toMatrix3();
+}
 
 void LeggedOdometryManager::correctContactPosition(LoContactWithSensor & contact, const mc_rbdyn::Robot & robot)
 {
