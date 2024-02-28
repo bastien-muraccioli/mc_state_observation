@@ -138,7 +138,8 @@ void LeggedOdometryManager::selectForOrientationOdometry(bool & oriUpdatable, do
   }
 }
 
-void LeggedOdometryManager::selectForPositionOdometry(double & sumForces_position,
+void LeggedOdometryManager::selectForPositionOdometry(bool & posUpdatable,
+                                                      double & sumForces_position,
                                                       stateObservation::Vector3 & totalFbPosition)
 {
   /* For each maintained contact, we compute the position of the floating base in the world, we then compute the
@@ -148,6 +149,7 @@ void LeggedOdometryManager::selectForPositionOdometry(double & sumForces_positio
   {
     if(contact.wasAlreadySet()) // we don't use hands for the orientation odometry
     {
+      posUpdatable = true;
       sumForces_position += contact.forceNorm();
 
       // the reference orientation of the contact was corrected so we compute the new position (simply by combining the
@@ -304,9 +306,10 @@ const so::kine::Kinematics & LeggedOdometryManager::getCurrentContactPose(LoCont
     contact.currentWorldKine_ =
         conversions::kinematics::fromSva(worldSurfacePoseOdometryRobot, so::kine::Kinematics::Flags::pose);
 
-    so::kine::Kinematics contactSensorKine = contact.currentWorldKine_.getInverse() * worldSensorKineOdometryRobot;
+    contact.contactSensorKine_ = contact.currentWorldKine_.getInverse() * worldSensorKineOdometryRobot;
     // expressing the force measurement in the frame of the surface
-    contact.forceNorm((contactSensorKine.orientation * fs.wrenchWithoutGravity(odometryRobot()).force()).norm());
+    contact.forceNorm(
+        (contact.contactSensorKine_.orientation * fs.wrenchWithoutGravity(odometryRobot()).force()).norm());
   }
 
   return contact.currentWorldKine_;
@@ -349,9 +352,10 @@ const so::kine::Kinematics & LeggedOdometryManager::getCurrentContactKinematics(
 
     contact.currentWorldKine_ = worldBodyKine * bodySurfaceKine;
 
-    so::kine::Kinematics contactSensorKine = contact.currentWorldKine_.getInverse() * worldSensorKine;
+    contact.contactSensorKine_ = contact.currentWorldKine_.getInverse() * worldSensorKine;
     // expressing the force measurement in the frame of the surface
-    contact.forceNorm((contactSensorKine.orientation * fs.wrenchWithoutGravity(odometryRobot()).force()).norm());
+    contact.forceNorm(
+        (contact.contactSensorKine_.orientation * fs.wrenchWithoutGravity(odometryRobot()).force()).norm());
   }
 
   return contact.currentWorldKine_;

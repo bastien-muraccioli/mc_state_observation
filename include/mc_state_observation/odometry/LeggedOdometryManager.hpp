@@ -29,15 +29,20 @@ void LeggedOdometryManager::run(
   odometryRobot().forwardVelocity();
   odometryRobot().forwardAcceleration();
 
+  std::vector<LoContactWithSensor *> newContacts;
+  std::vector<LoContactWithSensor *> maintainedContacts;
+
+  initContacts(ctl, logger, newContacts, maintainedContacts, params);
+
   // updates the contacts and the resulting floating base kinematics
-  if(params.tiltOrAttitude != nullptr) { updateFbAndContacts(ctl, logger, params); }
+  if(params.tiltOrAttitude != nullptr) { updateFbAndContacts(ctl, newContacts, maintainedContacts, params); }
   else
   {
     // the tilt must come from another estimator so we will use the real robot for the orientation
     const auto & realRobot = ctl.realRobot(robotName_);
     const stateObservation::Matrix3 realRobotOri = realRobot.posW().rotation().transpose();
     params.tilt(realRobotOri);
-    updateFbAndContacts(ctl, logger, params);
+    updateFbAndContacts(ctl, newContacts, maintainedContacts, params);
   }
 
   // updates the floating base kinematics in the observer
@@ -49,7 +54,8 @@ template<typename OnNewContactObserver,
          typename OnRemovedContactObserver,
          typename OnAddedContactObserver>
 void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController & ctl,
-                                                mc_rtc::Logger & logger,
+                                                const std::vector<LoContactWithSensor *> & newContacts,
+                                                const std::vector<LoContactWithSensor *> & maintainedContacts,
                                                 const RunParameters<OnNewContactObserver,
                                                                     OnMaintainedContactObserver,
                                                                     OnRemovedContactObserver,
@@ -71,52 +77,6 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
 
   // force weighted sum of the estimated floating base positions
   stateObservation::Vector3 totalFbPosition = stateObservation::Vector3::Zero();
-
-  // Needed later on
-  std::vector<LoContactWithSensor *> newContacts;
-  std::vector<LoContactWithSensor *> maintainedContacts;
-
-  // current estimate of the pose of the robot in the world
-  const stateObservation::kine::Kinematics worldFbPose =
-      conversions::kinematics::fromSva(odometryRobot().posW(), stateObservation::kine::Kinematics::Flags::pose);
-
-  auto onNewContact = [this, &logger, &newContacts, &params](LoContactWithSensor & newContact)
-  {
-    addContactLogEntries(logger, newContact);
-    newContacts.push_back(&newContact);
-    if constexpr(!std::is_same_v<OnNewContactObserver, std::nullptr_t>) { (*params.onNewContactFn)(newContact); }
-  };
-  auto onMaintainedContact =
-      [this, &robot, &worldFbPose, &maintainedContacts, &posUpdatable, &params](LoContactWithSensor & maintainedContact)
-  {
-    maintainedContacts.push_back(&maintainedContact);
-
-    // indicates that we can compute the position of the floating base using the contacts
-    posUpdatable = true;
-
-    // we update the kinematics of the contact in the world obtained from the floating base and the sensor reading
-    const stateObservation::kine::Kinematics & worldContactKine =
-        getCurrentContactPose(maintainedContact, robot.forceSensor(maintainedContact.name()));
-    maintainedContact.contactFbKine_ = worldContactKine.getInverse() * worldFbPose;
-
-    if constexpr(!std::is_same_v<OnMaintainedContactObserver, std::nullptr_t>)
-    {
-      (*params.onMaintainedContactFn)(maintainedContact);
-    }
-  };
-
-  auto onRemovedContact = [this, &logger, &params](LoContactWithSensor & removedContact)
-  {
-    removeContactLogEntries(logger, removedContact);
-    if constexpr(!std::is_same_v<OnRemovedContactObserver, std::nullptr_t>)
-    {
-      (*params.onRemovedContactFn)(removedContact);
-    }
-  };
-
-  // detects the contacts currently set with the environment
-  contactsManager().updateContacts(ctl, robotName_, onNewContact, onMaintainedContact, onRemovedContact,
-                                   *params.onAddedContactFn);
 
   // if the given orientation is only a tilt, we compute the yaw using the one of the contacts
   if(!params.oriIsAttitude)
@@ -186,6 +146,7 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
   for(auto * nContact : maintainedContacts) { correctContactOri(*nContact, robot); }
 
   // if we can update the position, we compute the weighted average of the position obtained from the contacts
+  selectForPositionOdometry(posUpdatable, sumForces_position, totalFbPosition);
   if(posUpdatable)
   {
     selectForPositionOdometry(sumForces_position, totalFbPosition);
@@ -203,7 +164,64 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
 
   // computation of the reference kinematics of the newly set contacts in the world. We cannot use the onNewContacts
   // function as it is used at the beginning of the iteration and we need to compute this at the end
-  for(auto * nContact : newContacts) { setNewContact(*nContact, robot); }
+
+template<typename OnNewContactObserver,
+         typename OnMaintainedContactObserver,
+         typename OnRemovedContactObserver,
+         typename OnAddedContactObserver>
+void LeggedOdometryManager::initContacts(const mc_control::MCController & ctl,
+                                         mc_rtc::Logger & logger,
+                                         std::vector<LoContactWithSensor *> & newContacts,
+                                         std::vector<LoContactWithSensor *> & maintainedContacts,
+                                         const RunParameters<OnNewContactObserver,
+                                                             OnMaintainedContactObserver,
+                                                             OnRemovedContactObserver,
+                                                             OnAddedContactObserver> & params)
+{
+  // If the position and orientation of the floating base can be updated using contacts (that were already set on the
+  // previous iteration), they are updated, else we keep the previous estimation. Then we estimate the pose of new
+  // contacts using the obtained pose of the floating base.
+
+  const auto & robot = ctl.robot(robotName_);
+
+  auto onNewContact = [this, &logger, &newContacts, &params](LoContactWithSensor & newContact)
+  {
+    addContactLogEntries(logger, newContact);
+    newContacts.push_back(&newContact);
+    if constexpr(!std::is_same_v<OnNewContactObserver, std::nullptr_t>) { (*params.onNewContactFn)(newContact); }
+  };
+  auto onMaintainedContact = [this, &robot, &maintainedContacts, &params](LoContactWithSensor & maintainedContact)
+  {
+    maintainedContacts.push_back(&maintainedContact);
+    // indicates that we can compute the position of the floating base using the contacts
+
+    // current estimate of the pose of the robot in the world
+    const stateObservation::kine::Kinematics worldFbPose =
+        conversions::kinematics::fromSva(odometryRobot().posW(), stateObservation::kine::Kinematics::Flags::pose);
+
+    // we update the kinematics of the contact in the world obtained from the floating base and the sensor reading
+    const stateObservation::kine::Kinematics & worldContactKine =
+        getCurrentContactPose(maintainedContact, robot.forceSensor(maintainedContact.name()));
+    maintainedContact.contactFbKine_ = worldContactKine.getInverse() * worldFbPose;
+
+    if constexpr(!std::is_same_v<OnMaintainedContactObserver, std::nullptr_t>)
+    {
+      (*params.onMaintainedContactFn)(maintainedContact);
+    }
+  };
+
+  auto onRemovedContact = [this, &logger, &params](LoContactWithSensor & removedContact)
+  {
+    removeContactLogEntries(logger, removedContact);
+    if constexpr(!std::is_same_v<OnRemovedContactObserver, std::nullptr_t>)
+    {
+      (*params.onRemovedContactFn)(removedContact);
+    }
+  };
+
+  // detects the contacts currently set with the environment
+  contactsManager().updateContacts(ctl, robotName_, onNewContact, onMaintainedContact, onRemovedContact,
+                                   *params.onAddedContactFn);
 }
 
 } // namespace mc_state_observation::odometry

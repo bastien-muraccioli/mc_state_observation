@@ -41,6 +41,9 @@ public:
   stateObservation::kine::Kinematics currentWorldKine_;
   // kinematics of the frame of the floating base in the frame of the contact, obtained by forward kinematics.
   stateObservation::kine::Kinematics contactFbKine_;
+  // kinematics of the frame of the sensor frame of the contact, obtained by forward kinematics. Useful to express the
+  // force measurement in the frame of the contact.
+  stateObservation::kine::Kinematics contactSensorKine_;
 };
 
 /// @brief Structure that implements all the necessary functions to perform legged odometry.
@@ -329,6 +332,23 @@ public:
             const Configuration & odomConfig,
             const ContactsManagerConfiguration & contactsConf);
 
+  /// @brief Updates the pose of the contacts and estimates the associated kinematics.
+  /// @param ctl Controller.
+  /// @param logger Logger.
+  /// @param runParams Parameters used to run the legged odometry.
+  template<typename OnNewContactObserver = std::nullptr_t,
+           typename OnMaintainedContactObserver = std::nullptr_t,
+           typename OnRemovedContactObserver = std::nullptr_t,
+           typename OnAddedContactObserver = std::nullptr_t>
+  void initContacts(const mc_control::MCController & ctl,
+                    mc_rtc::Logger & logger,
+                    std::vector<LoContactWithSensor *> & newContacts,
+                    std::vector<LoContactWithSensor *> & maintainedContacts,
+                    const RunParameters<OnNewContactObserver,
+                                        OnMaintainedContactObserver,
+                                        OnRemovedContactObserver,
+                                        OnAddedContactObserver> & params);
+
   template<typename OnNewContactObserver = std::nullptr_t,
            typename OnMaintainedContactObserver = std::nullptr_t,
            typename OnRemovedContactObserver = std::nullptr_t,
@@ -411,7 +431,8 @@ public:
            typename OnRemovedContactObserver = std::nullptr_t,
            typename OnAddedContactObserver = std::nullptr_t>
   void updateFbAndContacts(const mc_control::MCController & ctl,
-                           mc_rtc::Logger & logger,
+                           const std::vector<LoContactWithSensor *> & newContacts,
+                           const std::vector<LoContactWithSensor *> & maintainedContacts,
                            const RunParameters<OnNewContactObserver,
                                                OnMaintainedContactObserver,
                                                OnRemovedContactObserver,
@@ -472,7 +493,10 @@ public:
   /// @param oriUpdatable Indicates that contacts can be used to estimated the orientation.
   /// @param sumForcesOrientation Sum of the forces measured at the contacts used for the orientation estimation
   void selectForOrientationOdometry(bool & oriUpdatable, double & sumForcesOrientation);
-  void selectForPositionOdometry(double & sumForces_position, stateObservation::Vector3 & totalFbPosition);
+
+  void selectForPositionOdometry(bool & posUpdatable,
+                                 double & sumForces_position,
+                                 stateObservation::Vector3 & totalFbPosition);
   /// @brief Add the log entries corresponding to the contact.
   /// @param logger
   /// @param contactName
