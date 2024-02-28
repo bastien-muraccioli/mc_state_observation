@@ -54,6 +54,15 @@ struct LeggedOdometryManager
 public:
   using ContactsManager = measurements::ContactsManager<LoContactWithSensor>;
 
+  struct KineParams
+  {
+    explicit KineParams(sva::PTransformd & pose) : pose(pose) {}
+    sva::PTransformd & pose;
+    sva::MotionVecd * vel = nullptr;
+    sva::MotionVecd * acc = nullptr;
+    bool oriIsAttitude = false;
+    const Eigen::Matrix3d * tiltOrAttitude = nullptr;
+  };
   template<typename OnNewContactObserver = std::nullptr_t,
            typename OnMaintainedContactObserver = std::nullptr_t,
            typename OnRemovedContactObserver = std::nullptr_t,
@@ -83,33 +92,33 @@ public:
     /// must be called when a contact is newly added to the manager (used to add it to the gui, to logs that must be
     /// written since its first detection, etc.) */
 
-    explicit RunParameters(sva::PTransformd & pose) : pose(pose) {}
+    explicit RunParameters(sva::PTransformd & pose) : kineParams(pose) {}
 
     RunParameters & velocity(sva::MotionVecd & vel)
     {
-      this->vel = &vel;
+      this->kineParams.vel = &vel;
       return *this;
     }
 
     RunParameters & acceleration(sva::MotionVecd & acc)
     {
-      this->acc = &acc;
+      this->kineParams.acc = &acc;
       return *this;
     }
 
     RunParameters & tilt(const Eigen::Matrix3d & tilt)
     {
-      if(tiltOrAttitude) { throw std::runtime_error("An input attitude is already set"); }
-      oriIsAttitude = false;
-      tiltOrAttitude = &tilt;
+      if(kineParams.tiltOrAttitude) { throw std::runtime_error("An input attitude is already set"); }
+      kineParams.oriIsAttitude = false;
+      kineParams.tiltOrAttitude = &tilt;
       return *this;
     }
 
     RunParameters & attitude(const Eigen::Matrix3d & ori)
     {
-      if(tiltOrAttitude) { throw std::runtime_error("An input tilt is already set"); }
-      oriIsAttitude = true;
-      tiltOrAttitude = &ori;
+      if(kineParams.tiltOrAttitude) { throw std::runtime_error("An input tilt is already set"); }
+      kineParams.oriIsAttitude = true;
+      kineParams.tiltOrAttitude = &ori;
       return *this;
     }
 
@@ -161,11 +170,11 @@ public:
         const RunParameters<OnNewContactOther, OnMaintainedContactOther, OnRemovedContactOther, OnAddedContactOther> &
             other)
     {
-      RunParameters out(other.pose);
-      out.vel = other.vel;
-      out.acc = other.acc;
-      out.oriIsAttitude = other.oriIsAttitude;
-      out.tiltOrAttitude = other.tiltOrAttitude;
+      RunParameters out(other.kineParams.pose);
+      out.kineParams.vel = other.kineParams.vel;
+      out.kineParams.acc = other.kineParams.acc;
+      out.kineParams.oriIsAttitude = other.kineParams.oriIsAttitude;
+      out.kineParams.tiltOrAttitude = other.kineParams.tiltOrAttitude;
       if constexpr(std::is_same_v<OnNewContactOther, OnNewContactObserver>)
       {
         out.onNewContactFn = other.onNewContactFn;
@@ -185,11 +194,7 @@ public:
       return out;
     }
 
-    sva::PTransformd & pose;
-    sva::MotionVecd * vel = nullptr;
-    sva::MotionVecd * acc = nullptr;
-    bool oriIsAttitude = false;
-    const Eigen::Matrix3d * tiltOrAttitude = nullptr;
+    KineParams kineParams;
     OnNewContactObserver * onNewContactFn = nullptr;
     OnMaintainedContactObserver * onMaintainedContactFn = nullptr;
     OnRemovedContactObserver * onRemovedContactFn = nullptr;
