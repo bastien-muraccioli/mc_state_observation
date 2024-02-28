@@ -31,7 +31,7 @@ public:
   /// @brief updates the kinematics of the anchor frame of the robot in the world
   /// @param ctl Controller
   /// @param updatedRobot robot corresponding to the control robot with updated encoders
-  void updateAnchorFrame(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot);
+  void updateAnchorFrame(const mc_control::MCController & ctl);
 
   /// @brief updates the kinematics of the anchor frame of our odometry robot in the world
   /// @param ctl Controller

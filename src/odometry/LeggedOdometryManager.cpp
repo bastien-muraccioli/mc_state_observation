@@ -275,8 +275,8 @@ void LeggedOdometryManager::setNewContact(LoContactWithSensor & contact, const m
   if(odometryType_ == measurements::OdometryType::Flat) { contact.worldRefKine_.position()(2) = 0.0; }
 }
 
-const so::kine::Kinematics & LeggedOdometryManager::getCurrentContactKinematics(LoContactWithSensor & contact,
-                                                                                const mc_rbdyn::ForceSensor & fs)
+const so::kine::Kinematics & LeggedOdometryManager::getCurrentContactPose(LoContactWithSensor & contact,
+                                                                          const mc_rbdyn::ForceSensor & fs)
 {
   // robot is necessary because odometry robot doesn't have the copy of the force measurements
   const sva::PTransformd & bodyContactSensorPose = fs.X_p_f();
@@ -312,6 +312,51 @@ const so::kine::Kinematics & LeggedOdometryManager::getCurrentContactKinematics(
   return contact.currentWorldKine_;
 }
 
+const so::kine::Kinematics & LeggedOdometryManager::getCurrentContactKinematics(LoContactWithSensor & contact,
+                                                                                const mc_rbdyn::ForceSensor & fs)
+{
+  // robot is necessary because odometry robot doesn't have the copy of the force measurements
+  const sva::PTransformd & bodyContactSensorPose = fs.X_p_f();
+  so::kine::Kinematics bodyContactSensorKine =
+      conversions::kinematics::fromSva(bodyContactSensorPose, so::kine::Kinematics::Flags::vel);
+
+  // kinematics of the sensor's parent body in the world
+  so::kine::Kinematics worldBodyKine =
+      conversions::kinematics::fromSva(odometryRobot().mbc().bodyPosW[odometryRobot().bodyIndexByName(fs.parentBody())],
+                                       so::kine::Kinematics::Flags::pose);
+
+  so::kine::Kinematics worldSensorKine = worldBodyKine * bodyContactSensorKine;
+
+  if(contactsManager_.getContactsDetection() == ContactsManager::ContactsDetection::Sensors)
+  {
+    // If the contact is detecting using thresholds, we will then consider the sensor frame as
+    // the contact surface frame directly.
+    contact.currentWorldKine_ = worldSensorKine;
+    contact.forceNorm(fs.wrenchWithoutGravity(odometryRobot()).force().norm());
+  }
+  else // the kinematics of the contact are the ones of the associated surface
+  {
+    // the kinematics of the contacts are the ones of the surface, but we must transport the measured wrench
+    const mc_rbdyn::Surface & contactSurface = odometryRobot().surface(contact.surface());
+
+    sva::PTransformd bodySurfacePose = contactSurface.X_b_s();
+    so::kine::Kinematics bodySurfaceKine =
+        conversions::kinematics::fromSva(bodySurfacePose, so::kine::Kinematics::Flags::vel);
+
+    sva::PTransformd worldBodyPos = odometryRobot().mbc().bodyPosW[contactSurface.bodyIndex(odometryRobot())];
+    sva::MotionVecd worldBodyVel = odometryRobot().mbc().bodyVelW[contactSurface.bodyIndex(odometryRobot())];
+    so::kine::Kinematics worldBodyKine = conversions::kinematics::fromSva(worldBodyPos, worldBodyVel);
+
+    contact.currentWorldKine_ = worldBodyKine * bodySurfaceKine;
+
+    so::kine::Kinematics contactSensorKine = contact.currentWorldKine_.getInverse() * worldSensorKine;
+    // expressing the force measurement in the frame of the surface
+    contact.forceNorm((contactSensorKine.orientation * fs.wrenchWithoutGravity(odometryRobot()).force()).norm());
+  }
+
+  return contact.currentWorldKine_;
+}
+
 void LeggedOdometryManager::addContactLogEntries(mc_rtc::Logger & logger, const LoContactWithSensor & contact)
 {
   const std::string & contactName = contact.name();
@@ -337,12 +382,12 @@ void LeggedOdometryManager::removeContactLogEntries(mc_rtc::Logger & logger, con
 void LeggedOdometryManager::correctContactOri(LoContactWithSensor & contact, const mc_rbdyn::Robot & robot)
 {
   contact.worldRefKine_.orientation =
-      getCurrentContactKinematics(contact, robot.forceSensor(contact.name())).orientation.toMatrix3();
+      getCurrentContactPose(contact, robot.forceSensor(contact.name())).orientation.toMatrix3();
 }
 
 void LeggedOdometryManager::correctContactPosition(LoContactWithSensor & contact, const mc_rbdyn::Robot & robot)
 {
-  contact.worldRefKine_.position = getCurrentContactKinematics(contact, robot.forceSensor(contact.name())).position();
+  contact.worldRefKine_.position = getCurrentContactPose(contact, robot.forceSensor(contact.name())).position();
 }
 
 so::kine::Kinematics & LeggedOdometryManager::getAnchorFramePose(const mc_control::MCController & ctl,
@@ -370,8 +415,7 @@ so::kine::Kinematics & LeggedOdometryManager::getAnchorFramePose(const mc_contro
     if(!(contact.isSet() && contact.wasAlreadySet())) { continue; }
     posUpdatable = true;
 
-    const so::kine::Kinematics & worldContactKine =
-        getCurrentContactKinematics(contact, robot.forceSensor(contact.name()));
+    const so::kine::Kinematics & worldContactKine = getCurrentContactPose(contact, robot.forceSensor(contact.name()));
 
     sumForces_position += contact.forceNorm();
     // force weighted sum of the estimated floating base positions
@@ -410,6 +454,132 @@ so::kine::Kinematics & LeggedOdometryManager::getAnchorFramePose(const mc_contro
 
     worldAnchorPose_.linVel.set().setZero();
     worldAnchorPose_.angVel.set().setZero();
+
+    currAnchorFromContacts_ = false;
+    if(currAnchorFromContacts_ != prevAnchorFromContacts_) { anchorFrameMethodChanged_ = true; }
+  }
+
+  if(oriUpdatable)
+  {
+    if(contactsManager_.oriOdometryContacts_.size() == 1) // the orientation can be updated using 1 contact
+    {
+      worldAnchorPose_.orientation = contactsManager_.oriOdometryContacts_.begin()->get().currentWorldKine_.orientation;
+    }
+    if(contactsManager_.oriOdometryContacts_.size() == 2) // the orientation can be updated using 2 contacts
+    {
+      const auto & contact1 = (*contactsManager_.oriOdometryContacts_.begin()).get();
+      const auto & contact2 = (*std::next(contactsManager_.oriOdometryContacts_.begin(), 1)).get();
+
+      const auto & R1 = contact1.currentWorldKine_.orientation.toMatrix3();
+      const auto & R2 = contact2.currentWorldKine_.orientation.toMatrix3();
+
+      double u;
+
+      u = contact1.forceNorm() / sumForces_orientation;
+
+      so::Matrix3 diffRot = R1.transpose() * R2;
+
+      so::Vector3 diffRotVector = (1.0 - u)
+                                  * so::kine::skewSymmetricToRotationVector(
+                                      diffRot); // we perform the multiplication by the weighting coefficient now so a
+                                                // zero coefficient gives a unit rotation matrix and not a zero matrix
+      so::AngleAxis diffRotAngleAxis = so::kine::rotationVectorToAngleAxis(diffRotVector);
+
+      so::Matrix3 diffRotMatrix = so::kine::Orientation(diffRotAngleAxis).toMatrix3(); // exp( (1 - u) * log(R1^T R2) )
+
+      so::Matrix3 meanOri = R1 * diffRotMatrix;
+
+      worldAnchorPose_.orientation = meanOri;
+    }
+  }
+  else
+  {
+    const auto & imu = ctl.robot(robotName_).bodySensor(bodySensorName);
+    const sva::PTransformd & imuXbs = imu.X_b_s();
+    so::kine::Kinematics parentImuKine = conversions::kinematics::fromSva(imuXbs, so::kine::Kinematics::Flags::pose);
+
+    const sva::PTransformd & parentPoseW = odometryRobot().bodyPosW(imu.parentBody());
+
+    so::kine::Kinematics worldParentKine =
+        conversions::kinematics::fromSva(parentPoseW, so::kine::Kinematics::Flags::pose);
+
+    // pose of the IMU in the world frame
+    so::kine::Kinematics worldImuKine = worldParentKine * parentImuKine;
+    worldAnchorPose_.orientation = worldImuKine.orientation;
+  }
+
+  prevAnchorFromContacts_ = currAnchorFromContacts_;
+
+  return worldAnchorPose_;
+}
+
+stateObservation::kine::Kinematics & LeggedOdometryManager::getAnchorFrameKinematics(
+    const mc_control::MCController & ctl,
+    const std::string & bodySensorName)
+{
+  const auto & robot = ctl.robot(robotName_);
+
+  double sumForces_position = 0.0;
+  double sumForces_orientation = 0.0;
+
+  bool linKineUpdatable = false;
+  bool oriUpdatable = false;
+
+  anchorFrameMethodChanged_ = false;
+
+  // "force-weighted" sum of the estimated floating base positions
+  so::Vector3 totalAnchorPosition = so::Vector3::Zero();
+  // "force-weighted" sum of the estimated floating base linear velocity
+  so::Vector3 totalAnchorLinVel = so::Vector3::Zero();
+
+  worldAnchorPose_.reset();
+
+  // checks that the position and orientation can be updated from the currently set contacts and computes the pose of
+  // the floating base obtained from each contact
+  for(auto & [_, contact] : contactsManager_.contacts())
+  {
+    if(!(contact.isSet() && contact.wasAlreadySet())) { continue; }
+    linKineUpdatable = true;
+
+    const so::kine::Kinematics & worldContactKine =
+        getCurrentContactKinematics(contact, robot.forceSensor(contact.name()));
+
+    sumForces_position += contact.forceNorm();
+    // force weighted sum of the estimated floating base positions
+    totalAnchorPosition += worldContactKine.position() * contact.forceNorm();
+    totalAnchorLinVel += worldContactKine.linVel() * contact.forceNorm();
+
+    if(withYawEstimation_ && contact.useForOrientation_)
+    {
+      oriUpdatable = true;
+
+      sumForces_orientation += contact.forceNorm();
+    }
+  }
+
+  if(linKineUpdatable)
+  {
+    worldAnchorPose_.position = totalAnchorPosition / sumForces_position;
+    worldAnchorPose_.linVel = totalAnchorLinVel / sumForces_position;
+    currAnchorFromContacts_ = true;
+    if(currAnchorFromContacts_ != prevAnchorFromContacts_) { anchorFrameMethodChanged_ = true; }
+  }
+  else
+  {
+    // if we cannot update the position (so not the orientations either) using contacts, we use the IMU frame as the
+    // anchor frame.
+    const auto & imu = ctl.robot(robotName_).bodySensor(bodySensorName);
+
+    const sva::PTransformd & imuXbs = imu.X_b_s();
+    so::kine::Kinematics parentImuKine = conversions::kinematics::fromSva(imuXbs, so::kine::Kinematics::Flags::vel);
+
+    const sva::PTransformd & parentPoseW = odometryRobot().bodyPosW(imu.parentBody());
+
+    so::kine::Kinematics worldParentKine =
+        conversions::kinematics::fromSva(parentPoseW, so::kine::Kinematics::Flags::vel);
+
+    // pose of the IMU in the world frame
+    worldAnchorPose_ = worldParentKine * parentImuKine;
 
     currAnchorFromContacts_ = false;
     if(currAnchorFromContacts_ != prevAnchorFromContacts_) { anchorFrameMethodChanged_ = true; }

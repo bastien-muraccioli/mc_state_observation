@@ -364,7 +364,7 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
 
   // we ignore the initial outlier velocity due to the position jump
   // we also reset the velocity of the anchor frame when its computation mode changes.
-  if(iter_ < itersBeforeAnchorsVel_ || newWorldAnchorKine_.linVel.isSet())
+  if(iter_ < itersBeforeAnchorsVel_ || odometryManager_.anchorFrameMethodChanged_)
   {
     updatedImuAnchorKine_.linVel().setZero();
     updatedImuAnchorKine_.angVel().setZero();

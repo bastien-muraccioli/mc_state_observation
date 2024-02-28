@@ -57,60 +57,57 @@ void TiltVisual::configure(const mc_control::MCController & ctl, const mc_rtc::C
   setOdometryType(measurements::stringToOdometryType(odometryTypeStr, observerName_));
 
   // specific configurations for the use of odometry.
-  if(odometryManager_.odometryType_ != measurements::OdometryType::None)
+  const auto & robot = ctl.robot(robot_);
+
+  bool verbose = config("verbose", true);
+  bool withYawEstimation = config("withYawEstimation", true);
+
+  // surfaces used for the contact detection. If the desired detection method doesn't use surfaces, we make sure this
+  // list is not filled in the configuration file to avoid the use of an undesired method.
+  std::vector<std::string> surfacesForContactDetection;
+  config("surfacesForContactDetection", surfacesForContactDetection);
+
+  std::string contactsDetectionString = static_cast<std::string>(config("contactsDetection"));
+  LoContactsManager::ContactsDetection contactsDetectionMethod =
+      odometryManager_.contactsManager().stringToContactsDetection(contactsDetectionString, observerName_);
+
+  if(surfacesForContactDetection.size() > 0
+     && contactsDetectionMethod != LoContactsManager::ContactsDetection::Surfaces)
   {
-    const auto & robot = ctl.robot(robot_);
+    mc_rtc::log::error_and_throw<std::runtime_error>("Another type of contacts detection than Surfaces is currently "
+                                                     "used, please change it to 'Surfaces' or empty the "
+                                                     "surfacesForContactDetection variable");
+  }
 
-    bool verbose = config("verbose", true);
-    bool withYawEstimation = config("withYawEstimation", true);
+  double contactDetectionPropThreshold = config("contactDetectionPropThreshold", 0.11);
+  contactDetectionThreshold_ = robot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold;
 
-    // surfaces used for the contact detection. If the desired detection method doesn't use surfaces, we make sure this
-    // list is not filled in the configuration file to avoid the use of an undesired method.
-    std::vector<std::string> surfacesForContactDetection;
-    config("surfacesForContactDetection", surfacesForContactDetection);
+  odometry::LeggedOdometryManager::Configuration odomConfig(robot_, observerName_, odometryManager_.odometryType_);
+  odomConfig.velocityUpdate(odometry::LeggedOdometryManager::VelocityUpdate::NoUpdate)
+      .withModeSwitchInGui(false)
+      .withYawEstimation(withYawEstimation);
 
-    std::string contactsDetectionString = static_cast<std::string>(config("contactsDetection"));
-    LoContactsManager::ContactsDetection contactsDetectionMethod =
-        odometryManager_.contactsManager().stringToContactsDetection(contactsDetectionString, observerName_);
+  if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Surfaces)
+  {
+    measurements::ContactsManagerSurfacesConfiguration contactsConfig(observerName_, surfacesForContactDetection);
+    contactsConfig.contactDetectionThreshold(contactDetectionThreshold_).verbose(verbose);
+    odometryManager_.init(ctl, odomConfig, contactsConfig);
+  }
+  if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Sensors)
+  {
+    std::vector<std::string> forceSensorsToOmit = config("forceSensorsToOmit", std::vector<std::string>());
 
-    if(surfacesForContactDetection.size() > 0
-       && contactsDetectionMethod != LoContactsManager::ContactsDetection::Surfaces)
-    {
-      mc_rtc::log::error_and_throw<std::runtime_error>("Another type of contacts detection than Surfaces is currently "
-                                                       "used, please change it to 'Surfaces' or empty the "
-                                                       "surfacesForContactDetection variable");
-    }
-
-    double contactDetectionPropThreshold = config("contactDetectionPropThreshold", 0.11);
-    contactDetectionThreshold_ = robot.mass() * so::cst::gravityConstant * contactDetectionPropThreshold;
-
-    odometry::LeggedOdometryManager::Configuration odomConfig(robot_, observerName_, odometryManager_.odometryType_);
-    odomConfig.velocityUpdate(odometry::LeggedOdometryManager::VelocityUpdate::NoUpdate)
-        .withModeSwitchInGui(false)
-        .withYawEstimation(withYawEstimation);
-
-    if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Surfaces)
-    {
-      measurements::ContactsManagerSurfacesConfiguration contactsConfig(observerName_, surfacesForContactDetection);
-      contactsConfig.contactDetectionThreshold(contactDetectionThreshold_).verbose(verbose);
-      odometryManager_.init(ctl, odomConfig, contactsConfig);
-    }
-    if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Sensors)
-    {
-      std::vector<std::string> forceSensorsToOmit = config("forceSensorsToOmit", std::vector<std::string>());
-
-      measurements::ContactsManagerSensorsConfiguration contactsConfig(observerName_);
-      contactsConfig.contactDetectionThreshold(contactDetectionThreshold_)
-          .verbose(verbose)
-          .forceSensorsToOmit(forceSensorsToOmit);
-      odometryManager_.init(ctl, odomConfig, contactsConfig);
-    }
-    if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Solver)
-    {
-      measurements::ContactsManagerSolverConfiguration contactsConfig(observerName_);
-      contactsConfig.contactDetectionThreshold(contactDetectionThreshold_).verbose(verbose);
-      odometryManager_.init(ctl, odomConfig, contactsConfig);
-    }
+    measurements::ContactsManagerSensorsConfiguration contactsConfig(observerName_);
+    contactsConfig.contactDetectionThreshold(contactDetectionThreshold_)
+        .verbose(verbose)
+        .forceSensorsToOmit(forceSensorsToOmit);
+    odometryManager_.init(ctl, odomConfig, contactsConfig);
+  }
+  if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Solver)
+  {
+    measurements::ContactsManagerSolverConfiguration contactsConfig(observerName_);
+    contactsConfig.contactDetectionThreshold(contactDetectionThreshold_).verbose(verbose);
+    odometryManager_.init(ctl, odomConfig, contactsConfig);
   }
 }
 
@@ -181,11 +178,7 @@ bool TiltVisual::run(const mc_control::MCController & ctl)
     gamma_ = finalGamma_;
   }
 
-  if(odometryManager_.odometryType_ == measurements::OdometryType::None)
-  {
-    runTiltEstimator(ctl, my_robots_->robot("updatedRobot"));
-  }
-  else { runTiltEstimator(ctl, odometryManager_.odometryRobot()); }
+  runTiltEstimator(ctl, odometryManager_.odometryRobot());
 
   iter_++;
 
@@ -196,24 +189,12 @@ bool TiltVisual::run(const mc_control::MCController & ctl)
   return true;
 }
 
-void TiltVisual::updateAnchorFrame(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot)
+void TiltVisual::updateAnchorFrame(const mc_control::MCController & ctl)
 {
   // update of the pose of the anchor frame of the control and updatedRobot in the world.
-  if(odometryManager_.odometryType_ != measurements::OdometryType::None)
-  {
-    // we compute the anchor frame using the lastly computed floating base so we use the previous encoders information.
-    // we use the current force sensors reading.
-    updateAnchorFrameOdometry(ctl);
-    // newWorldAnchorKine_ is already updated in updateAnchorFrameOdometry()
-    newUpdatedWorldAnchorKine_ = newWorldAnchorKine_;
-  }
-  else
-  {
-    updateAnchorFrameNoOdometry(ctl, updatedRobot);
-    // new pose of the anchor frame in the world.
-    newWorldAnchorKine_ = conversions::kinematics::fromSva(X_0_C_, so::kine::Kinematics::Flags::pose);
-    newUpdatedWorldAnchorKine_ = conversions::kinematics::fromSva(X_0_C_updated_, so::kine::Kinematics::Flags::pose);
-  }
+  updateAnchorFrameOdometry(ctl);
+  // newWorldAnchorKine_ is already updated in updateAnchorFrameOdometry()
+  newUpdatedWorldAnchorKine_ = newWorldAnchorKine_;
 
   /*
   if(iter_ > itersBeforeAnchorsVel_)
@@ -308,7 +289,7 @@ void TiltVisual::runTiltEstimator(const mc_control::MCController & ctl, const mc
 
   // updates the anchor frame used by the tilt observer.
   // If we perform odometry, the control and real robot anchor frame are both the one of the odometry robot.
-  updateAnchorFrame(ctl, updatedRobot);
+  updateAnchorFrame(ctl);
 
   // Anchor frame defined w.r.t control robot
   // XXX what if the feet are being moved by the stabilizer?
@@ -368,7 +349,7 @@ void TiltVisual::runTiltEstimator(const mc_control::MCController & ctl, const mc
 
   // we ignore the initial outlier velocity due to the position jump
   // we also reset the velocity of the anchor frame when its computation mode changes.
-  if(iter_ < itersBeforeAnchorsVel_ || newWorldAnchorKine_.linVel.isSet())
+  if(iter_ < itersBeforeAnchorsVel_ || odometryManager_.anchorFrameMethodChanged_)
   {
     updatedImuAnchorKine_.linVel().setZero();
     updatedImuAnchorKine_.angVel().setZero();
@@ -381,51 +362,42 @@ void TiltVisual::runTiltEstimator(const mc_control::MCController & ctl, const mc
   // computation of the local linear velocity of the IMU in the world.
 
   measuredOri_ = so::Matrix3(ctl.realRobot(robot_).posW().rotation().transpose());
-  if(odometryManager_.odometryType_ == measurements::OdometryType::None) // case if we don't use odometry
-  {
-    x1_ = worldImuKine_.orientation.toMatrix3().transpose() * worldAnchorKine_.linVel()
-          - (imu.angularVelocity()).cross(updatedImuAnchorKine_.position()) - updatedImuAnchorKine_.linVel();
 
-    estimator_.setMeasurement(x1_, imu.linearAcceleration(), imu.angularVelocity(), measuredOri_.toVector4(), k + 1);
+  // The anchor frame can be obtained using 2 ways:
+  // - 1: contacts are detected and can be used
+  // - 2: no contact is detected, the robot is hanging. As we still need an anchor frame for the tilt estimation we
+  // arbitrarily use the frame of the IMU. As we cannot perform odometry anymore as there is no contact, we cannot
+  // obtain the velocity of the IMU. We will then consider it as zero and consider it as constant with the linear
+  // acceleration as zero too.
+  // When switching from one mode to another, we consider x1hat = x1 before the estimation to avoid discontinuities.
+
+  // If the following variable is set, it means that no contact was detected and thus we are in the case 2 as
+  // defined above.
+  if(newWorldAnchorKine_.linVel.isSet())
+  {
+    estimator_.setAlpha(30);
+    estimator_.setBeta(0);
+    //  estimator_.setGamma(0.1);
+    estimator_.setMeasurement(so::Vector3::Zero(), imu.linearAcceleration(), imu.angularVelocity(),
+                              measuredOri_.toVector4(), k + 1);
   }
   else
   {
-    // The anchor frame can be obtained using 2 ways:
-    // - 1: contacts are detected and can be used
-    // - 2: no contact is detected, the robot is hanging. As we still need an anchor frame for the tilt estimation we
-    // arbitrarily use the frame of the IMU. As we cannot perform odometry anymore as there is no contact, we cannot
-    // obtain the velocity of the IMU. We will then consider it as zero and consider it as constant with the linear
-    // acceleration as zero too.
-    // When switching from one mode to another, we consider x1hat = x1 before the estimation to avoid discontinuities.
+    estimator_.setAlpha(alpha_);
+    estimator_.setBeta(beta_);
+    //  estimator_.setGamma(gamma_);
 
-    // If the following variable is set, it means that no contact was detected and thus we are in the case 2 as
-    // defined above.
-    if(newWorldAnchorKine_.linVel.isSet())
-    {
-      estimator_.setAlpha(30);
-      estimator_.setBeta(0);
-      //  estimator_.setGamma(0.1);
-      estimator_.setMeasurement(so::Vector3::Zero(), imu.linearAcceleration(), imu.angularVelocity(),
-                                measuredOri_.toVector4(), k + 1);
-    }
-    else
-    {
-      estimator_.setAlpha(alpha_);
-      estimator_.setBeta(beta_);
-      //  estimator_.setGamma(gamma_);
+    // when using the odometry, we use the x1 computed internally by the Tilt Observer
+    estimator_.setSensorPositionInC(updatedAnchorImuKine.position());
+    estimator_.setSensorOrientationInC(updatedAnchorImuKine.orientation.toMatrix3());
+    estimator_.setSensorLinearVelocityInC(updatedAnchorImuKine.linVel());
+    estimator_.setSensorAngularVelocityInC(updatedAnchorImuKine.angVel());
+    estimator_.setControlOriginVelocityInW(worldAnchorKine_.orientation.toMatrix3().transpose()
+                                           * worldAnchorKine_.linVel());
 
-      // when using the odometry, we use the x1 computed internally by the Tilt Observer
-      estimator_.setSensorPositionInC(updatedAnchorImuKine.position());
-      estimator_.setSensorOrientationInC(updatedAnchorImuKine.orientation.toMatrix3());
-      estimator_.setSensorLinearVelocityInC(updatedAnchorImuKine.linVel());
-      estimator_.setSensorAngularVelocityInC(updatedAnchorImuKine.angVel());
-      estimator_.setControlOriginVelocityInW(worldAnchorKine_.orientation.toMatrix3().transpose()
-                                             * worldAnchorKine_.linVel());
-
-      estimator_.setMeasurement(imu.linearAcceleration(), imu.angularVelocity(), measuredOri_.toVector4(), k + 1);
-    }
-    x1_ = estimator_.getVirtualLocalVelocityMeasurement();
+    estimator_.setMeasurement(imu.linearAcceleration(), imu.angularVelocity(), measuredOri_.toVector4(), k + 1);
   }
+  x1_ = estimator_.getVirtualLocalVelocityMeasurement();
 
   measurements_ = estimator_.getMeasurement(estimator_.getMeasurementTime()).transpose();
 
@@ -446,15 +418,12 @@ void TiltVisual::runTiltEstimator(const mc_control::MCController & ctl, const mc
   // Once we obtain the tilt (which is required by the legged odometry, estimating only the yaw), we update the pose and
   // velocities of the floating base
 
-  if(odometryManager_.odometryType_ != measurements::OdometryType::None)
-  {
-    // we can update the estimated pose using odometry. The velocity will be updated later using the estimated local
-    // linear velocity of the IMU.
-    auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
+  // we can update the estimated pose using odometry. The velocity will be updated later using the estimated local
+  // linear velocity of the IMU.
+  auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
 
-    // odometryManager_.runWithFullAttitude(ctl, logger, poseW_, R_0_fb_);
-    odometryManager_.run(ctl, logger, odometry::LeggedOdometryManager::RunParameters(poseW_).attitude(R_0_fb_));
-  }
+  // odometryManager_.runWithFullAttitude(ctl, logger, poseW_, R_0_fb_);
+  odometryManager_.run(ctl, logger, odometry::LeggedOdometryManager::RunParameters(poseW_).attitude(R_0_fb_));
 
   updatePoseAndVel(xk_.head(3), imu.angularVelocity());
   backupFbKinematics_.push_back(poseW_);
@@ -471,21 +440,8 @@ void TiltVisual::runTiltEstimator(const mc_control::MCController & ctl, const mc
 void TiltVisual::updatePoseAndVel(const so::Vector3 & localWorldImuLinVel, const so::Vector3 & localWorldImuAngVel)
 {
   // if we use odometry, the pose will already updated in odometryManager_.run(...)
-  if(odometryManager_.odometryType_ == measurements::OdometryType::None)
-  {
-    so::kine::Kinematics updatedFbAnchorKine = updatedWorldFbKine_.getInverse() * updatedWorldAnchorKine_;
-
-    correctedWorldFbKine_.orientation = R_0_fb_;
-    correctedWorldFbKine_.position = worldAnchorKine_.position() - R_0_fb_ * updatedFbAnchorKine.position();
-
-    poseW_.translation() = correctedWorldFbKine_.position();
-    poseW_.rotation() = R_0_fb_.transpose();
-  }
-  else
-  {
-    correctedWorldFbKine_.position = poseW_.translation();
-    correctedWorldFbKine_.orientation = R_0_fb_;
-  }
+  correctedWorldFbKine_.position = poseW_.translation();
+  correctedWorldFbKine_.orientation = R_0_fb_;
 
   // we use the newly estimated orientation and local linear velocity of the IMU to obtain the one of the floating base.
   correctedWorldImuKine_ =
@@ -501,12 +457,9 @@ void TiltVisual::updatePoseAndVel(const so::Vector3 & localWorldImuLinVel, const
   velW_.linear() = correctedWorldFbKine_.linVel();
   velW_.angular() = correctedWorldFbKine_.angVel();
 
-  if(odometryManager_.odometryType_ != measurements::OdometryType::None)
-  {
-    // the velocity of the odometry robot was obtained using finite differences. We give it our estimated velocity which
-    // is more accurate.
-    odometryManager_.odometryRobot().velW(velW_);
-  }
+  // the velocity of the odometry robot was obtained using finite differences. We give it our estimated velocity which
+  // is more accurate.
+  odometryManager_.odometryRobot().velW(velW_);
 }
 
 void TiltVisual::update(mc_control::MCController & ctl)
@@ -995,7 +948,7 @@ void TiltVisual::addToGUI(const mc_control::MCController &,
 
   // we allow to change the odometry type if the Tilt Observer is not used as a backup of the Kinetics Observer.
   // Otherwise the type can be changed by changing the one of the Kinetics Observer.
-  if(asBackup_ != true && odometryManager_.odometryType_ != measurements::OdometryType::None)
+  if(asBackup_ != true)
   {
     gui.addElement({observerName_, "Odometry"},
                    mc_rtc::gui::ComboInput(

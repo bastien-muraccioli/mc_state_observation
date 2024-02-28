@@ -340,7 +340,7 @@ public:
           params);
 
   /// @brief Returns the pose of the odometry robot's anchor frame based on the current floating base and encoders.
-  /// @details The anchor frame can can from 2 sources:
+  /// @details The anchor frame can come from 2 sources:
   /// - 1: contacts are detected and can be used to compute the anchor frame.
   /// - 2: no contact is detected, the robot is hanging. If we still need an anchor frame for the tilt estimation we
   /// arbitrarily use the frame of the bodySensor used by the estimator.
@@ -348,6 +348,20 @@ public:
   /// @param bodySensorName name of the body sensor.
   stateObservation::kine::Kinematics & getAnchorFramePose(const mc_control::MCController & ctl,
                                                           const std::string & bodySensorName);
+
+  /// @brief Returns the pose and linear velocity of the odometry robot's anchor frame based on the current floating
+  /// base and encoders.
+  /// @details The velocity of the anchor frame in the world comes from the one of the contacts in the world. It can be
+  /// useful if one needs this velocity in another frame attached to the robot. The anchor frame can come from 2
+  /// sources:
+  /// - 1: contacts are detected and can be used to compute the anchor frame.
+  /// - 2: no contact is detected, the robot is hanging. If we still need an anchor frame for the tilt estimation we
+  /// arbitrarily use the frame of the bodySensor used by the estimator. In that case the linear velocity is not
+  /// available.
+  /// @param ctl controller
+  /// @param bodySensorName name of the body sensor.
+  stateObservation::kine::Kinematics & getAnchorFrameKinematics(const mc_control::MCController & ctl,
+                                                                const std::string & bodySensorName);
 
   /// @brief Changes the type of the odometry
   /// @details Version meant to be called by the observer using the odometry during the run through the gui.
@@ -436,6 +450,17 @@ public:
   /// reading of the associated force sensor.
   /// @param contact Contact of which we want to compute the kinematics
   /// @param fs The force sensor associated to the contact
+  /// @param flag The variables we want in the returned Kinematics object (pose, pose+vel, etc)
+  /// @return stateObservation::kine::Kinematics &
+  const stateObservation::kine::Kinematics & getCurrentContactPose(LoContactWithSensor & contact,
+                                                                   const mc_rbdyn::ForceSensor & fs);
+  /// @brief Computes the kinematics of the contact attached to the odometry robot in the world frame. Also updates the
+  /// reading of the associated force sensor.
+  /// @details This version computes also the velocity of the contacts in the world frame, which can be used to obtain
+  /// their velocity in other frames attached to the robot.
+  /// @param contact Contact of which we want to compute the kinematics
+  /// @param fs The force sensor associated to the contact
+  /// @param flag The variables we want in the returned Kinematics object (pose, pose+vel, etc)
   /// @return stateObservation::kine::Kinematics &
   const stateObservation::kine::Kinematics & getCurrentContactKinematics(LoContactWithSensor & contact,
                                                                          const mc_rbdyn::ForceSensor & fs);

@@ -96,7 +96,7 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
 
     // we update the kinematics of the contact in the world obtained from the floating base and the sensor reading
     const stateObservation::kine::Kinematics & worldContactKine =
-        getCurrentContactKinematics(maintainedContact, robot.forceSensor(maintainedContact.name()));
+        getCurrentContactPose(maintainedContact, robot.forceSensor(maintainedContact.name()));
     maintainedContact.contactFbKine_ = worldContactKine.getInverse() * worldFbPose;
 
     if constexpr(!std::is_same_v<OnMaintainedContactObserver, std::nullptr_t>)
