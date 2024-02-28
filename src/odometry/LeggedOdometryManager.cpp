@@ -388,6 +388,7 @@ void LeggedOdometryManager::correctContactOri(LoContactWithSensor & contact, con
 void LeggedOdometryManager::correctContactPosition(LoContactWithSensor & contact, const mc_rbdyn::Robot & robot)
 {
   contact.worldRefKine_.position = getCurrentContactPose(contact, robot.forceSensor(contact.name())).position();
+  if(odometryType_ == measurements::OdometryType::Flat) { contact.worldRefKine_.position()(2) = 0.0; }
 }
 
 so::kine::Kinematics & LeggedOdometryManager::getAnchorFramePose(const mc_control::MCController & ctl,
