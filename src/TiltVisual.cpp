@@ -142,11 +142,13 @@ void TiltVisual::reset(const mc_control::MCController & ctl)
 
   /* Initialization of the variables */
   updatedWorldAnchorKine_ = stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
+  updatedWorldFbKine_ = stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
   updatedImuAnchorKine_ = stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
+  updatedAnchorImuKine_ = stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
+  updatedWorldImuKine_ = stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
+
   anchorFrameJumped_ = false;
   iter_ = 0;
-  imuVelC_ = sva::MotionVecd::Zero();
-  X_C_IMU_ = sva::PTransformd::Identity();
 }
 
 bool TiltVisual::run(const mc_control::MCController & ctl)
@@ -226,7 +228,6 @@ void TiltVisual::runTiltEstimator(const mc_control::MCController & ctl, const mc
   // - linear velocity of the anchor frame in the world of the control robot (derivative?)
 
   const auto & imu = ctl.robot(robot_).bodySensor(imuSensor_);
-  // const auto & rimu = updatedRobot.bodySensor(imuSensor_);
 
   // In the case we do odometry, the pose and velocities of the odometry robot are still not updated but the joints are.
   // It is not a problem as this kinematics object is not used to retrieve global poses and velocities.
@@ -239,9 +240,11 @@ void TiltVisual::runTiltEstimator(const mc_control::MCController & ctl, const mc
   so::kine::Kinematics parentImuKine =
       conversions::kinematics::fromSva(imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
 
+  // pose of the IMU's parent body in the world for the robot with the updated encoders
   const sva::PTransformd & updatedParentPoseW = updatedRobot.bodyPosW(imu.parentBody());
-
-  auto & updated_v_0_imuParent = updatedRobot.mbc().bodyVelW[updatedRobot.bodyIndexByName(imu.parentBody())];
+  // Compute velocity of the imu in the world for the robot with the updated encoders
+  const sva::MotionVecd & updated_v_0_imuParent =
+      updatedRobot.mbc().bodyVelW[updatedRobot.bodyIndexByName(imu.parentBody())];
 
   so::kine::Kinematics updatedWorldParentKine =
       conversions::kinematics::fromSva(updatedParentPoseW, updated_v_0_imuParent, true);
@@ -264,7 +267,7 @@ void TiltVisual::runTiltEstimator(const mc_control::MCController & ctl, const mc
     updatedImuAnchorKine_.angVel().setZero();
   }
 
-  so::kine::Kinematics updatedAnchorImuKine = updatedImuAnchorKine_.getInverse();
+  updatedAnchorImuKine_ = updatedImuAnchorKine_.getInverse();
 
   auto k = estimator_.getCurrentTime();
 
@@ -323,14 +326,6 @@ void TiltVisual::runTiltEstimator(const mc_control::MCController & ctl, const mc
 
   updatePoseAndVel(xk_.head(3), imu.angularVelocity());
   backupFbKinematics_.push_back(poseW_);
-
-  // update the velocities as MotionVecd for the logs
-  imuVelC_.linear() = updatedAnchorImuKine.linVel();
-  imuVelC_.angular() = updatedAnchorImuKine.angVel();
-
-  // update the pose as PTransformd for the logs
-  X_C_IMU_.translation() = updatedAnchorImuKine.position();
-  X_C_IMU_.rotation() = updatedAnchorImuKine.orientation.toMatrix3().transpose();
 }
 
 void TiltVisual::updatePoseAndVel(const so::Vector3 & localWorldImuLinVel, const so::Vector3 & localWorldImuAngVel)
@@ -543,9 +538,6 @@ void TiltVisual::addToLogger(const mc_control::MCController & ctl,
 
   logger.addLogEntry(category + "_IMU_world_orientation",
                      [this]() { return Eigen::Quaterniond{estimatedRotationIMU_}; });
-
-  logger.addLogEntry(category + "_IMU_AnchorFrame_pose", [this]() -> const sva::PTransformd & { return X_C_IMU_; });
-  logger.addLogEntry(category + "_IMU_AnchorFrame_linVel", [this]() -> const sva::MotionVecd & { return imuVelC_; });
 
   logger.addLogEntry(category + "_FloatingBase_world_pose", [this]() -> const sva::PTransformd & { return poseW_; });
   logger.addLogEntry(category + "_FloatingBase_world_vel", [this]() -> const sva::MotionVecd & { return velW_; });

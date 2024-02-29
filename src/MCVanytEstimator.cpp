@@ -143,7 +143,11 @@ void MCVanytEstimator::reset(const mc_control::MCController & ctl)
 
   /* Initialization of the variables */
   updatedWorldAnchorKine_ = stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
+  updatedWorldFbKine_ = stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
   updatedImuAnchorKine_ = stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
+  updatedAnchorImuKine_ = stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
+  updatedWorldImuKine_ = stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
+
   anchorFrameJumped_ = false;
   iter_ = 0;
   imuVelC_ = sva::MotionVecd::Zero();
@@ -240,9 +244,11 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
   so::kine::Kinematics parentImuKine =
       conversions::kinematics::fromSva(imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
 
+  // pose of the IMU's parent body in the world for the robot with the updated encoders
   const sva::PTransformd & updatedParentPoseW = updatedRobot.bodyPosW(imu.parentBody());
-
-  auto & updated_v_0_imuParent = updatedRobot.mbc().bodyVelW[updatedRobot.bodyIndexByName(imu.parentBody())];
+  // Compute velocity of the imu in the world for the robot with the updated encoders
+  const sva::MotionVecd & updated_v_0_imuParent =
+      updatedRobot.mbc().bodyVelW[updatedRobot.bodyIndexByName(imu.parentBody())];
 
   so::kine::Kinematics updatedWorldParentKine =
       conversions::kinematics::fromSva(updatedParentPoseW, updated_v_0_imuParent, true);
@@ -265,11 +271,9 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
     updatedImuAnchorKine_.angVel().setZero();
   }
 
-  so::kine::Kinematics updatedAnchorImuKine = updatedImuAnchorKine_.getInverse();
+  updatedAnchorImuKine_ = updatedImuAnchorKine_.getInverse();
 
   auto k = estimator_.getCurrentTime();
-
-  // computation of the local linear velocity of the IMU in the world.
 
   measuredOri_ = so::Matrix3(ctl.realRobot(robot_).posW().rotation().transpose());
 
@@ -326,7 +330,6 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
 
   // we can update the estimated pose using odometry. The velocity will be updated later using the estimated local
   // linear velocity of the IMU.
-
   for(auto * mContact : odometryManager_.maintainedContacts_)
   {
     const so::kine::Kinematics & worldContactRefKine = mContact->worldRefKine_;
@@ -346,14 +349,6 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
 
   updatePoseAndVel(xk_.head(3), imu.angularVelocity());
   backupFbKinematics_.push_back(poseW_);
-
-  // update the velocities as MotionVecd for the logs
-  imuVelC_.linear() = updatedAnchorImuKine.linVel();
-  imuVelC_.angular() = updatedAnchorImuKine.angVel();
-
-  // update the pose as PTransformd for the logs
-  X_C_IMU_.translation() = updatedAnchorImuKine.position();
-  X_C_IMU_.rotation() = updatedAnchorImuKine.orientation.toMatrix3().transpose();
 }
 
 void MCVanytEstimator::updatePoseAndVel(const so::Vector3 & localWorldImuLinVel,
@@ -569,7 +564,6 @@ void MCVanytEstimator::addToLogger(const mc_control::MCController & ctl,
   logger.addLogEntry(category + "_FloatingBase_world_pose", [this]() -> const sva::PTransformd & { return poseW_; });
   logger.addLogEntry(category + "_FloatingBase_world_vel", [this]() -> const sva::MotionVecd & { return velW_; });
   logger.addLogEntry(category + "_debug_x1", [this]() -> const so::Vector3 & { return yv_; });
-  logger.addLogEntry(category + "_debug_x1Test", [this]() -> const so::Vector3 & { return x1Debug_; });
 
   // logger.addLogEntry(category + "_Hartley_contact1_isSet",
   //                    [this]() -> int

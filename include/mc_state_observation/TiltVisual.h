@@ -36,10 +36,6 @@ public:
   /// @brief updates the kinematics of the anchor frame of our odometry robot in the world
   /// @param ctl Controller
   void updateAnchorFrameOdometry(const mc_control::MCController & ctl);
-  /// @brief updates the kinematics of the anchor frame of the robot when not performing odometry
-  /// @param ctl Controller
-  /// @param updatedRobot robot corresponding to the control robot with updated encoders
-  void updateAnchorFrameNoOdometry(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot);
 
   /// @brief updates the pose and the velcoity of the floating base in the world frame using our estimation results
   /// @param localWorldImuLinVel estimated local linear velocity of the IMU in the world frame
@@ -149,16 +145,7 @@ protected:
   /* kinematics used for computation */
   // kinematics of the IMU in the floating base after the encoders update
   stateObservation::kine::Kinematics updatedFbImuKine_;
-  // kinematics of the anchor frame of the control robot in the world. Version as a PTransform object.
-  sva::PTransformd X_0_C_;
-  // kinematics of the anchor frame of the control robot updated with the encoders in the world.  Version as a
-  // PTransform object.
-  sva::PTransformd X_0_C_updated_;
-  // previous value of X_0_C_updated_, used to compute the velocity by finite differences
-  sva::PTransformd X_0_C_updated_previous_;
 
-  // kinematics of the anchor frame of the control robot in the world. Version as a Kinematics object.
-  stateObservation::kine::Kinematics worldAnchorKine_;
   // kinematics of the anchor frame of the control robot updated with the encoders in the world. Version as a Kinematics
   // object.
   stateObservation::kine::Kinematics updatedWorldAnchorKine_;
@@ -167,12 +154,8 @@ protected:
   stateObservation::kine::Kinematics updatedWorldFbKine_;
   // kinematics of the anchor frame in the IMU frame after the encoders update
   stateObservation::kine::Kinematics updatedImuAnchorKine_;
-  // kinematics of the anchor frame in the world frame for the new iteration
-  stateObservation::kine::Kinematics newWorldAnchorKine_;
-  // kinematics of the anchor frame in the world frame for the new iteration, after the encoders update
-  stateObservation::kine::Kinematics newUpdatedWorldAnchorKine_;
-  // kinematics of the IMU in the world for the control robot
-  stateObservation::kine::Kinematics worldImuKine_;
+  // kinematics of the IMU frame in the anchor frame after the encoders update
+  stateObservation::kine::Kinematics updatedAnchorImuKine_;
   // kinematics of the IMU in the world after the encoders update
   stateObservation::kine::Kinematics updatedWorldImuKine_;
 
@@ -215,11 +198,7 @@ protected:
 
   /* Debug variables */
   // "measured" local linear velocity of the IMU
-  stateObservation::Vector3 x1_;
-  // velocity of the IMU in the anchor frame
-  sva::MotionVecd imuVelC_;
-  // pose of the IMU in the anchor frame
-  sva::PTransformd X_C_IMU_;
+  stateObservation::Vector3 yv_;
 
   stateObservation::kine::Orientation measuredOri_;
   stateObservation::Vector measurements_;
