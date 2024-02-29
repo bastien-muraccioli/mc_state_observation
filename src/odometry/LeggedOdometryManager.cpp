@@ -61,15 +61,19 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
                                                ctl.robot(robotName_)),
         so::kine::Kinematics::Flags::pose);
   }
+  refAnchorPosition_ = worldAnchorPose_.position();
 
   auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
-  logger.addLogEntry(odometryName_ + "_odometryRobot_posW",
+  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_fbAnchorPos_",
+                     [this]() -> so::Vector3 & { return fbAnchorPos_; });
+  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_odometryRobot_posW",
                      [this]() -> const sva::PTransformd & { return odometryRobot().posW(); });
 
-  logger.addLogEntry(odometryName_ + "_odometryRobot_velW",
+  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_odometryRobot_velW",
                      [this]() -> const sva::MotionVecd & { return odometryRobot().velW(); });
 
-  logger.addLogEntry(odometryName_ + "_odometryRobot_accW", [this]() { return odometryRobot().accW(); });
+  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_odometryRobot_accW",
+                     [this]() { return odometryRobot().accW(); });
   if(odomConfig.withModeSwitchInGui_)
   {
     ctl.gui()->addElement({odometryName_, "Odometry"},
@@ -101,21 +105,139 @@ void LeggedOdometryManager::updateJointsConfiguration(const mc_control::MCContro
   odometryRobot().forwardVelocity();
 }
 
+void LeggedOdometryManager::run(const mc_control::MCController & ctl, KineParams & kineParams)
+{
+  if(k_data_ == k_est_) { mc_rtc::log::error_and_throw("Please call initLoop before this function"); }
+
+  if(kineParams.tiltOrAttitude == nullptr)
+  { // the tilt must come from another estimator so we will use the real robot for the orientation
+    const auto & realRobot = ctl.realRobot(robotName_);
+    const stateObservation::Matrix3 realRobotOri = realRobot.posW().rotation().transpose();
+    kineParams.tilt(realRobotOri);
+  }
+
+  // updates the contacts and the resulting floating base kinematics
+  updateFbAndContacts(ctl, kineParams);
+
+  // updates the floating base kinematics in the observer
+  updateFbKinematicsPvt(kineParams.pose, kineParams.vel, kineParams.acc);
+
+  ++k_est_;
+}
+
+void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController & ctl, const KineParams & params)
+{
+  // If the position and orientation of the floating base can be updated using contacts (that were already set on the
+  // previous iteration), they are updated, else we keep the previous estimation. Then we estimate the pose of new
+  // contacts using the obtained pose of the floating base.
+
+  const auto & robot = ctl.robot(robotName_);
+
+  double sumForces_orientation = 0.0;
+
+  // indicates if the orientation can be updated from the current contacts or not
+  bool oriUpdatable = false;
+
+  // if the given orientation is only a tilt, we compute the yaw using the one of the contacts
+  if(!params.oriIsAttitude)
+  {
+    const stateObservation::Matrix3 & tilt = *(params.tiltOrAttitude);
+    // selects the contacts to use for the yaw odometry. We cannot call it in the onMaintainedContact function as it is
+    // looping over all the maintained contact and not used on each contact separately
+    selectForOrientationOdometry(oriUpdatable, sumForces_orientation);
+
+    // we update the orientation of the floating base first
+    if(oriUpdatable)
+    {
+      // the orientation can be updated using contacts, it will use at most the two most suitable contacts.
+      // We merge the obtained yaw with the tilt estimated by the previous observers
+      if(contactsManager_.oriOdometryContacts_.size() == 1)
+      {
+        // the orientation can be updated using 1 contact
+        fbPose_.rotation() =
+            stateObservation::kine::mergeRoll1Pitch1WithYaw2AxisAgnostic(
+                tilt, contactsManager_.oriOdometryContacts_.begin()->get().currentWorldFbPose_.orientation)
+                .transpose();
+      }
+      if(contactsManager_.oriOdometryContacts_.size() == 2) // the orientation can be updated using 2 contacts
+      {
+        const auto & contact1 = (*contactsManager_.oriOdometryContacts_.begin()).get();
+        const auto & contact2 = (*std::next(contactsManager_.oriOdometryContacts_.begin(), 1)).get();
+
+        const auto & R1 = contact1.currentWorldFbPose_.orientation.toMatrix3();
+        const auto & R2 = contact2.currentWorldFbPose_.orientation.toMatrix3();
+
+        double u = contact1.forceNorm() / sumForces_orientation;
+
+        stateObservation::Matrix3 diffRot = R1.transpose() * R2;
+
+        stateObservation::Vector3 diffRotVector =
+            (1.0 - u)
+            * stateObservation::kine::skewSymmetricToRotationVector(
+                diffRot); // we perform the multiplication by the weighting coefficient now so a
+                          // zero coefficient gives a unit rotation matrix and not a zero matrix
+
+        stateObservation::AngleAxis diffRotAngleAxis = stateObservation::kine::rotationVectorToAngleAxis(diffRotVector);
+
+        stateObservation::Matrix3 diffRotMatrix =
+            stateObservation::kine::Orientation(diffRotAngleAxis).toMatrix3(); // exp( (1 - u) * log(R1^T R2) )
+
+        stateObservation::Matrix3 meanOri = R1 * diffRotMatrix;
+        fbPose_.rotation() = stateObservation::kine::mergeRoll1Pitch1WithYaw2AxisAgnostic(tilt, meanOri).transpose();
+      }
+    }
+    else
+    {
+      // If no contact is detected, the yaw will not be updated but the tilt will.
+      fbPose_.rotation() =
+          stateObservation::kine::mergeRoll1Pitch1WithYaw2AxisAgnostic(tilt, fbPose_.rotation().transpose()).transpose();
+    }
+  }
+  else
+  {
+    const stateObservation::Matrix3 & attitude = *(params.tiltOrAttitude);
+    fbPose_.rotation() = attitude.transpose();
+  }
+
+  // we update the orientation of the floating base
+  odometryRobot().posW(fbPose_);
+  odometryRobot().forwardKinematics();
+  for(auto * mContact : maintainedContacts_) { correctContactOri(*mContact, robot); }
+
+  /*   Update of the position of the floating base    */
+  /*   if we can update the position, we compute the weighted average of the position obtained from the contacts    */
+
+  selectForPositionOdometry(fbPose_.translation());
+
+  updateOdometryRobot(ctl, params.vel, params.acc);
+
+  // we correct the reference position of the contacts in the world
+  for(auto * mContact : maintainedContacts_) { correctContactPosition(*mContact, robot); }
+
+  // computation of the reference kinematics of the newly set contacts in the world. We cannot use the onNewContacts
+  // function as it is used at the beginning of the iteration and we need to compute this at the end
+  for(auto * nContact : newContacts_) { setNewContact(*nContact, robot); }
+}
+
 void LeggedOdometryManager::selectForOrientationOdometry(bool & oriUpdatable, double & sumForcesOrientation)
 {
+  // we cannot update the orientation if no contact was set on last iteration
+  if(!posUpdatable_) { return; }
+
   // if the estimation of yaw is not required, we don't need to select the contacts
   if(withYawEstimation_)
   {
     contactsManager_.oriOdometryContacts_.clear();
-    for(auto & [_, contact] : contactsManager_.contacts())
+    for(auto * mContact : maintainedContacts_)
     {
-      if(contact.name().find("Hand") == std::string::npos && contact.isSet()
-         && contact.wasAlreadySet()) // we don't use hands for the orientation odometry
+      if(mContact->name().find("Hand") == std::string::npos && mContact->isSet()
+         && mContact->wasAlreadySet()) // we don't use hands for the orientation odometry
       {
-        contact.useForOrientation_ = true;
-        contactsManager_.oriOdometryContacts_.insert(contact);
+        mContact->useForOrientation_ = true;
+        contactsManager_.oriOdometryContacts_.insert(*mContact);
       }
     }
+
     // contacts are sorted from the lowest force to the highest force
     while(contactsManager_.oriOdometryContacts_.size() > 2)
     {
@@ -138,26 +260,20 @@ void LeggedOdometryManager::selectForOrientationOdometry(bool & oriUpdatable, do
   }
 }
 
-void LeggedOdometryManager::selectForPositionOdometry(bool & posUpdatable,
-                                                      double & sumForces_position,
-                                                      stateObservation::Vector3 & totalFbPosition)
+void LeggedOdometryManager::selectForPositionOdometry(stateObservation::Vector3 & fbPosition)
 {
   /* For each maintained contact, we compute the position of the floating base in the world, we then compute the
    * weighted average wrt to the measured forces at the contact and obtain the estimated position of the floating
    * base */
-  for(auto & [_, contact] : contactsManager_.contacts())
-  {
-    if(contact.wasAlreadySet()) // we don't use hands for the orientation odometry
-    {
-      posUpdatable = true;
-      sumForces_position += contact.forceNorm();
 
-      // the reference orientation of the contact was corrected so we compute the new position (simply by combining the
+  if(!posUpdatable_) { return; }
+  fbPosition.setZero();
+  for(auto * mContact : maintainedContacts_)
+  { // the reference orientation of the contact was corrected so we compute the new position (simply by combining the
       // Kinematics objects)
-      contact.currentWorldFbPose_ = contact.worldRefKine_ * contact.contactFbKine_;
+    mContact->currentWorldFbPose_ = mContact->worldRefKine_ * mContact->contactFbKine_;
       // we add the position of the floating base estimated from the one of the contact to the sum
-      totalFbPosition += contact.currentWorldFbPose_.position() * contact.forceNorm();
-    }
+    fbPosition += mContact->currentWorldFbPose_.position() * mContact->lambda_;
   }
 }
 
@@ -364,6 +480,7 @@ const so::kine::Kinematics & LeggedOdometryManager::getCurrentContactKinematics(
 void LeggedOdometryManager::addContactLogEntries(mc_rtc::Logger & logger, const LoContactWithSensor & contact)
 {
   const std::string & contactName = contact.name();
+
   conversions::kinematics::addToLogger(logger, contact.worldRefKine_,
                                        odometryName_ + "_leggedOdometryManager_" + contactName + "_refPose");
   conversions::kinematics::addToLogger(logger, contact.currentWorldFbPose_,
@@ -398,9 +515,12 @@ void LeggedOdometryManager::correctContactPosition(LoContactWithSensor & contact
 so::kine::Kinematics & LeggedOdometryManager::getAnchorFramePose(const mc_control::MCController & ctl,
                                                                  const std::string & bodySensorName)
 {
+  if(k_data_ == k_est_) { mc_rtc::log::error_and_throw("Please call initLoop before this function"); }
+
+  if(!posUpdatable_) { return worldAnchorPose_; }
+
   const auto & robot = ctl.robot(robotName_);
 
-  double sumForces_position = 0.0;
   double sumForces_orientation = 0.0;
 
   bool posUpdatable = false;
@@ -408,10 +528,8 @@ so::kine::Kinematics & LeggedOdometryManager::getAnchorFramePose(const mc_contro
 
   anchorFrameMethodChanged_ = false;
 
-  // "force-weighted" sum of the estimated floating base positions
-  so::Vector3 totalAnchorPosition = so::Vector3::Zero();
-
   worldAnchorPose_.reset();
+  worldAnchorPose_.position.set().setZero();
 
   // checks that the position and orientation can be updated from the currently set contacts and computes the pose of
   // the floating base obtained from each contact
@@ -422,9 +540,8 @@ so::kine::Kinematics & LeggedOdometryManager::getAnchorFramePose(const mc_contro
 
     const so::kine::Kinematics & worldContactKine = getCurrentContactPose(contact, robot.forceSensor(contact.name()));
 
-    sumForces_position += contact.forceNorm();
     // force weighted sum of the estimated floating base positions
-    totalAnchorPosition += worldContactKine.position() * contact.forceNorm();
+    worldAnchorPose_.position() += worldContactKine.position() * contact.lambda_;
 
     if(withYawEstimation_ && contact.useForOrientation_)
     {
@@ -518,13 +635,40 @@ so::kine::Kinematics & LeggedOdometryManager::getAnchorFramePose(const mc_contro
   return worldAnchorPose_;
 }
 
+so::Vector3 & LeggedOdometryManager::getRefAnchorFramePos()
+{
+  if(k_data_ == k_est_) { mc_rtc::log::error_and_throw("Please call initLoop before this function"); }
+
+  if(!posUpdatable_) { return refAnchorPosition_; }
+
+  // "force-weighted" sum of the estimated floating base positions
+  refAnchorPosition_.setZero();
+
+  // checks that the position and orientation can be updated from the currently set contacts and computes the pose of
+  // the floating base obtained from each contact
+  for(auto & [_, contact] : contactsManager_.contacts())
+  {
+    if(!(contact.isSet() && contact.wasAlreadySet())) { continue; }
+
+    const so::kine::Kinematics & worldContactRefKine = contact.worldRefKine_;
+
+    // force weighted sum of the estimated floating base positions
+    refAnchorPosition_ += worldContactRefKine.position() * contact.lambda_;
+  }
+
+  return refAnchorPosition_;
+}
+
 stateObservation::kine::Kinematics & LeggedOdometryManager::getAnchorFrameKinematics(
     const mc_control::MCController & ctl,
     const std::string & bodySensorName)
 {
+  if(k_data_ == k_est_) { mc_rtc::log::error_and_throw("Please call initLoop before this function"); }
+
+  if(!posUpdatable_) { return worldAnchorPose_; }
+
   const auto & robot = ctl.robot(robotName_);
 
-  double sumForces_position = 0.0;
   double sumForces_orientation = 0.0;
 
   bool linKineUpdatable = false;
@@ -532,12 +676,9 @@ stateObservation::kine::Kinematics & LeggedOdometryManager::getAnchorFrameKinema
 
   anchorFrameMethodChanged_ = false;
 
-  // "force-weighted" sum of the estimated floating base positions
-  so::Vector3 totalAnchorPosition = so::Vector3::Zero();
-  // "force-weighted" sum of the estimated floating base linear velocity
-  so::Vector3 totalAnchorLinVel = so::Vector3::Zero();
-
   worldAnchorPose_.reset();
+  worldAnchorPose_.position.set().setZero();
+  worldAnchorPose_.linVel.set().setZero();
 
   // checks that the position and orientation can be updated from the currently set contacts and computes the pose of
   // the floating base obtained from each contact
@@ -549,10 +690,9 @@ stateObservation::kine::Kinematics & LeggedOdometryManager::getAnchorFrameKinema
     const so::kine::Kinematics & worldContactKine =
         getCurrentContactKinematics(contact, robot.forceSensor(contact.name()));
 
-    sumForces_position += contact.forceNorm();
     // force weighted sum of the estimated floating base positions
-    totalAnchorPosition += worldContactKine.position() * contact.forceNorm();
-    totalAnchorLinVel += worldContactKine.linVel() * contact.forceNorm();
+    worldAnchorPose_.position() += worldContactKine.position() * contact.lambda_;
+    worldAnchorPose_.linVel() += worldContactKine.linVel() * contact.lambda_;
 
     if(withYawEstimation_ && contact.useForOrientation_)
     {

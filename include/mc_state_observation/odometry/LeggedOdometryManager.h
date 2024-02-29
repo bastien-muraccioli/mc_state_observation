@@ -44,6 +44,9 @@ public:
   // kinematics of the frame of the sensor frame of the contact, obtained by forward kinematics. Useful to express the
   // force measurement in the frame of the contact.
   stateObservation::kine::Kinematics contactSensorKine_;
+
+  // weighing coefficient for the anchor frame computation
+  double lambda_;
 };
 
 /// @brief Structure that implements all the necessary functions to perform legged odometry.
@@ -56,20 +59,8 @@ public:
 
   struct KineParams
   {
-    explicit KineParams(sva::PTransformd & pose) : pose(pose) {}
-    sva::PTransformd & pose;
-    sva::MotionVecd * vel = nullptr;
-    sva::MotionVecd * acc = nullptr;
-    bool oriIsAttitude = false;
-    const Eigen::Matrix3d * tiltOrAttitude = nullptr;
-  };
-  template<typename OnNewContactObserver = std::nullptr_t,
-           typename OnMaintainedContactObserver = std::nullptr_t,
-           typename OnRemovedContactObserver = std::nullptr_t,
-           typename OnAddedContactObserver = std::nullptr_t>
-  struct RunParameters
-  {
-    /// @brief Structure containing all the parameters required to run the legged odometry
+    /// @brief Structure containing all the kinematic parameters required to run the legged odometry
+
     /// @var sva::PTransformd& pose /* Pose of the floating base of the robot in the world that we want to update with
     /// the odometry */
     /// @var sva::MotionVecd* vel /* Velocity of the floating base of the robot in the world that we want to update with
@@ -82,6 +73,61 @@ public:
     /// is a tilt or an attitude (full orientation). */
     /// @var Eigen::Matrix3d* tiltOrAttitude /* Input orientation of the floating base in the world, used to perform the
     /// legged odometry. If only a tilt is provided, the yaw will come from the yaw of the contacts. */
+
+    KineParams & velocity(sva::MotionVecd & vel)
+    {
+      this->vel = &vel;
+      return *this;
+    }
+
+    KineParams & acceleration(sva::MotionVecd & acc)
+    {
+      this->acc = &acc;
+      return *this;
+    }
+
+    KineParams & tilt(const Eigen::Matrix3d & tilt)
+    {
+      if(tiltOrAttitude) { throw std::runtime_error("An input attitude is already set"); }
+      oriIsAttitude = false;
+      tiltOrAttitude = &tilt;
+      return *this;
+    }
+
+    KineParams & attitude(const Eigen::Matrix3d & ori)
+    {
+      if(tiltOrAttitude) { throw std::runtime_error("An input tilt is already set"); }
+      oriIsAttitude = true;
+      tiltOrAttitude = &ori;
+      return *this;
+    }
+
+    static KineParams fromOther(const KineParams & other)
+    {
+      KineParams out(other.pose);
+      out.vel = other.vel;
+      out.acc = other.acc;
+      out.oriIsAttitude = other.oriIsAttitude;
+      out.tiltOrAttitude = other.tiltOrAttitude;
+      return out;
+    }
+
+    explicit KineParams(sva::PTransformd & pose) : pose(pose) {}
+    sva::PTransformd & pose;
+    sva::MotionVecd * vel = nullptr;
+    sva::MotionVecd * acc = nullptr;
+    bool oriIsAttitude = false;
+    const Eigen::Matrix3d * tiltOrAttitude = nullptr;
+  };
+
+  template<typename OnNewContactObserver = std::nullptr_t,
+           typename OnMaintainedContactObserver = std::nullptr_t,
+           typename OnRemovedContactObserver = std::nullptr_t,
+           typename OnAddedContactObserver = std::nullptr_t>
+  struct RunParameters
+  {
+    /// @brief Structure containing all the functions required to update the contact
+
     /// @var OnNewContactObserver* onNewContactFn /* Function defined in the observer using the legged odometry that
     /// must be called when a contact is newly detected. */
     /// @var OnMaintainedContactObserver* onMaintainedContactFn /* Function defined in the observer using the legged
@@ -92,35 +138,7 @@ public:
     /// must be called when a contact is newly added to the manager (used to add it to the gui, to logs that must be
     /// written since its first detection, etc.) */
 
-    explicit RunParameters(sva::PTransformd & pose) : kineParams(pose) {}
-
-    RunParameters & velocity(sva::MotionVecd & vel)
-    {
-      this->kineParams.vel = &vel;
-      return *this;
-    }
-
-    RunParameters & acceleration(sva::MotionVecd & acc)
-    {
-      this->kineParams.acc = &acc;
-      return *this;
-    }
-
-    RunParameters & tilt(const Eigen::Matrix3d & tilt)
-    {
-      if(kineParams.tiltOrAttitude) { throw std::runtime_error("An input attitude is already set"); }
-      kineParams.oriIsAttitude = false;
-      kineParams.tiltOrAttitude = &tilt;
-      return *this;
-    }
-
-    RunParameters & attitude(const Eigen::Matrix3d & ori)
-    {
-      if(kineParams.tiltOrAttitude) { throw std::runtime_error("An input tilt is already set"); }
-      kineParams.oriIsAttitude = true;
-      kineParams.tiltOrAttitude = &ori;
-      return *this;
-    }
+    explicit RunParameters() {}
 
     template<typename OnNewContactOther>
     RunParameters<OnNewContactOther, OnMaintainedContactObserver, OnRemovedContactObserver, OnAddedContactObserver>
@@ -170,11 +188,7 @@ public:
         const RunParameters<OnNewContactOther, OnMaintainedContactOther, OnRemovedContactOther, OnAddedContactOther> &
             other)
     {
-      RunParameters out(other.kineParams.pose);
-      out.kineParams.vel = other.kineParams.vel;
-      out.kineParams.acc = other.kineParams.acc;
-      out.kineParams.oriIsAttitude = other.kineParams.oriIsAttitude;
-      out.kineParams.tiltOrAttitude = other.kineParams.tiltOrAttitude;
+      RunParameters out;
       if constexpr(std::is_same_v<OnNewContactOther, OnNewContactObserver>)
       {
         out.onNewContactFn = other.onNewContactFn;
@@ -194,7 +208,6 @@ public:
       return out;
     }
 
-    KineParams kineParams;
     OnNewContactObserver * onNewContactFn = nullptr;
     OnMaintainedContactObserver * onMaintainedContactFn = nullptr;
     OnRemovedContactObserver * onRemovedContactFn = nullptr;
@@ -337,7 +350,6 @@ public:
             const Configuration & odomConfig,
             const ContactsManagerConfiguration & contactsConf);
 
-  /// @brief Updates the pose of the contacts and estimates the associated kinematics.
   /// @param ctl Controller.
   /// @param logger Logger.
   /// @param runParams Parameters used to run the legged odometry.
@@ -345,24 +357,14 @@ public:
            typename OnMaintainedContactObserver = std::nullptr_t,
            typename OnRemovedContactObserver = std::nullptr_t,
            typename OnAddedContactObserver = std::nullptr_t>
-  void initContacts(const mc_control::MCController & ctl,
+  void initLoop(const mc_control::MCController & ctl,
                     mc_rtc::Logger & logger,
-                    std::vector<LoContactWithSensor *> & newContacts,
-                    std::vector<LoContactWithSensor *> & maintainedContacts,
                     const RunParameters<OnNewContactObserver,
                                         OnMaintainedContactObserver,
                                         OnRemovedContactObserver,
-                                        OnAddedContactObserver> & params);
+                                    OnAddedContactObserver> & runParams);
 
-  template<typename OnNewContactObserver = std::nullptr_t,
-           typename OnMaintainedContactObserver = std::nullptr_t,
-           typename OnRemovedContactObserver = std::nullptr_t,
-           typename OnAddedContactObserver = std::nullptr_t>
-  void run(
-      const mc_control::MCController & ctl,
-      mc_rtc::Logger & logger,
-      RunParameters<OnNewContactObserver, OnMaintainedContactObserver, OnRemovedContactObserver, OnAddedContactObserver> &
-          params);
+  void run(const mc_control::MCController & ctl, KineParams & params);
 
   /// @brief Returns the pose of the odometry robot's anchor frame based on the current floating base and encoders.
   /// @details The anchor frame can come from 2 sources:
@@ -403,12 +405,22 @@ public:
   /// @details Allows to set the velocity update method directly from a string, most likely obtained from a
   /// configuration file.
   /// @param str The string naming the desired velocity update method
-  inline static VelocityUpdate stringToVelocityUpdate(const std::string & str, const std::string & odometryName)
-  {
-    auto it = strToVelocityUpdate_.find(str);
-    if(it != strToVelocityUpdate_.end()) { return it->second; }
-    mc_rtc::log::error_and_throw<std::runtime_error>("[{}]: No known VelocityUpdate value for {}", odometryName, str);
-  }
+
+private:
+  /// @brief Updates the pose of the contacts and estimates the associated kinematics.
+  /// @param ctl Controller.
+  /// @param logger Logger.
+  /// @param runParams Parameters used to run the legged odometry.
+  template<typename OnNewContactObserver = std::nullptr_t,
+           typename OnMaintainedContactObserver = std::nullptr_t,
+           typename OnRemovedContactObserver = std::nullptr_t,
+           typename OnAddedContactObserver = std::nullptr_t>
+  void initContacts(const mc_control::MCController & ctl,
+                    mc_rtc::Logger & logger,
+                    const RunParameters<OnNewContactObserver,
+                                        OnMaintainedContactObserver,
+                                        OnRemovedContactObserver,
+                                        OnAddedContactObserver> & params);
 
   /// @brief Updates the floating base kinematics given as argument by the observer.
   /// @details Beware, only the pose is updated by the odometry, the 6D velocity (except if not updated by an
@@ -431,17 +443,7 @@ public:
   /// @param ctl Controller.
   /// @param logger Logger.
   /// @param runParams Parameters used to run the legged odometry.
-  template<typename OnNewContactObserver = std::nullptr_t,
-           typename OnMaintainedContactObserver = std::nullptr_t,
-           typename OnRemovedContactObserver = std::nullptr_t,
-           typename OnAddedContactObserver = std::nullptr_t>
-  void updateFbAndContacts(const mc_control::MCController & ctl,
-                           const std::vector<LoContactWithSensor *> & newContacts,
-                           const std::vector<LoContactWithSensor *> & maintainedContacts,
-                           const RunParameters<OnNewContactObserver,
-                                               OnMaintainedContactObserver,
-                                               OnRemovedContactObserver,
-                                               OnAddedContactObserver> & params);
+  void updateFbAndContacts(const mc_control::MCController & ctl, const KineParams & params);
 
   /// @brief Corrects the reference orientation of the contacts after the update of the floating base's orientation.
   /// @details The new reference orientation is obtained by forward kinematics from the updated orientation of the
@@ -452,7 +454,6 @@ public:
   /// @details The new reference position is obtained by forward kinematics from the updated pose of the floating base.
   /// @param robot robot used to access the force sensor of the contact
   void correctContactPosition(LoContactWithSensor & contact, const mc_rbdyn::Robot & robot);
-
   /// @brief Updates the floating base kinematics given as argument by the observer.
   /// @details Must be called after \ref updateFbAndContacts(const mc_control::MCController & ctl, mc_rtc::Logger &,
   /// const stateObservation::Matrix3 &, sva::MotionVecd *, sva::MotionVecd *).
@@ -480,6 +481,7 @@ public:
   /// @return stateObservation::kine::Kinematics &
   const stateObservation::kine::Kinematics & getCurrentContactPose(LoContactWithSensor & contact,
                                                                    const mc_rbdyn::ForceSensor & fs);
+
   /// @brief Computes the kinematics of the contact attached to the odometry robot in the world frame. Also updates the
   /// reading of the associated force sensor.
   /// @details This version computes also the velocity of the contacts in the world frame, which can be used to obtain
@@ -499,9 +501,9 @@ public:
   /// @param sumForcesOrientation Sum of the forces measured at the contacts used for the orientation estimation
   void selectForOrientationOdometry(bool & oriUpdatable, double & sumForcesOrientation);
 
-  void selectForPositionOdometry(bool & posUpdatable,
-                                 double & sumForces_position,
-                                 stateObservation::Vector3 & totalFbPosition);
+  void selectForPositionOdometry(stateObservation::Vector3 & fbPosition);
+
+  stateObservation::Vector3 & getRefAnchorFramePos();
   /// @brief Add the log entries corresponding to the contact.
   /// @param logger
   /// @param contactName
@@ -511,6 +513,13 @@ public:
   /// @param logger
   /// @param contactName
   void removeContactLogEntries(mc_rtc::Logger & logger, const LoContactWithSensor & contact);
+
+  inline static VelocityUpdate stringToVelocityUpdate(const std::string & str, const std::string & odometryName)
+  {
+    auto it = strToVelocityUpdate_.find(str);
+    if(it != strToVelocityUpdate_.end()) { return it->second; }
+    mc_rtc::log::error_and_throw<std::runtime_error>("[{}]: No known VelocityUpdate value for {}", odometryName, str);
+  }
 
 protected:
   // Name of the odometry, used in logs and in the gui.
@@ -530,12 +539,20 @@ protected:
   // pose of the anchor frame of the robot in the world
   stateObservation::kine::Kinematics worldAnchorPose_;
 
+  stateObservation::Vector3 refAnchorPosition_;
+
+  stateObservation::Vector3 fbAnchorPos_;
+
   // Indicates if the previous anchor frame was obtained using contacts
   bool prevAnchorFromContacts_ = true;
   // Indicates if the current anchor frame was obtained using contacts
   bool currAnchorFromContacts_ = true;
   // Indicates if the mode of computation of the anchor frame changed. Might me needed by the estimator (ex:
 
+  bool posUpdatable_ = false;
+
+  stateObservation::TimeIndex k_est_ = 0;
+  stateObservation::TimeIndex k_data_ = 0;
 public:
   // TiltObserver)
   bool anchorFrameMethodChanged_ = false;
@@ -545,6 +562,9 @@ public:
 
   // indicates if the velocity has to be updated, if yes, how it must be updated
   VelocityUpdate velocityUpdate_;
+
+  std::vector<LoContactWithSensor *> newContacts_;
+  std::vector<LoContactWithSensor *> maintainedContacts_;
 };
 
 } // namespace mc_state_observation::odometry
