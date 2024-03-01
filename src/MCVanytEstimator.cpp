@@ -122,7 +122,6 @@ void MCVanytEstimator::reset(const mc_control::MCController & ctl)
 
   // the updated robot has the same floating base's pose than the control robot, but its encoders are updated. We use it
   // to get more accurate local Kinematics.
-  my_robots_->robotCopy(robot, "updatedRobot");
   ctl.gui()->addElement(
       {"Robots"},
       mc_rtc::gui::Robot(observerName_, [this]() -> const mc_rbdyn::Robot & { return my_robots_->robot(); }));
@@ -141,13 +140,6 @@ void MCVanytEstimator::reset(const mc_control::MCController & ctl)
 
   estimator_.initEstimator(so::Vector3::Zero(), initX2, initOri.inverse().toVector4());
 
-  /* Initialization of the variables */
-  updatedWorldAnchorKine_ = stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
-  updatedWorldFbKine_ = stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
-  updatedImuAnchorKine_ = stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
-  updatedAnchorImuKine_ = stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
-  updatedWorldImuKine_ = stateObservation::kine::Kinematics::zeroKinematics(flagPoseVels_);
-
   anchorFrameJumped_ = false;
   iter_ = 0;
   imuVelC_ = sva::MotionVecd::Zero();
@@ -156,21 +148,8 @@ void MCVanytEstimator::reset(const mc_control::MCController & ctl)
 
 bool MCVanytEstimator::run(const mc_control::MCController & ctl)
 {
-  const auto & robot = ctl.robot(robot_);
   const auto & realRobot = ctl.realRobot(robot_);
   auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
-
-  const auto & realQ = realRobot.mbc().q;
-  const auto & realAlpha = realRobot.mbc().alpha;
-
-  std::copy(std::next(realQ.begin()), realQ.end(), std::next(my_robots_->robot("updatedRobot").mbc().q.begin()));
-  std::copy(std::next(realAlpha.begin()), realAlpha.end(),
-            std::next(my_robots_->robot("updatedRobot").mbc().alpha.begin()));
-  my_robots_->robot("updatedRobot").mbc().q[0] = robot.mbc().q[0];
-  my_robots_->robot("updatedRobot").mbc().alpha[0] = robot.mbc().alpha[0];
-
-  my_robots_->robot("updatedRobot").forwardKinematics();
-  my_robots_->robot("updatedRobot").forwardVelocity();
 
   if(logger.t() > 1.0)
   {
@@ -191,87 +170,47 @@ bool MCVanytEstimator::run(const mc_control::MCController & ctl)
   return true;
 }
 
-void MCVanytEstimator::updateAnchorFrame(const mc_control::MCController & ctl)
+void MCVanytEstimator::updateNecessaryFramesOdom(const mc_control::MCController & ctl,
+                                                 const mc_rbdyn::Robot & odomRobot)
+
 {
-  // update of the pose of the anchor frame of the control and updatedRobot in the world.
-  updateAnchorFrameOdometry(ctl);
+  // pose of the floating base' frame in the world for the odometry robot
+  updatedWorldFbKine_ = conversions::kinematics::fromSva(odomRobot.posW(), odomRobot.velW(), true);
+
+  const auto & imu = ctl.robot(robot_).bodySensor(imuSensor_);
+  const sva::PTransformd & imuXbs = imu.X_b_s();
+  so::kine::Kinematics parentImuKine =
+      conversions::kinematics::fromSva(imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
+
+  // pose of the IMU's parent body in the world for the odometry robot
+  const sva::PTransformd & updatedParentPoseW = odomRobot.bodyPosW(imu.parentBody());
+  // velocity of the IMU's parent body in the world for the odometry robot
+  const sva::MotionVecd & updated_v_0_imuParent = odomRobot.mbc().bodyVelW[odomRobot.bodyIndexByName(imu.parentBody())];
+
+  // kinematics of the IMU's parent body in the world for the odometry robot
+  so::kine::Kinematics updatedWorldParentKine =
+      conversions::kinematics::fromSva(updatedParentPoseW, updated_v_0_imuParent, true);
+
+  // pose and velocities of the IMU in the world frame for the odometry robot
+  updatedWorldImuKine_ = updatedWorldParentKine * parentImuKine;
+
+  // pose and velocities of the IMU in the floating base for the odometry robot
+  updatedFbImuKine_ = updatedWorldFbKine_.getInverse() * updatedWorldImuKine_;
+
+  updatedImuAnchorKine_ = odometryManager_.getAnchorKineIn(updatedWorldImuKine_);
+
+  if(odometryManager_.anchorFrameMethodChanged_) { updatedImuAnchorKine_.linVel().setZero(); }
 }
 
-void MCVanytEstimator::updateAnchorFrameOdometry(const mc_control::MCController & ctl)
+void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & odomRobot)
 {
-  // Generally contains only the pose of the anchor frame, but when no contact is detected, the anchor frame becomes the
-  // frame of the IMU and its velocity is considered as zero. For that transition the one when the anchor frame gets
-  // back "to normal", it will contain the zero velocity.
-  updatedWorldAnchorKine_ = odometryManager_.getWorldAnchorFrameKinematics(ctl, imuSensor_);
-}
-
-void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot)
-{
-  /*
-  For the kinematics of the IMU and anchor frame in the world frame, we use the control robot.
-  For internal kinematics like the anchor frame in the IMU, we use the updated robot whose encoders got updated.
-  */
-
   estimator_.setAlpha(alpha_);
   estimator_.setBeta(beta_);
   estimator_.setGamma(gamma_);
 
-  // updates the anchor frame used by the tilt observer.
-  // If we perform odometry, the control and real robot anchor frame are both the one of the odometry robot.
-  updateAnchorFrame(ctl);
-
-  // Anchor frame defined w.r.t control robot
-  // XXX what if the feet are being moved by the stabilizer?
-
-  // we want in the anchor frame:
-  // - position of the IMU
-  // - orientation of the IMU
-  // - linear velocity of the imu
-  // - angular velocity of the imu
-  // - linear velocity of the anchor frame in the world of the control robot (derivative?)
+  updateNecessaryFramesOdom(ctl, odomRobot);
 
   const auto & imu = ctl.robot(robot_).bodySensor(imuSensor_);
-  // const auto & rimu = updatedRobot.bodySensor(imuSensor_);
-
-  // In the case we do odometry, the pose and velocities of the odometry robot are still not updated but the joints are.
-  // It is not a problem as this kinematics object is not used to retrieve global poses and velocities.
-  updatedWorldFbKine_ = conversions::kinematics::fromSva(updatedRobot.posW(), updatedRobot.velW(), true);
-
-  // we use the imu object of control robot because the copy of BodySensor objects seems to be incomplete. Anyway we use
-  // it only to get information about the parent body, which is the same with the control robot.
-  const sva::PTransformd & imuXbs = imu.X_b_s();
-
-  so::kine::Kinematics parentImuKine =
-      conversions::kinematics::fromSva(imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
-
-  // pose of the IMU's parent body in the world for the robot with the updated encoders
-  const sva::PTransformd & updatedParentPoseW = updatedRobot.bodyPosW(imu.parentBody());
-  // Compute velocity of the imu in the world for the robot with the updated encoders
-  const sva::MotionVecd & updated_v_0_imuParent =
-      updatedRobot.mbc().bodyVelW[updatedRobot.bodyIndexByName(imu.parentBody())];
-
-  so::kine::Kinematics updatedWorldParentKine =
-      conversions::kinematics::fromSva(updatedParentPoseW, updated_v_0_imuParent, true);
-
-  // pose and velocities of the IMU in the world frame
-  updatedWorldImuKine_ = updatedWorldParentKine * parentImuKine;
-
-  // pose and velocities of the IMU in the floating base. Use of updated robot to use encoders.
-  updatedFbImuKine_ = updatedWorldFbKine_.getInverse() * updatedWorldImuKine_;
-
-  // new pose of the anchor frame in the IMU frame. The velocity is computed right after because we don't want to use
-  // the one given by mc_rtc.
-  updatedImuAnchorKine_ = updatedWorldImuKine_.getInverse() * updatedWorldAnchorKine_;
-
-  // we ignore the initial outlier velocity due to the position jump
-  // we also reset the velocity of the anchor frame when its computation mode changes.
-  if(iter_ < itersBeforeAnchorsVel_ || odometryManager_.anchorFrameMethodChanged_)
-  {
-    updatedImuAnchorKine_.linVel().setZero();
-    updatedImuAnchorKine_.angVel().setZero();
-  }
-
-  updatedAnchorImuKine_ = updatedImuAnchorKine_.getInverse();
 
   auto k = estimator_.getCurrentTime();
 
@@ -304,7 +243,7 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
 
   if(oriUpdateIter_ >= 20)
   {
-    estimator_.addOrientationMeasurement(measuredOri_.toMatrix3(), 3);
+    // estimator_.addOrientationMeasurement(measuredOri_.toMatrix3(), 3);
     oriUpdateIter_ = 0;
   }
   ++oriUpdateIter_;
@@ -549,13 +488,6 @@ void MCVanytEstimator::addToLogger(const mc_control::MCController & ctl,
                      [this]() -> std::string
                      { return measurements::odometryTypeToSstring(odometryManager_.odometryType_); });
 
-  logger.addLogEntry(category + "_updatedRobot",
-                     [this]() -> const sva::PTransformd &
-                     {
-                       const auto & updatedRobot = my_robots_->robot("updatedRobot");
-                       return updatedRobot.posW();
-                     });
-
   logger.addLogEntry(category + "_IMU_world_orientation",
                      [this]() { return Eigen::Quaterniond{estimatedRotationIMU_}; });
 
@@ -685,11 +617,6 @@ void MCVanytEstimator::addToLogger(const mc_control::MCController & ctl,
                        return worldImuKine_.orientation.toMatrix3().transpose() * worldImuKine_.angVel();
                      });
 
-  logger.addLogEntry(
-      category + "_debug_updatedWorldAnchorVelExpressedInImu",
-      [this]() -> so::Vector3
-      { return updatedWorldImuKine_.orientation.toMatrix3().transpose() * updatedWorldAnchorKine_.linVel(); });
-
   logger.addLogEntry(category + "_debug_realX1",
                      [this, &ctl]() -> so::Vector3
                      {
@@ -803,7 +730,6 @@ void MCVanytEstimator::addToLogger(const mc_control::MCController & ctl,
                      });
 
   conversions::kinematics::addToLogger(logger, updatedWorldImuKine_, category + "_debug_updatedWorldImuKine");
-  conversions::kinematics::addToLogger(logger, updatedWorldAnchorKine_, category + "_debug_updatedWorldAnchorKine");
   conversions::kinematics::addToLogger(logger, updatedImuAnchorKine_, category + "_debug_updatedImuAnchorKine_");
 
   conversions::kinematics::addToLogger(logger, updatedWorldFbKine_, category + "_debug_updatedWorldFbKine_");

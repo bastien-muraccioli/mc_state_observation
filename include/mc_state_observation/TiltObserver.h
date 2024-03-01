@@ -28,16 +28,10 @@ public:
 
   bool run(const mc_control::MCController & ctl) override;
 
-  /// @brief updates the kinematics of the anchor frame of the robot in the world
-  /// @param ctl Controller
-  /// @param updatedRobot robot corresponding to the control robot with updated encoders
-  void updateAnchorFrame(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot);
+  void updateNecessaryFramesNoOdometry(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot);
 
-  void updateNecessaryFrames(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot);
+  void updateNecessaryFramesOdom(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot);
 
-  /// @brief updates the kinematics of the anchor frame of our odometry robot in the world
-  /// @param ctl Controller
-  void updateAnchorFrameOdometry(const mc_control::MCController & ctl);
   /// @brief updates the kinematics of the anchor frame of the robot when not performing odometry
   /// @param ctl Controller
   /// @param updatedRobot robot corresponding to the control robot with updated encoders
@@ -167,8 +161,6 @@ protected:
   stateObservation::kine::Kinematics updatedWorldFbKine_;
   // kinematics of the anchor frame in the IMU frame after the encoders update
   stateObservation::kine::Kinematics updatedImuAnchorKine_;
-  // kinematics of the IMU frame in the anchor frame after the encoders update
-  stateObservation::kine::Kinematics updatedAnchorImuKine_;
   // kinematics of the anchor frame in the world frame for the new iteration
   stateObservation::kine::Kinematics newWorldAnchorKine_;
   // kinematics of the anchor frame in the world frame for the new iteration, after the encoders update

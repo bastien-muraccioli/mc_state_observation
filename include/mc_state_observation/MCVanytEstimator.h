@@ -28,14 +28,7 @@ public:
 
   bool run(const mc_control::MCController & ctl) override;
 
-  /// @brief updates the kinematics of the anchor frame of the robot in the world
-  /// @param ctl Controller
-  /// @param updatedRobot robot corresponding to the control robot with updated encoders
-  void updateAnchorFrame(const mc_control::MCController & ctl);
-
-  /// @brief updates the kinematics of the anchor frame of our odometry robot in the world
-  /// @param ctl Controller
-  void updateAnchorFrameOdometry(const mc_control::MCController & ctl);
+  void updateNecessaryFramesOdom(const mc_control::MCController & ctl, const mc_rbdyn::Robot & odomRobot);
 
   /// @brief updates the pose and the velcoity of the floating base in the world frame using our estimation results
   /// @param localWorldImuLinVel estimated local linear velocity of the IMU in the world frame
@@ -45,9 +38,9 @@ public:
 
   /*! \brief update the robot pose in the world only for visualization purpose
    *
-   * @param updatedRobot Robot with the kinematics of the control robot but with updated joint values.
+   * @param odomRobot Robot with the kinematics of the control robot but with updated joint values.
    */
-  void runTiltEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot);
+  void runTiltEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & odomRobot);
 
   /// @brief Updates the real robot and/or the IMU signal using our estimation results
   /// @param ctl Controller
@@ -146,16 +139,10 @@ protected:
   // kinematics of the IMU in the floating base after the encoders update
   stateObservation::kine::Kinematics updatedFbImuKine_;
 
-  // kinematics of the anchor frame of the control robot updated with the encoders in the world. Version as a Kinematics
-  // object.
-  stateObservation::kine::Kinematics updatedWorldAnchorKine_;
-
   // kinematics of the floating base in the world after the encoders update
   stateObservation::kine::Kinematics updatedWorldFbKine_;
   // kinematics of the anchor frame in the IMU frame after the encoders update
   stateObservation::kine::Kinematics updatedImuAnchorKine_;
-  // kinematics of the IMU frame in the anchor frame after the encoders update
-  stateObservation::kine::Kinematics updatedAnchorImuKine_;
   // kinematics of the IMU in the world after the encoders update
   stateObservation::kine::Kinematics updatedWorldImuKine_;
 
