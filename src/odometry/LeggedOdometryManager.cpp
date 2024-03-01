@@ -793,6 +793,29 @@ stateObservation::kine::Kinematics & LeggedOdometryManager::getWorldAnchorFrameK
 
   return worldAnchorPose_;
 }
+so::Vector3 & LeggedOdometryManager::getWorldRefAnchorFramePos()
+{
+  if(k_data_ == k_est_) { mc_rtc::log::error_and_throw("Please call initLoop before this function"); }
+
+  if(!posUpdatable_) { return refAnchorPosition_; }
+
+  // "force-weighted" sum of the estimated floating base positions
+  refAnchorPosition_.setZero();
+
+  // checks that the position and orientation can be updated from the currently set contacts and computes the pose of
+  // the floating base obtained from each contact
+  for(auto & [_, contact] : contactsManager_.contacts())
+  {
+    if(!(contact.isSet() && contact.wasAlreadySet())) { continue; }
+
+    const so::kine::Kinematics & worldContactRefKine = contact.worldRefKine_;
+
+    // force weighted sum of the estimated floating base positions
+    refAnchorPosition_ += worldContactRefKine.position() * contact.lambda_;
+  }
+
+  return refAnchorPosition_;
+}
 
 void LeggedOdometryManager::setOdometryType(OdometryType newOdometryType)
 {
