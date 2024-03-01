@@ -43,7 +43,7 @@ public:
   stateObservation::kine::Kinematics contactFbKine_;
   // kinematics of the frame of the sensor frame of the contact, obtained by forward kinematics. Useful to express the
   // force measurement in the frame of the contact.
-  stateObservation::kine::Kinematics contactSensorKine_;
+  stateObservation::kine::Kinematics contactSensorPose_;
 
   // weighing coefficient for the anchor frame computation
   double lambda_;
@@ -378,8 +378,8 @@ public:
 
   /// @brief Returns the pose and linear velocity of the odometry robot's anchor frame based on the current floating
   /// base and encoders.
-  /// @details The velocity of the anchor frame in the world comes from the one of the contacts in the world. It can be
-  /// useful if one needs this velocity in another frame attached to the robot. The anchor frame can come from 2
+  /// @details The velocity of the anchor frame in the world comes from the one of the contacts in the world. It can
+  /// be useful if one needs this velocity in another frame attached to the robot. The anchor frame can come from 2
   /// sources:
   /// - 1: contacts are detected and can be used to compute the anchor frame.
   /// - 2: no contact is detected, the robot is hanging. If we still need an anchor frame for the tilt estimation we
@@ -493,6 +493,8 @@ private:
   const stateObservation::kine::Kinematics & getCurrentContactKinematics(LoContactWithSensor & contact,
                                                                          const mc_rbdyn::ForceSensor & fs);
 
+  const stateObservation::kine::Kinematics & getContactKinematics(LoContactWithSensor & contact,
+                                                                  const mc_rbdyn::ForceSensor & fs);
   /// @brief Selects which contacts to use for the orientation odometry and computes the orientation of the floating
   /// base for each of them
   /// @details The two contacts with the highest measured force are selected. The contacts at hands are ignored because
@@ -501,9 +503,9 @@ private:
   /// @param sumForcesOrientation Sum of the forces measured at the contacts used for the orientation estimation
   void selectForOrientationOdometry(bool & oriUpdatable, double & sumForcesOrientation);
 
-  void selectForPositionOdometry(stateObservation::Vector3 & fbPosition);
+  void updatePositionOdometry();
 
-  stateObservation::Vector3 & getRefAnchorFramePos();
+  stateObservation::Vector3 & getWorldRefAnchorFramePos();
   /// @brief Add the log entries corresponding to the contact.
   /// @param logger
   /// @param contactName

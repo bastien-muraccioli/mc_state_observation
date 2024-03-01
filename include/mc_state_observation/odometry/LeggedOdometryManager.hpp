@@ -20,9 +20,8 @@ void LeggedOdometryManager::initLoop(const mc_control::MCController & ctl,
 
   // we set the velocity and acceleration to zero as they will be compensated anyway as we compute the
   // successive poses in the local frame
-  sva::MotionVecd zeroMotion;
-  zeroMotion.linear() = stateObservation::Vector3::Zero();
-  zeroMotion.angular() = stateObservation::Vector3::Zero();
+  sva::MotionVecd zeroMotion = sva::MotionVecd::Zero();
+
   odometryRobot().velW(zeroMotion);
   odometryRobot().accW(zeroMotion);
 
@@ -72,11 +71,11 @@ void LeggedOdometryManager::initContacts(const mc_control::MCController & ctl,
 
     // current estimate of the pose of the robot in the world
     const stateObservation::kine::Kinematics worldFbPose =
-        conversions::kinematics::fromSva(odometryRobot().posW(), stateObservation::kine::Kinematics::Flags::pose);
+        conversions::kinematics::fromSva(odometryRobot().posW(), odometryRobot().velW());
 
     // we update the kinematics of the contact in the world obtained from the floating base and the sensor reading
     const stateObservation::kine::Kinematics & worldContactKine =
-        getCurrentContactPose(maintainedContact, robot.forceSensor(maintainedContact.name()));
+        getContactKinematics(maintainedContact, robot.forceSensor(maintainedContact.name()));
 
     sumForces_position += maintainedContact.forceNorm();
 
