@@ -209,6 +209,16 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
 
   selectForPositionOdometry(fbPose_.translation());
 
+  if(posUpdatable_) { fbAnchorPos_.setZero(); }
+
+  for(auto * mContact : maintainedContacts_)
+  {
+    fbAnchorPos_ += mContact->contactFbKine_.getInverse().position() * mContact->lambda_;
+  }
+  stateObservation::Vector3 & worldRefAnchorPos = getWorldRefAnchorFramePos();
+
+  fbPose_.translation() = worldRefAnchorPos - fbPose_.rotation().transpose() * fbAnchorPos_;
+
   updateOdometryRobot(ctl, params.vel, params.acc);
 
   // we correct the reference position of the contacts in the world
