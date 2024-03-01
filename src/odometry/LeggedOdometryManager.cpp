@@ -512,7 +512,7 @@ void LeggedOdometryManager::correctContactPosition(LoContactWithSensor & contact
   if(odometryType_ == measurements::OdometryType::Flat) { contact.worldRefKine_.position()(2) = 0.0; }
 }
 
-so::kine::Kinematics & LeggedOdometryManager::getAnchorFramePose(const mc_control::MCController & ctl,
+so::kine::Kinematics & LeggedOdometryManager::getWorldAnchorFramePose(const mc_control::MCController & ctl,
                                                                  const std::string & bodySensorName)
 {
   if(k_data_ == k_est_) { mc_rtc::log::error_and_throw("Please call initLoop before this function"); }
@@ -659,7 +659,7 @@ so::Vector3 & LeggedOdometryManager::getRefAnchorFramePos()
   return refAnchorPosition_;
 }
 
-stateObservation::kine::Kinematics & LeggedOdometryManager::getAnchorFrameKinematics(
+stateObservation::kine::Kinematics & LeggedOdometryManager::getWorldAnchorFrameKinematics(
     const mc_control::MCController & ctl,
     const std::string & bodySensorName)
 {

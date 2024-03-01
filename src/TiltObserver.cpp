@@ -231,7 +231,7 @@ void TiltObserver::updateAnchorFrameOdometry(const mc_control::MCController & ct
   // Generally contains only the pose of the anchor frame, but when no contact is detected, the anchor frame becomes the
   // frame of the IMU and its velocity is considered as zero. For that transition the one when the anchor frame gets
   // back "to normal", it will contain the zero velocity.
-  updatedWorldAnchorKine_ = odometryManager_.getAnchorFrameKinematics(ctl, imuSensor_);
+  updatedWorldAnchorKine_ = odometryManager_.getWorldAnchorFrameKinematics(ctl, imuSensor_);
 
   // we ignore the initial outlier velocities due to the position jump
   if(iter_ < itersBeforeAnchorsVel_)

@@ -373,7 +373,7 @@ public:
   /// arbitrarily use the frame of the bodySensor used by the estimator.
   /// @param ctl controller
   /// @param bodySensorName name of the body sensor.
-  stateObservation::kine::Kinematics & getAnchorFramePose(const mc_control::MCController & ctl,
+  stateObservation::kine::Kinematics & getWorldAnchorFramePose(const mc_control::MCController & ctl,
                                                           const std::string & bodySensorName);
 
   /// @brief Returns the pose and linear velocity of the odometry robot's anchor frame based on the current floating
@@ -387,7 +387,7 @@ public:
   /// available.
   /// @param ctl controller
   /// @param bodySensorName name of the body sensor.
-  stateObservation::kine::Kinematics & getAnchorFrameKinematics(const mc_control::MCController & ctl,
+  stateObservation::kine::Kinematics & getWorldAnchorFrameKinematics(const mc_control::MCController & ctl,
                                                                 const std::string & bodySensorName);
 
   /// @brief Changes the type of the odometry

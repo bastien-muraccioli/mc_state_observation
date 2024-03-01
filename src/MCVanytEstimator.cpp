@@ -202,7 +202,7 @@ void MCVanytEstimator::updateAnchorFrameOdometry(const mc_control::MCController 
   // Generally contains only the pose of the anchor frame, but when no contact is detected, the anchor frame becomes the
   // frame of the IMU and its velocity is considered as zero. For that transition the one when the anchor frame gets
   // back "to normal", it will contain the zero velocity.
-  updatedWorldAnchorKine_ = odometryManager_.getAnchorFrameKinematics(ctl, imuSensor_);
+  updatedWorldAnchorKine_ = odometryManager_.getWorldAnchorFrameKinematics(ctl, imuSensor_);
 }
 
 void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot)
