@@ -30,6 +30,11 @@ class LoContactWithSensor : public measurements::ContactWithSensor
   using measurements::ContactWithSensor::ContactWithSensor;
 
 public:
+  inline void lambda(double lambda) { lambda_ = lambda; }
+
+  inline double lambda() const noexcept { return lambda_; }
+
+public:
   // reference of the contact in the world
   stateObservation::kine::Kinematics worldRefKine_;
   // indicates whether the contact can be used for the orientation odometry or not
@@ -45,13 +50,14 @@ public:
   // force measurement in the frame of the contact.
   stateObservation::kine::Kinematics contactSensorPose_;
 
-  // weighing coefficient for the anchor frame computation
+protected:
+  // weighing coefficient for the anchor point computation
   double lambda_;
 };
 
 /// @brief Structure that implements all the necessary functions to perform legged odometry.
 /// @details Handles the odometry from the contacts detection to the final pose estimation of the floating base. Also
-/// allows to compute the pose of an anchor frame linked to the robot.
+/// allows to compute the position and/or velocity of an anchor point linked to the robot.
 struct LeggedOdometryManager
 {
 public:
@@ -113,10 +119,22 @@ public:
     }
 
     explicit KineParams(sva::PTransformd & pose) : pose(pose) {}
+    // Pose of the floating base of the robot in the world that we want to update with
+    // the odometry
     sva::PTransformd & pose;
+    // Velocity of the floating base of the robot in the world that we want to update with the odometry. If updated by
+    // an upstream observer, it will be corrected with the newly estimation orientation of the floating base. Otherwise,
+    // it will be computed by finite differences.
     sva::MotionVecd * vel = nullptr;
+    // acceleration of the floating base of the robot in the world that we want to update with the odometry. This
+    // acceleration must be updated by an upstream observer. It will be corrected with the newly estimation orientation
+    // of the floating base
     sva::MotionVecd * acc = nullptr;
+    // Informs if the rotation matrix RunParameters#tiltOrAttitude stored in this structure
+    // is a tilt or an attitude (full orientation).
     bool oriIsAttitude = false;
+    // Input orientation of the floating base in the world, used to perform the
+    // legged odometry. If only a tilt is provided, the yaw will come from the yaw of the contacts.
     const Eigen::Matrix3d * tiltOrAttitude = nullptr;
   };
 
@@ -208,9 +226,15 @@ public:
       return out;
     }
 
+    // Function defined in the observer using the legged odometry that must be called when a contact is newly detected.
     OnNewContactObserver * onNewContactFn = nullptr;
+    /* Function defined in the observer using the legged odometry that must be called on all the contacts maintained
+     * with the environment. */
     OnMaintainedContactObserver * onMaintainedContactFn = nullptr;
+    /* Function defined in the observer using the legged odometry that must be called when a contact is broken. */
     OnRemovedContactObserver * onRemovedContactFn = nullptr;
+    /* Function defined in the observer using the legged odometry that must be called when a contact is newly added to
+     * the manager (used to add it to the gui, to logs that must be written since its first detection, etc.) */
     OnAddedContactObserver * onAddedContactFn = nullptr;
   };
 
@@ -339,6 +363,18 @@ public:
   using ContactsManagerConfiguration = ContactsManager::Configuration;
 
   inline LeggedOdometryManager(const std::string & odometryName) { odometryName_ = odometryName; }
+  /**
+   * @brief  Returns a list of pointers to the contacts maintained during the current iteration.
+   *
+   * @return const std::vector<LoContactWithSensor *>&
+   */
+  inline const std::vector<LoContactWithSensor *> & newContacts() { return newContacts_; }
+  /**
+   * @brief  Returns a list of pointers to the contacts created on the current iteration.
+   *
+   * @return const std::vector<LoContactWithSensor *>&
+   */
+  inline const std::vector<LoContactWithSensor *> & maintainedContacts() { return maintainedContacts_; }
 
   /// @brief Initializer for the odometry manager.
   /// @details Version for the contact detection using a thresholding on the contact force sensors measurements or by
@@ -350,45 +386,49 @@ public:
             const Configuration & odomConfig,
             const ContactsManagerConfiguration & contactsConf);
 
+  /// @brief Function that initializes the loop of the legged odometry. To be called at the beginning of each iteration.
+  /// @details Updates the joints configuration, the contacts, and sets the velocity and acceleration of the odometry
+  /// robot to zero as we internally compute only kinematics in frames attached to the robots. This function is
+  /// necessary because one can start computing the anchor point or using the run(const mc_control::MCController &, *
+  /// mc_rtc::Logger &, sva::PTransformd &, sva::MotionVecd &, sva::MotionVecd &) function, that require these updates.
   /// @param ctl Controller.
   /// @param logger Logger.
-  /// @param runParams Parameters used to run the legged odometry.
+  /// @param runParams Functions called when creating/upadting/breaking contacts.
   template<typename OnNewContactObserver = std::nullptr_t,
            typename OnMaintainedContactObserver = std::nullptr_t,
            typename OnRemovedContactObserver = std::nullptr_t,
            typename OnAddedContactObserver = std::nullptr_t>
   void initLoop(const mc_control::MCController & ctl,
-                    mc_rtc::Logger & logger,
-                    const RunParameters<OnNewContactObserver,
-                                        OnMaintainedContactObserver,
-                                        OnRemovedContactObserver,
+                mc_rtc::Logger & logger,
+                const RunParameters<OnNewContactObserver,
+                                    OnMaintainedContactObserver,
+                                    OnRemovedContactObserver,
                                     OnAddedContactObserver> & runParams);
 
-  void run(const mc_control::MCController & ctl, KineParams & params);
+  /// @brief Function that runs the legged odometry loop. Using the input orientation and the current contacts, it
+  /// estimates the new state of the robot.
+  /// @param ctl Controller.
+  /// @param kineParams Kinematic parameters necessary for the estimation, either inputs or outputs to modify (please
+  /// see the documentation of the KineParams class).
+  void run(const mc_control::MCController & ctl, KineParams & kineParams);
 
-  /// @brief Returns the pose of the odometry robot's anchor frame based on the current floating base and encoders.
-  /// @details The anchor frame can come from 2 sources:
-  /// - 1: contacts are detected and can be used to compute the anchor frame.
-  /// - 2: no contact is detected, the robot is hanging. If we still need an anchor frame for the tilt estimation we
-  /// arbitrarily use the frame of the bodySensor used by the estimator.
-  /// @param ctl controller
-  /// @param bodySensorName name of the body sensor.
-  stateObservation::kine::Kinematics & getWorldAnchorFramePose(const mc_control::MCController & ctl,
-                                                          const std::string & bodySensorName);
+  /// @brief Gives the kinematics (position and linear velocity) of the anchor point in the desired frame.
+  /// @details If the velocity of the target frame in the world frame is given, the velocity of the anchor point in the
+  /// target frame will also be contained in the returned Kinematics object.
+  /// @param worldTargetKine Kinematics of the target frame in the world frame.
+  stateObservation::kine::Kinematics getAnchorKineIn(stateObservation::kine::Kinematics & worldTargetKine);
 
-  /// @brief Returns the pose and linear velocity of the odometry robot's anchor frame based on the current floating
+  /// @brief Returns the position of the odometry robot's anchor point based on the current floating
   /// base and encoders.
-  /// @details The velocity of the anchor frame in the world comes from the one of the contacts in the world. It can
-  /// be useful if one needs this velocity in another frame attached to the robot. The anchor frame can come from 2
-  /// sources:
-  /// - 1: contacts are detected and can be used to compute the anchor frame.
-  /// - 2: no contact is detected, the robot is hanging. If we still need an anchor frame for the tilt estimation we
+  /// @details The anchor point can come from 2 sources:
+  /// - 1: contacts are detected and can be used to compute the anchor point.
+  /// - 2: no contact is detected, the robot is hanging. If we still need an anchor point for the tilt estimation we
   /// arbitrarily use the frame of the bodySensor used by the estimator. In that case the linear velocity is not
   /// available.
   /// @param ctl controller
   /// @param bodySensorName name of the body sensor.
-  stateObservation::kine::Kinematics & getWorldAnchorFrameKinematics(const mc_control::MCController & ctl,
-                                                                const std::string & bodySensorName);
+  stateObservation::Vector3 & getWorldAnchorPos(const mc_control::MCController & ctl,
+                                                const std::string & bodySensorName);
 
   /// @brief Changes the type of the odometry
   /// @details Version meant to be called by the observer using the odometry during the run through the gui.
@@ -400,11 +440,6 @@ public:
 
   /// @brief Getter for the contacts manager.
   inline LeggedOdometryContactsManager & contactsManager() { return contactsManager_; }
-
-  /// @brief Returns a VelocityUpdate object corresponding to the given string.
-  /// @details Allows to set the velocity update method directly from a string, most likely obtained from a
-  /// configuration file.
-  /// @param str The string naming the desired velocity update method
 
 private:
   /// @brief Updates the pose of the contacts and estimates the associated kinematics.
@@ -434,36 +469,38 @@ private:
   /// come from an upstream observer.
   void updateFbKinematicsPvt(sva::PTransformd & pose, sva::MotionVecd * vel = nullptr, sva::MotionVecd * acc = nullptr);
 
-  /// @brief Updates the joints configuration of the odometry robot. Has to be called at the beginning of each
-  /// iteration.
+  /// @brief Updates the joints configuration of the odometry robot.
   /// @param ctl Controller
   void updateJointsConfiguration(const mc_control::MCController & ctl);
 
-  /// @brief Updates the pose of the contacts and estimates the floating base from them.
+  /// @brief Estimates the floating base from the currently set contacts and updates them.
   /// @param ctl Controller.
-  /// @param logger Logger.
   /// @param runParams Parameters used to run the legged odometry.
   void updateFbAndContacts(const mc_control::MCController & ctl, const KineParams & params);
 
   /// @brief Corrects the reference orientation of the contacts after the update of the floating base's orientation.
-  /// @details The new reference orientation is obtained by forward kinematics from the updated orientation of the
-  /// floating base.
+  /// @details The new reference orientation is obtained by forward kinematics from the updated floating base.
+  /// @param contact The contact to update.
   /// @param robot robot used to access the force sensor of the contact
   void correctContactOri(LoContactWithSensor & contact, const mc_rbdyn::Robot & robot);
   /// @brief Corrects the reference position of the contacts after the update of the floating base's position.
-  /// @details The new reference position is obtained by forward kinematics from the updated pose of the floating base.
-  /// @param robot robot used to access the force sensor of the contact
+  /// @details The new reference position is obtained by forward kinematics from the updated floating base.
+  /// @param contact The contact to update.
+  /// @param robot robot used to access the force sensor of the contact.
   void correctContactPosition(LoContactWithSensor & contact, const mc_rbdyn::Robot & robot);
-  /// @brief Updates the floating base kinematics given as argument by the observer.
-  /// @details Must be called after \ref updateFbAndContacts(const mc_control::MCController & ctl, mc_rtc::Logger &,
-  /// const stateObservation::Matrix3 &, sva::MotionVecd *, sva::MotionVecd *).
-  /// Beware, only the pose is updated by the odometry. The 6D velocity (except if not updated by an upstream observer)
-  /// is obtained using finite differences or by expressing the one given in input in the new robot frame. The
-  /// acceleration can only be updated if estimated by an upstream estimator.
-  /// @param ctl Controller.
-  /// @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
-  /// different from noUpdate, otherwise, it will not be updated.
-  /// @param acc The floating base's tilt (only the yaw is estimated).
+
+  /**
+   * @brief Updates the floating base kinematics given as argument by the observer.
+   * @details Must be called after \ref updateFbAndContacts(const mc_control::MCController &, const KineParams &).
+   * Beware, only the pose is updated by the odometry. The 6D velocity (except if not updated by an upstream observer)
+   * is obtained using finite differences or by expressing the one given in input in the new robot frame. The
+   * acceleration can only be updated if estimated by an upstream estimator.
+   *
+   * @param ctl  Controller.
+   * @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
+   * different from noUpdate, otherwise, it will not be updated.
+   * @param acc The floating base's tilt (only the yaw is estimated).
+   */
   void updateOdometryRobot(const mc_control::MCController & ctl,
                            sva::MotionVecd * vel = nullptr,
                            sva::MotionVecd * acc = nullptr);
@@ -473,28 +510,34 @@ private:
   /// @param measurementsRobot The robot containing the contact's force sensor
   void setNewContact(LoContactWithSensor & contact, const mc_rbdyn::Robot & measurementsRobot);
 
-  /// @brief Computes the kinematics of the contact attached to the odometry robot in the world frame. Also updates the
-  /// reading of the associated force sensor.
+  /// @brief Computes the kinematics of the contact attached to the odometry robot in the world frame from the current
+  /// floating base pose and encoders. Also updates the reading of the associated force sensor.
+  /// @details Also comnputes the velocity of the contacts in the world frame, which can be used to obtain their
+  /// velocity in other frames attached to the robot.
   /// @param contact Contact of which we want to compute the kinematics
   /// @param fs The force sensor associated to the contact
-  /// @param flag The variables we want in the returned Kinematics object (pose, pose+vel, etc)
-  /// @return stateObservation::kine::Kinematics &
-  const stateObservation::kine::Kinematics & getCurrentContactPose(LoContactWithSensor & contact,
-                                                                   const mc_rbdyn::ForceSensor & fs);
-
-  /// @brief Computes the kinematics of the contact attached to the odometry robot in the world frame. Also updates the
-  /// reading of the associated force sensor.
-  /// @details This version computes also the velocity of the contacts in the world frame, which can be used to obtain
-  /// their velocity in other frames attached to the robot.
-  /// @param contact Contact of which we want to compute the kinematics
-  /// @param fs The force sensor associated to the contact
-  /// @param flag The variables we want in the returned Kinematics object (pose, pose+vel, etc)
   /// @return stateObservation::kine::Kinematics &
   const stateObservation::kine::Kinematics & getCurrentContactKinematics(LoContactWithSensor & contact,
                                                                          const mc_rbdyn::ForceSensor & fs);
 
+  /// @brief Computes the kinematics of the contact attached to the odometry robot in the world frame from the current
+  /// floating base pose and encoders. Also updates the reading of the associated force sensor.
+  /// @details Also comnputes the velocity of the contacts in the world frame, which can be used to obtain their
+  /// velocity in other frames attached to the robot. This version is called at the beginning of the iteration as we can
+  /// then use the faster getCurrentContactKinematics(LoContactWithSensor &, const mc_rbdyn::ForceSensor &) function.
+  /// @param contact Contact of which we want to compute the kinematics.
+  /// @param fs The force sensor associated to the contact.
+  /// @return stateObservation::kine::Kinematics &.
   const stateObservation::kine::Kinematics & getContactKinematics(LoContactWithSensor & contact,
                                                                   const mc_rbdyn::ForceSensor & fs);
+
+  /// @brief Gives the kinematics of the contact in the desired frame.
+  /// @details If the velocity of the target frame in the world frame is given, the velocity of the anchor point in the
+  /// target frame will also be contained in the returned Kinematics object.
+  /// @param worldTargetKine Kinematics of the target frame in the world frame.
+  stateObservation::kine::Kinematics getContactKineIn(LoContactWithSensor & contact,
+                                                      stateObservation::kine::Kinematics & worldTargetKine);
+
   /// @brief Selects which contacts to use for the orientation odometry and computes the orientation of the floating
   /// base for each of them
   /// @details The two contacts with the highest measured force are selected. The contacts at hands are ignored because
@@ -503,9 +546,20 @@ private:
   /// @param sumForcesOrientation Sum of the forces measured at the contacts used for the orientation estimation
   void selectForOrientationOdometry(bool & oriUpdatable, double & sumForcesOrientation);
 
+  /// @brief Updates the position of the floating base in the world.
+  /// @details For each maintained contact, we compute the position of the floating base in the contact frame, we
+  /// then compute the weighted average wrt to the measured forces at the contact and obtain the estimated translation
+  /// from the anchor point to the floating base.  We apply this translation to the reference position of the anchor
+  /// frame in the world to obtain the new position of the floating base in the word.
   void updatePositionOdometry();
 
-  stateObservation::Vector3 & getWorldRefAnchorFramePos();
+  /**
+   * @brief Returns the position of the anchor point in the world from the current contacts reference position.
+   *
+   * @return stateObservation::Vector3&
+   */
+  stateObservation::Vector3 & getWorldRefAnchorPos();
+
   /// @brief Add the log entries corresponding to the contact.
   /// @param logger
   /// @param contactName
@@ -516,6 +570,10 @@ private:
   /// @param contactName
   void removeContactLogEntries(mc_rtc::Logger & logger, const LoContactWithSensor & contact);
 
+  /// @brief Returns a VelocityUpdate object corresponding to the given string.
+  /// @details Allows to set the velocity update method directly from a string, most likely obtained from a
+  /// configuration file.
+  /// @param str The string naming the desired velocity update method
   inline static VelocityUpdate stringToVelocityUpdate(const std::string & str, const std::string & odometryName)
   {
     auto it = strToVelocityUpdate_.find(str);
@@ -528,36 +586,40 @@ protected:
   std::string odometryName_;
   // Name of the robot
   std::string robotName_;
-
-  // indicates whether we want to update the yaw using this method or not
-  bool withYawEstimation_;
-  // tracked pose of the floating base
-  sva::PTransformd fbPose_ = sva::PTransformd::Identity();
-
   // contacts manager used by this odometry manager
   LeggedOdometryContactsManager contactsManager_;
   // odometry robot that is updated by the legged odometry and can then update the real robot if required.
   std::shared_ptr<mc_rbdyn::Robots> odometryRobot_;
-  // pose of the anchor frame of the robot in the world
-  stateObservation::kine::Kinematics worldAnchorPose_;
+  // tracked pose of the floating base
+  sva::PTransformd fbPose_ = sva::PTransformd::Identity();
 
+  // contacts created on the current iteration
+  std::vector<LoContactWithSensor *> newContacts_;
+  // contacts maintained during the current iteration
+  std::vector<LoContactWithSensor *> maintainedContacts_;
+
+  // indicates whether we want to update the yaw using this method or not
+  bool withYawEstimation_;
+
+  // position of the anchor point of the robot in the world
+  stateObservation::Vector3 worldAnchorPos_;
+  // position of the anchor point of the robot in the world, obtained from the contact references.
   stateObservation::Vector3 refAnchorPosition_;
-
+  // position of the anchor point in the frame of the floating base.
   stateObservation::Vector3 fbAnchorPos_;
 
-  // Indicates if the previous anchor frame was obtained using contacts
+  // Indicates if the previous anchor point was obtained using contacts
   bool prevAnchorFromContacts_ = true;
-  // Indicates if the current anchor frame was obtained using contacts
+  // Indicates if the current anchor point was obtained using contacts
   bool currAnchorFromContacts_ = true;
-  // Indicates if the mode of computation of the anchor frame changed. Might me needed by the estimator (ex:
-
   bool posUpdatable_ = false;
 
-  stateObservation::TimeIndex k_est_ = 0;
+  // time stamp, incremented once the reading of the joint encoders and the contacts are updated.
   stateObservation::TimeIndex k_data_ = 0;
+  // time stamp, incremented once the iteration of the doometry is completed.
+  stateObservation::TimeIndex k_est_ = 0;
+
 public:
-  // TiltObserver)
-  bool anchorFrameMethodChanged_ = false;
   // Indicates if the desired odometry must be a flat or a 6D odometry.
   using OdometryType = measurements::OdometryType;
   measurements::OdometryType odometryType_;
@@ -565,8 +627,8 @@ public:
   // indicates if the velocity has to be updated, if yes, how it must be updated
   VelocityUpdate velocityUpdate_;
 
-  std::vector<LoContactWithSensor *> newContacts_;
-  std::vector<LoContactWithSensor *> maintainedContacts_;
+  // Indicates if the mode of computation of the anchor point changed.
+  bool anchorPointMethodChanged_ = false;
 };
 
 } // namespace mc_state_observation::odometry

@@ -197,9 +197,10 @@ void MCVanytEstimator::updateNecessaryFramesOdom(const mc_control::MCController 
   // pose and velocities of the IMU in the floating base for the odometry robot
   updatedFbImuKine_ = updatedWorldFbKine_.getInverse() * updatedWorldImuKine_;
 
+  // position and linear velocity of the anchor point in the frame of the IMU.
   updatedImuAnchorKine_ = odometryManager_.getAnchorKineIn(updatedWorldImuKine_);
 
-  if(odometryManager_.anchorFrameMethodChanged_) { updatedImuAnchorKine_.linVel().setZero(); }
+  if(odometryManager_.anchorPointMethodChanged_) { updatedImuAnchorKine_.linVel().setZero(); }
 }
 
 void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & odomRobot)
@@ -223,7 +224,7 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
   // obtain the velocity of the IMU. We will then consider it as zero and consider it as constant with the linear
   // acceleration as zero too.
   // When switching from one mode to another, we consider x1hat = x1 before the estimation to avoid discontinuities.
-  if(odometryManager_.maintainedContacts_.size() == 0)
+  if(odometryManager_.maintainedContacts().size() == 0)
   {
     estimator_.setAlpha(30);
     estimator_.setBeta(0);
@@ -250,7 +251,7 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
 
   measurements_ = estimator_.getMeasurement(estimator_.getMeasurementTime()).transpose();
 
-  if(odometryManager_.anchorFrameMethodChanged_) { estimator_.resetImuLocVelHat(); }
+  if(odometryManager_.anchorPointMethodChanged_) { estimator_.resetImuLocVelHat(); }
 
   // estimation of the state with the complementary filters
   xk_ = estimator_.getEstimatedState(k + 1);
@@ -269,7 +270,7 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
 
   // we can update the estimated pose using odometry. The velocity will be updated later using the estimated local
   // linear velocity of the IMU.
-  for(auto * mContact : odometryManager_.maintainedContacts_)
+  for(auto * mContact : odometryManager_.maintainedContacts())
   {
     const so::kine::Kinematics & worldContactRefKine = mContact->worldRefKine_;
 

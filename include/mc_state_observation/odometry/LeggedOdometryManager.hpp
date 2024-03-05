@@ -102,7 +102,7 @@ void LeggedOdometryManager::initContacts(const mc_control::MCController & ctl,
   contactsManager().updateContacts(ctl, robotName_, onNewContact, onMaintainedContact, onRemovedContact,
                                    *runParams.onAddedContactFn);
 
-  for(auto * mContact : maintainedContacts_) { mContact->lambda_ = mContact->forceNorm() / sumForces_position; }
+  for(auto * mContact : maintainedContacts_) { mContact->lambda(mContact->forceNorm() / sumForces_position); }
 }
 
 } // namespace mc_state_observation::odometry

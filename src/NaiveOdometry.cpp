@@ -126,14 +126,17 @@ bool NaiveOdometry::run(const mc_control::MCController & ctl)
 
   // The odometry manager will update the velocity with the desired method (update of the estimated made upstream or
   // with finite differences)
+
+  odometryManager_.initLoop(ctl, logger, odometry::LeggedOdometryManager::RunParameters());
+
   if(odometryManager_.velocityUpdate_ != odometry::LeggedOdometryManager::VelocityUpdate::NoUpdate)
   {
-    odometryManager_.run(ctl, logger, odometry::LeggedOdometryManager::RunParameters(X_0_fb_).velocity(v_0_fb));
+    odometryManager_.run(ctl, odometry::LeggedOdometryManager::KineParams(X_0_fb_).velocity(v_0_fb));
   }
   else
   {
-    odometry::LeggedOdometryManager::RunParameters runParams(X_0_fb_);
-    odometryManager_.run(ctl, logger, runParams);
+    odometry::LeggedOdometryManager::KineParams kineParams(X_0_fb_);
+    odometryManager_.run(ctl, kineParams);
   }
 
   /* Update of the visual representation (only a visual feature) of the observed robot */

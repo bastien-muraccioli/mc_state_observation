@@ -28,8 +28,22 @@ public:
 
   bool run(const mc_control::MCController & ctl) override;
 
+  /**
+   * @brief Updates the frames that are necessary for the state estimation when not using odometry.
+   * @details In particular the kinematics of the anchor in the IMU frame.
+   *
+   * @param ctl Controller.
+   * @param odomRobot
+   */
   void updateNecessaryFramesNoOdometry(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot);
 
+  /**
+   * @brief Updates the frames that are necessary for the state estimation when using odometry.
+   * @details In particular the kinematics of the anchor in the IMU frame.
+   *
+   * @param ctl Controller.
+   * @param odomRobot
+   */
   void updateNecessaryFramesOdom(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot);
 
   /// @brief updates the kinematics of the anchor frame of the robot when not performing odometry

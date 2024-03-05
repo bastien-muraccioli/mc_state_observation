@@ -28,6 +28,13 @@ public:
 
   bool run(const mc_control::MCController & ctl) override;
 
+  /**
+   * @brief Updates the frames that are necessary for the state estimation.
+   * @details In particular the kinematics of the anchor in the IMU frame.
+   *
+   * @param ctl Controller.
+   * @param odomRobot
+   */
   void updateNecessaryFramesOdom(const mc_control::MCController & ctl, const mc_rbdyn::Robot & odomRobot);
 
   /// @brief updates the pose and the velcoity of the floating base in the world frame using our estimation results
