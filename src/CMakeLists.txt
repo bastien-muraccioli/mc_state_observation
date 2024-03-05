@@ -56,7 +56,6 @@ endmacro()
 add_so_observer(AttitudeObserver)
 add_so_observer(NaiveOdometry)
 add_so_observer(TiltObserver)
-add_so_observer(TiltVisual)
 add_so_observer(MCVanytEstimator)
 add_kineticsobserver()
 
