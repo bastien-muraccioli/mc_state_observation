@@ -119,6 +119,9 @@ void ContactsManager<ContactT>::updateContacts(const mc_control::MCController & 
 {
   // Reset contact detection
   contactsDetected_ = false;
+  bool show_broken_contacts = false;
+  // Filled-up when verbose
+  std::string broken_contact_set;
   for(auto & [_, c] : listContacts_)
   {
     c.wasAlreadySet(c.isSet());
@@ -147,7 +150,18 @@ void ContactsManager<ContactT>::updateContacts(const mc_control::MCController & 
     {
       onRemovedContact(c);
       c.wasAlreadySet(false);
+      show_broken_contacts = true;
+
+      if(verbose_)
+      {
+        if(!broken_contact_set.empty()) { broken_contact_set += ", "; }
+        broken_contact_set += c.name();
+      }
     }
+  }
+  if(verbose_ && show_broken_contacts)
+  {
+    mc_rtc::log::info("[{}] Contacts removed: {}", observerName_, broken_contact_set);
   }
 }
 
