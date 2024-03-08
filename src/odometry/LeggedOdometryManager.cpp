@@ -211,7 +211,7 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
   // we update the orientation of the floating base
   odometryRobot().posW(fbPose_);
   odometryRobot().forwardKinematics();
-  for(auto * mContact : maintainedContacts_) { correctContactOri(*mContact, robot); }
+  // for(auto * mContact : maintainedContacts_) { correctContactOri(*mContact, robot); }
 
   /*   Update of the position of the floating base    */
   /*   if we can update the position, we compute the weighted average of the position obtained from the contacts    */
@@ -422,7 +422,6 @@ const so::kine::Kinematics & LeggedOdometryManager::getCurrentContactKinematics(
   const stateObservation::kine::Kinematics worldFbKine =
       conversions::kinematics::fromSva(odometryRobot().posW(), odometryRobot().velW());
   contact.currentWorldKine_ = worldFbKine * contact.contactFbKine_.getInverse();
-  contact.contactSensorPose_ = contact.currentWorldKine_.getInverse() * worldSensorKineOdometryRobot;
 
   return contact.currentWorldKine_;
 }
@@ -504,7 +503,7 @@ void LeggedOdometryManager::correctContactOri(LoContactWithSensor & contact, con
 
 void LeggedOdometryManager::correctContactPosition(LoContactWithSensor & contact, const mc_rbdyn::Robot & robot)
 {
-  contact.worldRefKine_.position = getCurrentContactKinematics(contact, robot.forceSensor(contact.name())).position();
+  contact.worldRefKine_ = getCurrentContactKinematics(contact, robot.forceSensor(contact.name()));
   if(odometryType_ == measurements::OdometryType::Flat) { contact.worldRefKine_.position()(2) = 0.0; }
 }
 
