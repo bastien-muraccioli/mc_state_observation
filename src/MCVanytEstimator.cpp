@@ -15,10 +15,8 @@ using OdometryType = measurements::OdometryType;
 using LoContactsManager = odometry::LeggedOdometryManager::ContactsManager;
 
 MCVanytEstimator::MCVanytEstimator(const std::string & type, double dt, bool asBackup, const std::string & observerName)
-: mc_observers::Observer(type, dt), estimator_(alpha_, beta_), odometryManager_(observerName)
+: mc_observers::Observer(type, dt), estimator_(alpha_, beta_, dt), odometryManager_(observerName)
 {
-  estimator_.setSamplingTime(dt_);
-
   asBackup_ = asBackup;
   observerName_ = observerName;
 }
@@ -253,23 +251,6 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
 
   if(odometryManager_.anchorPointMethodChanged_) { estimator_.resetImuLocVelHat(); }
 
-  // estimation of the state with the complementary filters
-  xk_ = estimator_.getEstimatedState(k + 1);
-
-  // retrieving the estimated orientation
-  so::kine::Orientation estimatedOri;
-  estimatedOri.fromVector4(xk_.tail(4));
-
-  estimatedRotationIMU_ = estimatedOri.toMatrix3();
-
-  // Estimated orientation of the floating base in the world (especially the tilt)
-  R_0_fb_ = estimatedRotationIMU_ * updatedFbImuKine_.orientation.toMatrix3().transpose();
-
-  // Once we obtain the tilt (which is required by the legged odometry, estimating only the yaw), we update the pose and
-  // velocities of the floating base
-
-  // we can update the estimated pose using odometry. The velocity will be updated later using the estimated local
-  // linear velocity of the IMU.
   for(auto * mContact : odometryManager_.maintainedContacts())
   {
     const so::kine::Kinematics & worldContactRefKine = mContact->worldRefKine_;
@@ -284,6 +265,18 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
 
     estimator_.addOrientationMeasurement(worldImuKineOdometryRobot.orientation.toMatrix3(), 3);
   }
+
+  // estimation of the state with the complementary filters
+  xk_ = estimator_.getEstimatedState(k + 1);
+
+  // retrieving the estimated orientation
+  so::kine::Orientation estimatedOri;
+  estimatedOri.fromVector4(xk_.tail(4));
+
+  estimatedRotationIMU_ = estimatedOri.toMatrix3();
+
+  // Estimated orientation of the floating base in the world (especially the tilt)
+  R_0_fb_ = estimatedRotationIMU_ * updatedFbImuKine_.orientation.toMatrix3().transpose();
 
   odometryManager_.run(ctl, odometry::LeggedOdometryManager::KineParams(poseW_).attitude(R_0_fb_));
 
