@@ -210,16 +210,24 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
 
   // we update the orientation of the floating base
   odometryRobot().posW(fbPose_);
-  odometryRobot().forwardKinematics();
-  // for(auto * mContact : maintainedContacts_) { correctContactOri(*mContact, robot); }
 
   /*   Update of the position of the floating base    */
-  /*   if we can update the position, we compute the weighted average of the position obtained from the contacts    */
-  updatePositionOdometry();
+  if(params.worldPos != nullptr)
+  {
+    /* If exceptionally the position in the world is given, we use it directly */
+    fbPose_.translation() = *(params.worldPos);
+  }
+  else
+  {
+    // we need to update the robot's configuration after the update of the orientation
+    odometryRobot().forwardKinematics();
+    /*   if we can update the position, we compute the weighted average of the position obtained from the contacts    */
+    updatePositionOdometry();
+  }
   updateOdometryRobot(ctl, params.vel, params.acc);
 
   // we correct the reference position of the contacts in the world
-  for(auto * mContact : maintainedContacts_) { correctContactPosition(*mContact, robot); }
+  for(auto * mContact : maintainedContacts_) { correctContacsRef(*mContact, robot); }
 
   // computation of the reference kinematics of the newly set contacts in the world. We cannot use the onNewContacts
   // function as it is used at the beginning of the iteration and we need to compute this at the end
@@ -274,16 +282,31 @@ void LeggedOdometryManager::updatePositionOdometry()
    * point to the floating base.  We apply this translation to the reference position of the anchor frame in the world
    * to obtain the new position of the floating base in the word. */
 
-  if(posUpdatable_) { fbAnchorPos_.setZero(); }
+  if(posUpdatable_) { fbPose_.translation() = getWorldFbPosFromAnchor(); }
+}
+
+so::Vector3 LeggedOdometryManager::getWorldFbPosFromAnchor()
+{
+  /* For each maintained contact, we compute the position of the floating base in the contact frame, we then compute the
+   * weighted average wrt to the measured forces at the contact and obtain the estimated translation from the anchor
+   * point to the floating base.  We apply this translation to the reference position of the anchor frame in the world
+   * to obtain the new position of the floating base in the word. */
+
+  fbAnchorPos_.setZero();
+  so::Vector3 worldFbPosFromAnchor;
 
   for(auto * mContact : maintainedContacts_)
   {
     fbAnchorPos_ += mContact->contactFbKine_.getInverse().position() * mContact->lambda();
   }
 
-  const stateObservation::Vector3 & worldRefAnchorPos = getWorldRefAnchorPos();
+  if(k_data_ != k_est_)
+  {
+    worldFbPosFromAnchor = getWorldRefAnchorPos() - fbPose_.rotation().transpose() * fbAnchorPos_;
+  }
+  else { worldFbPosFromAnchor = refAnchorPosition_ - fbPose_.rotation().transpose() * fbAnchorPos_; }
 
-  fbPose_.translation() = worldRefAnchorPos - fbPose_.rotation().transpose() * fbAnchorPos_;
+  return worldFbPosFromAnchor;
 }
 
 void LeggedOdometryManager::updateFbKinematicsPvt(sva::PTransformd & pose, sva::MotionVecd * vel, sva::MotionVecd * acc)
@@ -495,13 +518,7 @@ void LeggedOdometryManager::removeContactLogEntries(mc_rtc::Logger & logger, con
   conversions::kinematics::removeFromLogger(logger, contact.currentWorldKine_);
 }
 
-void LeggedOdometryManager::correctContactOri(LoContactWithSensor & contact, const mc_rbdyn::Robot & robot)
-{
-  contact.worldRefKine_.orientation =
-      getCurrentContactKinematics(contact, robot.forceSensor(contact.name())).orientation.toMatrix3();
-}
-
-void LeggedOdometryManager::correctContactPosition(LoContactWithSensor & contact, const mc_rbdyn::Robot & robot)
+void LeggedOdometryManager::correctContacsRef(LoContactWithSensor & contact, const mc_rbdyn::Robot & robot)
 {
   contact.worldRefKine_ = getCurrentContactKinematics(contact, robot.forceSensor(contact.name()));
   if(odometryType_ == measurements::OdometryType::Flat) { contact.worldRefKine_.position()(2) = 0.0; }
@@ -536,8 +553,8 @@ so::kine::Kinematics LeggedOdometryManager::getAnchorKineIn(stateObservation::ki
   return targetAnchorKine;
 }
 
-stateObservation::Vector3 & LeggedOdometryManager::getWorldAnchorPos(const mc_control::MCController & ctl,
-                                                                     const std::string & bodySensorName)
+stateObservation::Vector3 & LeggedOdometryManager::getCurrentWorldAnchorPos(const mc_control::MCController & ctl,
+                                                                            const std::string & bodySensorName)
 {
   if(k_data_ == k_est_) { mc_rtc::log::error_and_throw("Please call initLoop before this function"); }
 
@@ -597,7 +614,7 @@ stateObservation::Vector3 & LeggedOdometryManager::getWorldAnchorPos(const mc_co
   return worldAnchorPos_;
 }
 
-so::Vector3 & LeggedOdometryManager::getWorldRefAnchorPos()
+const so::Vector3 & LeggedOdometryManager::getWorldRefAnchorPos()
 {
   if(k_data_ == k_est_) { mc_rtc::log::error_and_throw("Please call initLoop before this function"); }
 

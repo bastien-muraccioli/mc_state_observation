@@ -92,6 +92,12 @@ public:
       return *this;
     }
 
+    KineParams & position(const Eigen::Vector3d & worldPos)
+    {
+      this->worldPos = &worldPos;
+      return *this;
+    }
+
     KineParams & tilt(const Eigen::Matrix3d & tilt)
     {
       if(tiltOrAttitude) { throw std::runtime_error("An input attitude is already set"); }
@@ -132,6 +138,7 @@ public:
     sva::MotionVecd * acc = nullptr;
     // Informs if the rotation matrix RunParameters#tiltOrAttitude stored in this structure
     // is a tilt or an attitude (full orientation).
+    const Eigen::Vector3d * worldPos = nullptr;
     bool oriIsAttitude = false;
     // Input orientation of the floating base in the world, used to perform the
     // legged odometry. If only a tilt is provided, the yaw will come from the yaw of the contacts.
@@ -418,17 +425,19 @@ public:
   /// @param worldTargetKine Kinematics of the target frame in the world frame.
   stateObservation::kine::Kinematics getAnchorKineIn(stateObservation::kine::Kinematics & worldTargetKine);
 
-  /// @brief Returns the position of the odometry robot's anchor point based on the current floating
-  /// base and encoders.
-  /// @details The anchor point can come from 2 sources:
-  /// - 1: contacts are detected and can be used to compute the anchor point.
-  /// - 2: no contact is detected, the robot is hanging. If we still need an anchor point for the tilt estimation we
-  /// arbitrarily use the frame of the bodySensor used by the estimator. In that case the linear velocity is not
-  /// available.
-  /// @param ctl controller
-  /// @param bodySensorName name of the body sensor.
-  stateObservation::Vector3 & getWorldAnchorPos(const mc_control::MCController & ctl,
-                                                const std::string & bodySensorName);
+  /**
+   * @brief Returns the position of the anchor point in the world from the current contacts reference position.
+   *
+   * @return stateObservation::Vector3&
+   */
+  const stateObservation::Vector3 & getWorldRefAnchorPos();
+
+  /// @brief Updates the position of the floating base in the world.
+  /// @details For each maintained contact, we compute the position of the floating base in the contact frame, we
+  /// then compute the weighted average wrt to the measured forces at the contact and obtain the estimated translation
+  /// from the anchor point to the floating base.  We apply this translation to the reference position of the anchor
+  /// frame in the world to obtain the new position of the floating base in the word.
+  stateObservation::Vector3 getWorldFbPosFromAnchor();
 
   /// @brief Changes the type of the odometry
   /// @details Version meant to be called by the observer using the odometry during the run through the gui.
@@ -478,16 +487,11 @@ private:
   /// @param runParams Parameters used to run the legged odometry.
   void updateFbAndContacts(const mc_control::MCController & ctl, const KineParams & params);
 
-  /// @brief Corrects the reference orientation of the contacts after the update of the floating base's orientation.
-  /// @details The new reference orientation is obtained by forward kinematics from the updated floating base.
-  /// @param contact The contact to update.
-  /// @param robot robot used to access the force sensor of the contact
-  void correctContactOri(LoContactWithSensor & contact, const mc_rbdyn::Robot & robot);
-  /// @brief Corrects the reference position of the contacts after the update of the floating base's position.
-  /// @details The new reference position is obtained by forward kinematics from the updated floating base.
+  /// @brief Corrects the reference pose of the contacts after the update of the floating base.
+  /// @details The new reference pose is obtained by forward kinematics from the updated floating base.
   /// @param contact The contact to update.
   /// @param robot robot used to access the force sensor of the contact.
-  void correctContactPosition(LoContactWithSensor & contact, const mc_rbdyn::Robot & robot);
+  void correctContacsRef(LoContactWithSensor & contact, const mc_rbdyn::Robot & robot);
 
   /**
    * @brief Updates the floating base kinematics given as argument by the observer.
@@ -538,6 +542,18 @@ private:
   stateObservation::kine::Kinematics getContactKineIn(LoContactWithSensor & contact,
                                                       stateObservation::kine::Kinematics & worldTargetKine);
 
+  /// @brief Returns the position of the odometry robot's anchor point based on the current floating
+  /// base and encoders.
+  /// @details The anchor point can come from 2 sources:
+  /// - 1: contacts are detected and can be used to compute the anchor point.
+  /// - 2: no contact is detected, the robot is hanging. If we still need an anchor point for the tilt estimation we
+  /// arbitrarily use the frame of the bodySensor used by the estimator. In that case the linear velocity is not
+  /// available.
+  /// @param ctl controller
+  /// @param bodySensorName name of the body sensor.
+  stateObservation::Vector3 & getCurrentWorldAnchorPos(const mc_control::MCController & ctl,
+                                                       const std::string & bodySensorName);
+
   /// @brief Selects which contacts to use for the orientation odometry and computes the orientation of the floating
   /// base for each of them
   /// @details The two contacts with the highest measured force are selected. The contacts at hands are ignored because
@@ -552,13 +568,6 @@ private:
   /// from the anchor point to the floating base.  We apply this translation to the reference position of the anchor
   /// frame in the world to obtain the new position of the floating base in the word.
   void updatePositionOdometry();
-
-  /**
-   * @brief Returns the position of the anchor point in the world from the current contacts reference position.
-   *
-   * @return stateObservation::Vector3&
-   */
-  stateObservation::Vector3 & getWorldRefAnchorPos();
 
   /// @brief Add the log entries corresponding to the contact.
   /// @param logger
