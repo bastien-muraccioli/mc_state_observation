@@ -616,7 +616,7 @@ stateObservation::Vector3 & LeggedOdometryManager::getCurrentWorldAnchorPos(cons
 
 const so::Vector3 & LeggedOdometryManager::getWorldRefAnchorPos()
 {
-  if(k_data_ == k_est_) { mc_rtc::log::error_and_throw("Please call initLoop before this function"); }
+  // if(k_data_ == k_est_) { mc_rtc::log::error_and_throw("Please call initLoop before this function"); }
 
   if(!posUpdatable_) { return refAnchorPosition_; }
 

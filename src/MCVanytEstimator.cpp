@@ -15,7 +15,7 @@ using OdometryType = measurements::OdometryType;
 using LoContactsManager = odometry::LeggedOdometryManager::ContactsManager;
 
 MCVanytEstimator::MCVanytEstimator(const std::string & type, double dt, bool asBackup, const std::string & observerName)
-: mc_observers::Observer(type, dt), estimator_(alpha_, beta_, dt), odometryManager_(observerName)
+: mc_observers::Observer(type, dt), estimator_(alpha_, beta_, 1 / (2 * M_PI), dt), odometryManager_(observerName)
 {
   asBackup_ = asBackup;
   observerName_ = observerName;
@@ -38,6 +38,8 @@ void MCVanytEstimator::configure(const mc_control::MCController & ctl, const mc_
   config("finalAlpha", finalAlpha_);
   config("finalBeta", finalBeta_);
   config("finalGamma", finalGamma_);
+
+  if(config.has("tau")) { estimator_.setTau(config("tau")); }
 
   estimator_.setRho1(config("rho1"));
 
@@ -126,17 +128,28 @@ void MCVanytEstimator::reset(const mc_control::MCController & ctl)
 
   const auto & imu = robot.bodySensor(imuSensor_);
 
-  poseW_ = realRobot.posW();
-  velW_ = realRobot.velW();
+  // reset of the floating base kinematics
+  poseW_ = robot.posW();
+  velW_ = robot.velW();
   prevPoseW_ = sva::PTransformd::Identity();
   velW_ = sva::MotionVecd::Zero();
 
+  // initialization of the estimator
+  so::kine::Kinematics initParentImuKine = conversions::kinematics::fromSva(
+      imu.X_b_s(), so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
+
+  // kinematics of the IMU's parent body in the world for the odometry robot
+  so::kine::Kinematics initWorldParentKine =
+      conversions::kinematics::fromSva(robot.bodyPosW(imu.parentBody()), so::kine::Kinematics::Flags::pose);
+
+  // pose and velocities of the IMU in the world frame for the odometry robot
+  so ::kine::Kinematics initWorldImuKine = initWorldParentKine * initParentImuKine;
   const Eigen::Matrix3d cOri = (imu.X_b_s() * ctl.robot(robot_).bodyPosW(imu.parentBody())).rotation();
 
-  so::kine::Orientation initOri(cOri);
-  so::Vector3 initX2 = cOri * so::Vector3::UnitZ(); // so::kine::rotationMatrixToRotationVector(cOri.transpose());
+  so::Vector3 initX2 = initWorldImuKine.orientation.toMatrix3().transpose() * so::Vector3::UnitZ();
 
-  estimator_.initEstimator(so::Vector3::Zero(), initX2, initOri.inverse().toVector4());
+  estimator_.initEstimator(initWorldImuKine.position(), so::Vector3::Zero(), initX2,
+                           initWorldImuKine.orientation.toVector4());
 
   anchorFrameJumped_ = false;
   iter_ = 0;
@@ -238,7 +251,11 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
 
     yv_ = -imu.angularVelocity().cross(updatedImuAnchorKine_.position()) - updatedImuAnchorKine_.linVel();
   }
+
+  if(odometryManager_.anchorPointMethodChanged_) { estimator_.resetImuLocVelHat(); }
+
   estimator_.setMeasurement(yv_, imu.linearAcceleration(), imu.angularVelocity(), k + 1);
+  measurements_ = estimator_.getMeasurement(estimator_.getMeasurementTime());
 
   if(oriUpdateIter_ >= 20)
   {
@@ -246,10 +263,6 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
     oriUpdateIter_ = 0;
   }
   ++oriUpdateIter_;
-
-  measurements_ = estimator_.getMeasurement(estimator_.getMeasurementTime()).transpose();
-
-  if(odometryManager_.anchorPointMethodChanged_) { estimator_.resetImuLocVelHat(); }
 
   for(auto * mContact : odometryManager_.maintainedContacts())
   {
@@ -266,6 +279,11 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
     estimator_.addOrientationMeasurement(worldImuKineOdometryRobot.orientation.toMatrix3(), 3);
   }
 
+  if(odometryManager_.maintainedContacts().size() > 0)
+  {
+    estimator_.addPositionMeasurement(odometryManager_.getWorldRefAnchorPos(), updatedImuAnchorKine_.position());
+  }
+
   // estimation of the state with the complementary filters
   xk_ = estimator_.getEstimatedState(k + 1);
 
@@ -278,9 +296,14 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
   // Estimated orientation of the floating base in the world (especially the tilt)
   R_0_fb_ = estimatedRotationIMU_ * updatedFbImuKine_.orientation.toMatrix3().transpose();
 
-  odometryManager_.run(ctl, odometry::LeggedOdometryManager::KineParams(poseW_).attitude(R_0_fb_));
+  // retrieving the estimated position
+  const so::Vector3 worldImuPos = xk_.head(3);
 
-  updatePoseAndVel(xk_.head(3), imu.angularVelocity());
+  so::Vector3 worldFbPos = worldImuPos + estimatedRotationIMU_ * updatedFbImuKine_.getInverse().position();
+
+  odometryManager_.run(ctl, odometry::LeggedOdometryManager::KineParams(poseW_).attitude(R_0_fb_).position(worldFbPos));
+
+  updatePoseAndVel(xk_.segment(3, 3), imu.angularVelocity());
   backupFbKinematics_.push_back(poseW_);
 }
 
@@ -405,7 +428,9 @@ void MCVanytEstimator::addToLogger(const mc_control::MCController & ctl,
                                    mc_rtc::Logger & logger,
                                    const std::string & category)
 {
-  logger.addLogEntry(category + "_estimatedState_x1", [this]() -> so::Vector3 { return xk_.head(3); });
+  logger.addLogEntry(category + "_estimatedState_p", [this]() -> so::Vector3 { return xk_.segment(0, 3); });
+
+  logger.addLogEntry(category + "_estimatedState_x1", [this]() -> so::Vector3 { return xk_.segment(3, 3); });
 
   logger.addLogEntry(category + "_debug_measuredOri_",
                      [this]() -> Eigen::Quaterniond
@@ -414,10 +439,14 @@ void MCVanytEstimator::addToLogger(const mc_control::MCController & ctl,
                        ori.fromVector4((measurements_.tail(4)));
                        return ori.toQuaternion().inverse();
                      });
-  logger.addLogEntry(category + "_debug_correction_", [this]() -> so::Vector3 { return estimator_.getCorrection(); });
+
+  logger.addLogEntry(category + "_debug_posContacts_",
+                     [this]() -> const so::Vector3 & { return estimator_.getPosContacts(); });
+
+  logger.addLogEntry(category + "_debug_posX1_", [this]() -> const so::Vector3 & { return estimator_.getPosX1(); });
 
   logger.addLogEntry(category + "_estimatedState_x2prime",
-                     [this]() -> so::Vector3 { return xk_.segment(3, 3).normalized(); });
+                     [this]() -> so::Vector3 { return xk_.segment(6, 3).normalized(); });
   logger.addLogEntry(category + "_estimatedState_R",
                      [this]()
                      {
@@ -477,6 +506,7 @@ void MCVanytEstimator::addToLogger(const mc_control::MCController & ctl,
   logger.addLogEntry(category + "_constants_beta", [this]() -> double { return estimator_.getBeta(); });
   logger.addLogEntry(category + "_constants_gamma", [this]() -> double { return estimator_.getGamma(); });
   logger.addLogEntry(category + "_constants_rho1", [this]() -> double { return estimator_.getRho1(); });
+  logger.addLogEntry(category + "_constants_tau", [this]() -> double { return estimator_.getTau(); });
 
   logger.addLogEntry(category + "_debug_OdometryType",
                      [this]() -> std::string
