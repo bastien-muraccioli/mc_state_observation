@@ -901,7 +901,7 @@ void MCKineticsObserver::getOdometryWorldContactRest(const mc_control::MCControl
         getContactWorldKinematics(contact, robot, robot.forceSensor(contact.forceSensor()));
 
     // the reference altitude of the contact is the one in the control robot
-    worldContactKineRef.position()(2) = worldContactKineControl.position()(2);
+    worldContactKineRef.position()(2) = 0.0;
   }
 }
 
