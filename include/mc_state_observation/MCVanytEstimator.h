@@ -201,7 +201,8 @@ protected:
   stateObservation::kine::Orientation measuredOri_;
   stateObservation::Vector measurements_;
 
-  int oriUpdateIter_ = 0;
+  double mu_contacts_ = 2;
+  double mu_gyro_ = 2;
 };
 
 } // namespace mc_state_observation

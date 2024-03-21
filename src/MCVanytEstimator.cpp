@@ -42,6 +42,8 @@ void MCVanytEstimator::configure(const mc_control::MCController & ctl, const mc_
   if(config.has("tau")) { estimator_.setTau(config("tau")); }
 
   estimator_.setRho1(config("rho1"));
+  config("muContacts", mu_contacts_);
+  config("muGyro", mu_gyro_);
 
   anchorFrameFunction_ = "KinematicAnchorFrame::" + ctl.robot(robot_).name();
   // if a user-defined anchor frame function is given, we use it instead
@@ -433,15 +435,13 @@ void MCVanytEstimator::addToLogger(const mc_control::MCController & ctl,
   logger.addLogEntry(category + "_estimatedState_x1", [this]() -> so::Vector3 { return xk_.segment(3, 3); });
 
   logger.addLogEntry(category + "_debug_measuredOri_",
-                     [this]() -> Eigen::Quaterniond
-                     {
-                       stateObservation::kine::Orientation ori;
-                       ori.fromVector4((measurements_.tail(4)));
-                       return ori.toQuaternion().inverse();
-                     });
+                     [this]() -> Eigen::Quaterniond { return measuredOri_.toQuaternion().inverse(); });
 
   logger.addLogEntry(category + "_debug_posContacts_",
                      [this]() -> const so::Vector3 & { return estimator_.getPosContacts(); });
+
+  logger.addLogEntry(category + "_debug_oriCorrection_",
+                     [this]() -> const so::Vector3 & { return estimator_.getOriCorrection(); });
 
   logger.addLogEntry(category + "_debug_posX1_", [this]() -> const so::Vector3 & { return estimator_.getPosX1(); });
 
