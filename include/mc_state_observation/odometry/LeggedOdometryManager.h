@@ -37,6 +37,8 @@ public:
 public:
   // reference of the contact in the world
   stateObservation::kine::Kinematics worldRefKine_;
+  // reference of the contact in the world before correction
+  stateObservation::kine::Kinematics worldRefKineBeforeCorrection_;
   // indicates whether the contact can be used for the orientation odometry or not
   bool useForOrientation_ = false;
   // current estimation of the kinematics of the floating base in the world, obtained from the reference pose of the
@@ -393,6 +395,8 @@ public:
             const Configuration & odomConfig,
             const ContactsManagerConfiguration & contactsConf);
 
+  void reset();
+
   /// @brief Function that initializes the loop of the legged odometry. To be called at the beginning of each iteration.
   /// @details Updates the joints configuration, the contacts, and sets the velocity and acceleration of the odometry
   /// robot to zero as we internally compute only kinematics in frames attached to the robots. This function is
@@ -432,11 +436,13 @@ public:
    */
   const stateObservation::Vector3 & getWorldRefAnchorPos();
 
+  const stateObservation::Vector3 getCurrentWorldRefAnchorPos();
+
   /// @brief Updates the position of the floating base in the world.
   /// @details For each maintained contact, we compute the position of the floating base in the contact frame, we
-  /// then compute the weighted average wrt to the measured forces at the contact and obtain the estimated translation
-  /// from the anchor point to the floating base.  We apply this translation to the reference position of the anchor
-  /// frame in the world to obtain the new position of the floating base in the word.
+  /// then compute the weighted average wrt to the measured forces at the contact and obtain the estimated
+  /// translation from the anchor point to the floating base.  We apply this translation to the reference position
+  /// of the anchor frame in the world to obtain the new position of the floating base in the word.
   stateObservation::Vector3 getWorldFbPosFromAnchor();
 
   /// @brief Changes the type of the odometry
@@ -490,8 +496,7 @@ private:
   /// @brief Corrects the reference pose of the contacts after the update of the floating base.
   /// @details The new reference pose is obtained by forward kinematics from the updated floating base.
   /// @param contact The contact to update.
-  /// @param robot robot used to access the force sensor of the contact.
-  void correctContacsRef(LoContactWithSensor & contact, const mc_rbdyn::Robot & robot);
+  void correctContactsRef();
 
   /**
    * @brief Updates the floating base kinematics given as argument by the observer.
@@ -627,6 +632,10 @@ protected:
   stateObservation::TimeIndex k_data_ = 0;
   // time stamp, incremented once the iteration of the doometry is completed.
   stateObservation::TimeIndex k_est_ = 0;
+  // time stamp, incremented once the contact references have been corrected.
+  stateObservation::TimeIndex k_correct_ = 0;
+  // time stamp, incremented once the anchor frame has been computed.
+  stateObservation::TimeIndex k_anchor_ = 0;
 
 public:
   // Indicates if the desired odometry must be a flat or a 6D odometry.

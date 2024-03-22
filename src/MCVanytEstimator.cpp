@@ -228,7 +228,7 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
 
   auto k = estimator_.getCurrentTime();
 
-  measuredOri_ = so::Matrix3(ctl.realRobot(robot_).posW().rotation().transpose());
+  // measuredOri_ = so::Matrix3(ctl.realRobot(robot_).posW().rotation().transpose());
 
   // The anchor frame can be obtained using 2 ways:
   // - 1: contacts are detected and can be used
@@ -259,28 +259,6 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
   estimator_.setMeasurement(yv_, imu.linearAcceleration(), imu.angularVelocity(), k + 1);
   measurements_ = estimator_.getMeasurement(estimator_.getMeasurementTime());
 
-  if(oriUpdateIter_ >= 20)
-  {
-    // estimator_.addOrientationMeasurement(measuredOri_.toMatrix3(), 3);
-    oriUpdateIter_ = 0;
-  }
-  ++oriUpdateIter_;
-
-  for(auto * mContact : odometryManager_.maintainedContacts())
-  {
-    const so::kine::Kinematics & worldContactRefKine = mContact->worldRefKine_;
-
-    // current pose of the frame of the floating base in the frame of the contact. This variable gets updated just
-    // before by the lambda function onMaintainedContact of the legged odometry library, which calls this function.
-
-    const so::kine::Kinematics & contactFbKineOdometryRobot = mContact->contactFbKine_;
-
-    const so::kine::Kinematics worldImuKineOdometryRobot =
-        worldContactRefKine * contactFbKineOdometryRobot * updatedFbImuKine_;
-
-    estimator_.addOrientationMeasurement(worldImuKineOdometryRobot.orientation.toMatrix3(), 3);
-  }
-
   if(odometryManager_.maintainedContacts().size() > 0)
   {
     estimator_.addPositionMeasurement(odometryManager_.getWorldRefAnchorPos(), updatedImuAnchorKine_.position());
@@ -307,6 +285,23 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
 
   updatePoseAndVel(xk_.segment(3, 3), imu.angularVelocity());
   backupFbKinematics_.push_back(poseW_);
+
+  for(auto * mContact : odometryManager_.maintainedContacts())
+  {
+    const so::kine::Kinematics & worldContactRefKine = mContact->worldRefKineBeforeCorrection_;
+
+    // current pose of the frame of the floating base in the frame of the contact. This variable gets updated just
+    // before by the lambda function onMaintainedContact of the legged odometry library, which calls this function.
+
+    const so::kine::Kinematics & contactFbKineOdometryRobot = mContact->contactFbKine_;
+
+    const so::kine::Kinematics worldImuKineOdometryRobot =
+        worldContactRefKine * contactFbKineOdometryRobot * updatedFbImuKine_;
+
+    measuredOri_ = worldImuKineOdometryRobot.orientation.toMatrix3();
+
+    estimator_.addOrientationMeasurement(measuredOri_, mu_contacts_);
+  }
 }
 
 void MCVanytEstimator::updatePoseAndVel(const so::Vector3 & localWorldImuLinVel,
@@ -755,6 +750,7 @@ void MCVanytEstimator::addToLogger(const mc_control::MCController & ctl,
 
   conversions::kinematics::addToLogger(logger, updatedWorldImuKine_, category + "_debug_updatedWorldImuKine");
   conversions::kinematics::addToLogger(logger, updatedImuAnchorKine_, category + "_debug_updatedImuAnchorKine_");
+  conversions::kinematics::addToLogger(logger, updatedFbImuKine_, category + "_debug_updatedFbImuKine_");
 
   conversions::kinematics::addToLogger(logger, updatedWorldFbKine_, category + "_debug_updatedWorldFbKine_");
   conversions::kinematics::addToLogger(logger, correctedWorldImuKine_, category + "_debug_correctedWorldImuKine_");
