@@ -612,16 +612,16 @@ stateObservation::Vector3 & LeggedOdometryManager::getCurrentWorldAnchorPos(cons
 
   // checks that the position and orientation can be updated from the currently set contacts and computes the pose of
   // the floating base obtained from each contact
-  for(auto & [_, contact] : contactsManager_.contacts())
+  for(auto * mContact : maintainedContacts_)
   {
-    if(!(contact.isSet() && contact.wasAlreadySet())) { continue; }
+    if(!(mContact->isSet() && mContact->wasAlreadySet())) { continue; }
     linKineUpdatable = true;
 
     const so::kine::Kinematics & worldContactKine =
-        getCurrentContactKinematics(contact, robot.forceSensor(contact.name()));
+        getCurrentContactKinematics(*mContact, robot.forceSensor(mContact->name()));
 
     // force weighted sum of the estimated floating base positions
-    worldAnchorPos_ += worldContactKine.position() * contact.lambda();
+    worldAnchorPos_ += worldContactKine.position() * mContact->lambda();
   }
 
   if(linKineUpdatable)
