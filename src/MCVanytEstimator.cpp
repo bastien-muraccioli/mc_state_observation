@@ -117,7 +117,6 @@ void MCVanytEstimator::configure(const mc_control::MCController & ctl, const mc_
 void MCVanytEstimator::reset(const mc_control::MCController & ctl)
 {
   const auto & robot = ctl.robot(robot_);
-  const auto & realRobot = ctl.realRobot(robot_);
 
   my_robots_ = mc_rbdyn::Robots::make();
   my_robots_->robotCopy(robot, robot.name());
@@ -157,6 +156,8 @@ void MCVanytEstimator::reset(const mc_control::MCController & ctl)
   iter_ = 0;
   imuVelC_ = sva::MotionVecd::Zero();
   X_C_IMU_ = sva::PTransformd::Identity();
+
+  odometryManager_.reset();
 }
 
 bool MCVanytEstimator::run(const mc_control::MCController & ctl)
