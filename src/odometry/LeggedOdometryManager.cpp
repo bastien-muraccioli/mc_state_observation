@@ -620,8 +620,6 @@ stateObservation::Vector3 & LeggedOdometryManager::getCurrentWorldAnchorPos(cons
     const so::kine::Kinematics & worldContactKine =
         getCurrentContactKinematics(contact, robot.forceSensor(contact.name()));
 
-    std::cout << std::endl << "worldContactKine" << std::endl << worldContactKine << std::endl;
-
     // force weighted sum of the estimated floating base positions
     worldAnchorPos_ += worldContactKine.position() * contact.lambda();
   }
