@@ -531,7 +531,9 @@ void LeggedOdometryManager::addContactLogEntries(mc_rtc::Logger & logger, const 
                                            + "_currentWorldContactKine");
   conversions::kinematics::addToLogger(logger, contact.worldRefKineBeforeCorrection_,
                                        odometryName_ + "_leggedOdometryManager_" + contactName
-                                           + "__refPoseBeforeCorrection");
+                                           + "_refPoseBeforeCorrection");
+  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_" + contactName + "_isSet", &contact,
+                     [&contact]() -> std::string { return contact.isSet() ? "Set" : "notSet"; });
 }
 
 void LeggedOdometryManager::removeContactLogEntries(mc_rtc::Logger & logger, const LoContactWithSensor & contact)
@@ -541,6 +543,7 @@ void LeggedOdometryManager::removeContactLogEntries(mc_rtc::Logger & logger, con
   conversions::kinematics::removeFromLogger(logger, contact.currentWorldFbPose_);
   conversions::kinematics::removeFromLogger(logger, contact.currentWorldKine_);
   conversions::kinematics::removeFromLogger(logger, contact.currentWorldKine_);
+  logger.removeLogEntries(&contact);
 }
 
 void LeggedOdometryManager::correctContactsRef()

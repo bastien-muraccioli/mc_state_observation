@@ -291,9 +291,6 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
   {
     const so::kine::Kinematics & worldContactRefKine = mContact->worldRefKineBeforeCorrection_;
 
-    // current pose of the frame of the floating base in the frame of the contact. This variable gets updated just
-    // before by the lambda function onMaintainedContact of the legged odometry library, which calls this function.
-
     const so::kine::Kinematics & contactFbKineOdometryRobot = mContact->contactFbKine_;
 
     const so::kine::Kinematics worldImuKineOdometryRobot =
