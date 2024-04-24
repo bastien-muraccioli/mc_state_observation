@@ -689,8 +689,7 @@ void MCKineticsObserver::inputAdditionalWrench(const mc_rbdyn::Robot & inputRobo
 
   if(withDebugLogs_)
   {
-    for(auto & contactWithSensor : contactsManager_.contacts()) // if a force sensor is not associated to a contact, its
-                                                                // measurement is given as an input external wrench
+    for(auto & contactWithSensor : contactsManager_.contacts())
     {
       KoContactWithSensor & contact = contactWithSensor.second;
       const std::string & fsName = contact.forceSensor();
