@@ -198,7 +198,7 @@ protected:
   // pose of the IMU in the anchor frame
   sva::PTransformd X_C_IMU_;
 
-  stateObservation::kine::Orientation measuredOri_;
+  stateObservation::kine::Orientation measuredOri_ = stateObservation::kine::Orientation::zeroRotation();
   stateObservation::Vector measurements_;
 
   double mu_contacts_ = 2;
