@@ -318,7 +318,7 @@ void MCKineticsObserver::reset(const mc_control::MCController & ctl)
   ctl.gui()->addElement({"Robots"},
                         mc_rtc::gui::Robot("Real", [&ctl]() -> const mc_rbdyn::Robot & { return ctl.realRobot(); }));
 
-  X_0_fb_ = robot.posW().translation();
+  X_0_fb_ = realRobot.posW().translation();
 
   initObserverStateVector(realRobot);
 }

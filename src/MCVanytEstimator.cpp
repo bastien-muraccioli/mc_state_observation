@@ -115,6 +115,7 @@ void MCVanytEstimator::configure(const mc_control::MCController & ctl, const mc_
 void MCVanytEstimator::reset(const mc_control::MCController & ctl)
 {
   const auto & robot = ctl.robot(robot_);
+  const auto & realRobot = ctl.realRobot(robot_);
 
   my_robots_ = mc_rbdyn::Robots::make();
   my_robots_->robotCopy(robot, robot.name());
@@ -128,8 +129,8 @@ void MCVanytEstimator::reset(const mc_control::MCController & ctl)
   const auto & imu = robot.bodySensor(imuSensor_);
 
   // reset of the floating base kinematics
-  poseW_ = robot.posW();
-  velW_ = robot.velW();
+  poseW_ = realRobot.posW();
+  velW_ = realRobot.velW();
   prevPoseW_ = sva::PTransformd::Identity();
   velW_ = sva::MotionVecd::Zero();
 
@@ -139,11 +140,11 @@ void MCVanytEstimator::reset(const mc_control::MCController & ctl)
 
   // kinematics of the IMU's parent body in the world for the odometry robot
   so::kine::Kinematics initWorldParentKine =
-      conversions::kinematics::fromSva(robot.bodyPosW(imu.parentBody()), so::kine::Kinematics::Flags::pose);
+      conversions::kinematics::fromSva(realRobot.bodyPosW(imu.parentBody()), so::kine::Kinematics::Flags::pose);
 
   // pose and velocities of the IMU in the world frame for the odometry robot
   so ::kine::Kinematics initWorldImuKine = initWorldParentKine * initParentImuKine;
-  const Eigen::Matrix3d cOri = (imu.X_b_s() * ctl.robot(robot_).bodyPosW(imu.parentBody())).rotation();
+  const Eigen::Matrix3d cOri = (imu.X_b_s() * realRobot.bodyPosW(imu.parentBody())).rotation();
 
   so::Vector3 initX2 = initWorldImuKine.orientation.toMatrix3().transpose() * so::Vector3::UnitZ();
 
