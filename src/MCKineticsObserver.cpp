@@ -156,6 +156,9 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   contactInitCovarianceNewContacts_.block<3, 3>(9, 9) =
       (config("contactTorqueInitVarianceNewContacts").operator so::Vector3()).matrix().asDiagonal();
 
+  contactInitCovarianceNewContacts_flat_(2, 2) = 0.0;
+  contactInitCovarianceFirstContacts_flat_(2, 2) = 0.0;
+
   // Process //
   statePositionProcessCovariance_ =
       (config("statePositionProcessVariance").operator so::Vector3()).matrix().asDiagonal();
@@ -942,13 +945,29 @@ void MCKineticsObserver::setNewContact(const mc_control::MCController & ctl,
   if(observer_.getNumberOfSetContacts() > 0) // The initial covariance on the pose of the contact depending on
                                              // whether another contact is already set or not
   {
-    observer_.addContact(worldContactKineRef, contactInitCovarianceNewContacts_, contactProcessCovariance_,
-                         contact.id(), linStiffness_, linDamping_, angStiffness_, angDamping_);
+    if(odometryType_ == measurements::OdometryType::Flat)
+    {
+      observer_.addContact(worldContactKineRef, contactInitCovarianceNewContacts_flat_, contactProcessCovariance_,
+                           contact.id(), linStiffness_, linDamping_, angStiffness_, angDamping_);
+    }
+    else
+    {
+      observer_.addContact(worldContactKineRef, contactInitCovarianceNewContacts_, contactProcessCovariance_,
+                           contact.id(), linStiffness_, linDamping_, angStiffness_, angDamping_);
+    }
   }
   else
   {
-    observer_.addContact(worldContactKineRef, contactInitCovarianceFirstContacts_, contactProcessCovariance_,
-                         contact.id(), linStiffness_, linDamping_, angStiffness_, angDamping_);
+    if(odometryType_ == measurements::OdometryType::Flat)
+    {
+      observer_.addContact(worldContactKineRef, contactInitCovarianceFirstContacts_flat_, contactProcessCovariance_,
+                           contact.id(), linStiffness_, linDamping_, angStiffness_, angDamping_);
+    }
+    else
+    {
+      observer_.addContact(worldContactKineRef, contactInitCovarianceFirstContacts_, contactProcessCovariance_,
+                           contact.id(), linStiffness_, linDamping_, angStiffness_, angDamping_);
+    }
   }
   if(contact.sensorEnabled_) // checks if the sensor is used in the correction of the Kinetics Observer
                              // or not
