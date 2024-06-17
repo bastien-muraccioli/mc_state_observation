@@ -29,11 +29,7 @@ struct KoContactWithSensor : public measurements::ContactWithSensor
 {
   using measurements::ContactWithSensor::ContactWithSensor;
 
-  inline void resetContact() noexcept
-  {
-    ContactWithSensor::resetContact();
-    sensorWasEnabled_ = false;
-  }
+  inline void resetContact() noexcept { ContactWithSensor::resetContact(); }
 
 public:
   // kinematics of the contact frame in the floating base's frame
@@ -47,8 +43,6 @@ public:
 
   // the sensor measurement has to be used by the observer
   bool sensorEnabled_ = true;
-  // allows to know if the logs related to the contact's measurements have to be added.
-  bool sensorWasEnabled_ = false;
 };
 
 struct MCKineticsObserver : public mc_observers::Observer
@@ -148,7 +142,7 @@ protected:
                 mc_rtc::gui::StateBuilder &,
                 const std::vector<std::string> & /* category */) override;
 
-  void addContactToGui(const mc_control::MCController & ctl, KoContactWithSensor & contact);
+  void addContactToGui(const mc_control::MCController & ctl, KoContactWithSensor & contact, mc_rtc::Logger & logger);
 
   /// @brief Sets the type of the odometry
   /// @param newOdometryType The new type of odometry to use.
@@ -347,7 +341,7 @@ private:
   /* custom list of robots to display */
   std::shared_ptr<mc_rbdyn::Robots> my_robots_;
   // std::string imuSensor_ = "";
-  mc_rbdyn::BodySensorVector IMUs_; ///< list of IMUs
+  std::vector<std::string> imuNames_; ///< list of IMUs
 
   /* Estimation parameters */
   bool debug_ = false;
