@@ -202,7 +202,7 @@ protected:
   stateObservation::Vector measurements_;
 
   double mu_contacts_ = 2;
-  double mu_gyro_ = 2;
+  double mu_gyroscope_ = 2;
 };
 
 } // namespace mc_state_observation

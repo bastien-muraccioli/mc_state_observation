@@ -43,7 +43,7 @@ void MCVanytEstimator::configure(const mc_control::MCController & ctl, const mc_
 
   estimator_.setRho1(config("rho1"));
   config("muContacts", mu_contacts_);
-  config("muGyro", mu_gyro_);
+  config("muGyro", mu_gyroscope_);
 
   anchorFrameFunction_ = "KinematicAnchorFrame::" + ctl.robot(robot_).name();
   // if a user-defined anchor frame function is given, we use it instead
@@ -422,6 +422,7 @@ void MCVanytEstimator::addToLogger(const mc_control::MCController & ctl,
                                    mc_rtc::Logger & logger,
                                    const std::string & category)
 {
+  odometryManager_.addToLogger(logger, category + "_leggedOdometryManager");
   logger.addLogEntry(category + "_estimatedState_p", [this]() -> so::Vector3 { return xk_.segment(0, 3); });
 
   logger.addLogEntry(category + "_estimatedState_x1", [this]() -> so::Vector3 { return xk_.segment(3, 3); });

@@ -456,6 +456,12 @@ public:
   /// @brief Getter for the contacts manager.
   inline LeggedOdometryContactsManager & contactsManager() { return contactsManager_; }
 
+  /*! \brief Add the odometry to the logger
+   *
+   * @param category Category in which to log the odometry
+   */
+  void addToLogger(mc_rtc::Logger &, const std::string & category);
+
 private:
   /// @brief Updates the pose of the contacts and estimates the associated kinematics.
   /// @param ctl Controller.

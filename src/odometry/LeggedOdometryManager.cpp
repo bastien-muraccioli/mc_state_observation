@@ -74,7 +74,7 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
                      [this]() -> so::Vector3 & { return fbAnchorPos_; });
   logger.addLogEntry(odometryName_ + "_leggedOdometryManager_jsp2",
                      [this]() -> double { return contactsManager_.contact("RightFootForceSensor").lambda(); });
-  logger.addLogEntry(odometryName_ + "_worldAnchorPos", [this]() { return worldAnchorPos_; });
+  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_worldAnchorPos", [this]() { return worldAnchorPos_; });
   logger.addLogEntry(odometryName_ + "_leggedOdometryManager_odometryRobot_posW",
                      [this]() -> const sva::PTransformd & { return odometryRobot().posW(); });
 
@@ -533,11 +533,18 @@ void LeggedOdometryManager::addContactLogEntries(mc_rtc::Logger & logger, const 
   conversions::kinematics::addToLogger(logger, contact.currentWorldKine_,
                                        odometryName_ + "_leggedOdometryManager_" + contactName
                                            + "_currentWorldContactKine");
+  conversions::kinematics::addToLogger(logger, contact.contactFbKine_,
+                                       odometryName_ + "_leggedOdometryManager_" + contactName + "_contactFbKine_");
   conversions::kinematics::addToLogger(logger, contact.worldRefKineBeforeCorrection_,
                                        odometryName_ + "_leggedOdometryManager_" + contactName
                                            + "_refPoseBeforeCorrection");
   logger.addLogEntry(odometryName_ + "_leggedOdometryManager_" + contactName + "_isSet", &contact,
                      [&contact]() -> std::string { return contact.isSet() ? "Set" : "notSet"; });
+
+  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_" + contactName + "_lambda", &contact,
+                     [&contact]() -> double { return contact.lambda(); });
+  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_" + contactName + "_forceNorm", &contact,
+                     [&contact]() -> double { return contact.forceNorm(); });
 }
 
 void LeggedOdometryManager::removeContactLogEntries(mc_rtc::Logger & logger, const LoContactWithSensor & contact)
@@ -710,6 +717,10 @@ void LeggedOdometryManager::setOdometryType(OdometryType newOdometryType)
     mc_rtc::log::info("[{}]: Odometry mode changed to: {}", odometryName_,
                       measurements::odometryTypeToSstring(newOdometryType));
   }
+}
+
+void LeggedOdometryManager::addToLogger(mc_rtc::Logger & logger, const std::string & category)
+{
 }
 
 } // namespace mc_state_observation::odometry
