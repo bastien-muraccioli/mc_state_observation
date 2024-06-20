@@ -30,15 +30,27 @@ class LoContactWithSensor : public measurements::ContactWithSensor
   using measurements::ContactWithSensor::ContactWithSensor;
 
 public:
+  inline void resetContact() noexcept override
+  {
+    measurements::Contact::resetContact();
+    lifeTime_ = 0.0;
+  }
+
   inline void lambda(double lambda) { lambda_ = lambda; }
 
   inline double lambda() const noexcept { return lambda_; }
+
+  inline void lifeTimeIncrement(double dt) { lifeTime_ += dt; }
+
+  inline double lifeTime() const noexcept { return lifeTime_; }
 
 public:
   // reference of the contact in the world
   stateObservation::kine::Kinematics worldRefKine_;
   // reference of the contact in the world before correction
   stateObservation::kine::Kinematics worldRefKineBeforeCorrection_;
+  // new incoming ref kine for the correction
+  stateObservation::kine::Kinematics newIncomingWorldRefKine_;
   // indicates whether the contact can be used for the orientation odometry or not
   bool useForOrientation_ = false;
   // current estimation of the kinematics of the floating base in the world, obtained from the reference pose of the
@@ -55,6 +67,8 @@ public:
 protected:
   // weighing coefficient for the anchor point computation
   double lambda_;
+  // time ellapsed since the creation of the contact.
+  double lifeTime_;
 };
 
 /// @brief Structure that implements all the necessary functions to perform legged odometry.
@@ -328,7 +342,8 @@ public:
     std::string odometryName_;
     // Desired kind of odometry (6D or flat)
     measurements::OdometryType odometryType_;
-
+    // time constant defining how fast the contact reference poses are corrected by the one of the floating base
+    double kappa_ = 1 / (2 * M_PI);
     // Indicates if the orientation must be estimated by this odometry.
     bool withYaw_ = true;
     // If true, adds the possiblity to switch between 6d and flat odometry from the gui.
@@ -345,6 +360,11 @@ public:
     inline Configuration & withYawEstimation(bool withYaw) noexcept
     {
       withYaw_ = withYaw;
+      return *this;
+    }
+    inline Configuration & kappa(double kappa) noexcept
+    {
+      kappa_ = kappa;
       return *this;
     }
 
@@ -371,7 +391,11 @@ public:
 
   using ContactsManagerConfiguration = ContactsManager::Configuration;
 
-  inline LeggedOdometryManager(const std::string & odometryName) { odometryName_ = odometryName; }
+  inline LeggedOdometryManager(const std::string & odometryName, double dt_)
+  {
+    odometryName_ = odometryName;
+    ctl_dt_ = dt_;
+  }
   /**
    * @brief  Returns a list of pointers to the contacts maintained during the current iteration.
    *
@@ -501,8 +525,8 @@ private:
 
   /// @brief Corrects the reference pose of the contacts after the update of the floating base.
   /// @details The new reference pose is obtained by forward kinematics from the updated floating base.
-  /// @param contact The contact to update.
-  void correctContactsRef();
+  /// @param contact The robot containing the sensors.
+  void correctContactsRef(const mc_rbdyn::Robot & measurementsRobot);
 
   /**
    * @brief Updates the floating base kinematics given as argument by the observer.
@@ -617,6 +641,10 @@ protected:
   std::vector<LoContactWithSensor *> newContacts_;
   // contacts maintained during the current iteration
   std::vector<LoContactWithSensor *> maintainedContacts_;
+  // time constant defining how fast the contact reference poses are corrected by the one of the floating base
+  double kappa_;
+  // timestep used in the controller
+  double ctl_dt_;
 
   // indicates whether we want to update the yaw using this method or not
   bool withYawEstimation_;

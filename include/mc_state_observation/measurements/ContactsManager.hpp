@@ -151,7 +151,7 @@ void ContactsManager<ContactT>::updateContacts(const mc_control::MCController & 
     if(c.wasAlreadySet() && !c.isSet())
     {
       onRemovedContact(c);
-      c.wasAlreadySet(false);
+      c.resetContact();
       show_broken_contacts = true;
 
       if(verbose_)

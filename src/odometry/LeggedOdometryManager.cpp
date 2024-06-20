@@ -33,6 +33,7 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
   withYawEstimation_ = odomConfig.withYaw_;
   velocityUpdate_ = odomConfig.velocityUpdate_;
   odometryName_ = odomConfig.odometryName_;
+  kappa_ = odomConfig.kappa_;
 
   fbPose_.translation() = robot.posW().translation();
   fbPose_.rotation() = robot.posW().rotation();
@@ -65,24 +66,6 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
   fbAnchorPos_ =
       -robot.posW().rotation() * robot.posW().translation() + robot.posW().rotation().transpose() * worldAnchorPos_;
 
-  auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
-
-  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_jsp1",
-                     [this]() -> double { return contactsManager_.contact("LeftFootForceSensor").lambda(); });
-
-  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_fbAnchorPos_",
-                     [this]() -> so::Vector3 & { return fbAnchorPos_; });
-  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_jsp2",
-                     [this]() -> double { return contactsManager_.contact("RightFootForceSensor").lambda(); });
-  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_worldAnchorPos", [this]() { return worldAnchorPos_; });
-  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_odometryRobot_posW",
-                     [this]() -> const sva::PTransformd & { return odometryRobot().posW(); });
-
-  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_odometryRobot_velW",
-                     [this]() -> const sva::MotionVecd & { return odometryRobot().velW(); });
-
-  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_odometryRobot_accW",
-                     [this]() { return odometryRobot().accW(); });
   if(odomConfig.withModeSwitchInGui_)
   {
     std::vector<std::string> odomCategory;
@@ -97,9 +80,6 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
                               [this]() -> std::string { return measurements::odometryTypeToSstring(odometryType_); },
                               [this](const std::string & typeOfOdometry)
                               { setOdometryType(measurements::stringToOdometryType(typeOfOdometry)); }));
-
-    logger.addLogEntry(odometryName_ + "_debug_OdometryType",
-                       [this]() -> std::string { return measurements::odometryTypeToSstring(odometryType_); });
   }
 }
 
@@ -538,6 +518,9 @@ void LeggedOdometryManager::addContactLogEntries(mc_rtc::Logger & logger, const 
   conversions::kinematics::addToLogger(logger, contact.worldRefKineBeforeCorrection_,
                                        odometryName_ + "_leggedOdometryManager_" + contactName
                                            + "_refPoseBeforeCorrection");
+  conversions::kinematics::addToLogger(logger, contact.newIncomingWorldRefKine_,
+                                       odometryName_ + "_leggedOdometryManager_" + contactName
+                                           + "_newIncomingWorldRefKine");
   logger.addLogEntry(odometryName_ + "_leggedOdometryManager_" + contactName + "_isSet", &contact,
                      [&contact]() -> std::string { return contact.isSet() ? "Set" : "notSet"; });
 
@@ -553,28 +536,56 @@ void LeggedOdometryManager::removeContactLogEntries(mc_rtc::Logger & logger, con
   conversions::kinematics::removeFromLogger(logger, contact.worldRefKineBeforeCorrection_);
   conversions::kinematics::removeFromLogger(logger, contact.currentWorldFbPose_);
   conversions::kinematics::removeFromLogger(logger, contact.currentWorldKine_);
-  conversions::kinematics::removeFromLogger(logger, contact.currentWorldKine_);
+  conversions::kinematics::removeFromLogger(logger, contact.contactFbKine_);
+  conversions::kinematics::removeFromLogger(logger, contact.newIncomingWorldRefKine_);
   logger.removeLogEntries(&contact);
 }
 
-void LeggedOdometryManager::correctContactsRef()
+void LeggedOdometryManager::correctContactsRef(const mc_rbdyn::Robot & measurementsRobot)
 {
   // if the anchor point has not been computed yet, we compute it before the correction of the contact references.
   getWorldRefAnchorPos();
+  double lambda_inf = 0.05;
 
   for(auto * mContact : maintainedContacts_)
   {
     // we store the pose of the contact before it is corrected
     mContact->worldRefKineBeforeCorrection_ = mContact->worldRefKine_;
 
-    mContact->worldRefKine_.orientation =
-        so::Matrix3((mContact->contactFbKine_.orientation.toMatrix3() * fbPose_.rotation()).transpose());
-    mContact->worldRefKine_.position = fbPose_.translation()
-                                       - fbPose_.rotation().transpose()
-                                             * mContact->contactFbKine_.orientation.toMatrix3().transpose()
-                                             * mContact->contactFbKine_.position();
-    // mContact->worldRefKine_ = getCurrentContactKinematics(*mContact, robot.forceSensor(mContact->name()));
+    // double tau = ctl_dt_ / (kappa_ * mContact->lifeTime());
+    double weighingCoeff = (1 - lambda_inf) * exp(-kappa_ * kappa_ * mContact->lifeTime()) + lambda_inf;
 
+    const so::kine::Kinematics & newWorldKine =
+        getCurrentContactKinematics(*mContact, measurementsRobot.forceSensor(mContact->name()));
+
+    mContact->newIncomingWorldRefKine_ = newWorldKine;
+    // double currentYawAxisAgnostic = so::kine::rotationMatrixToYawAxisAgnostic(mContact->worldRefKine_.orientation);
+    // double newYawAxisAgnostic = so::kine::rotationMatrixToYawAxisAgnostic(newWorldKine.orientation);
+
+    // // newly corrected reference pose of the contact
+
+    // double correctedYawAxisAgnostic =
+    //     exp(-ctl_dt_ / tau) * currentYawAxisAgnostic + (1 - exp(-ctl_dt_ / tau)) * newYawAxisAgnostic;
+
+    // Eigen::AngleAxis<double> correctedYawAngleAxis =
+    //     Eigen::AngleAxis<double>(correctedYawAxisAgnostic, so::Vector3::UnitZ());
+    // Eigen::Matrix3d correctedYawRotMat = Eigen::Matrix3d(correctedYawAngleAxis);
+
+    // mContact->worldRefKine_.orientation = so::kine::mergeRoll1Pitch1WithYaw2AxisAgnostic(
+    //     mContact->worldRefKine_.orientation.toMatrix3(), correctedYawRotMat);
+    // so::Matrix3 Rtilde =
+    //     newWorldKine.orientation.toMatrix3() * mContact->worldRefKine_.orientation.toMatrix3().transpose();
+    // mContact->worldRefKine_.orientation =
+    //     so::Matrix3(mContact->worldRefKine_.orientation.toMatrix3()
+    //                 * so::kine::rotationVectorToRotationMatrix(
+    //                     weighingCoeff * so::kine::skewSymmetricToRotationVector(Rtilde - Rtilde.transpose())));
+
+    mContact->worldRefKine_.position = mContact->worldRefKine_.position()
+                                       + weighingCoeff * (newWorldKine.position() - mContact->worldRefKine_.position());
+    /*
+    mContact->worldRefKine_.position = exp(-ctl_dt_ / kappa_) * mContact->worldRefKine_.position()
+                                       + (1 - exp(-ctl_dt_ / kappa_)) * newWorldKine.position();
+    */
     if(odometryType_ == measurements::OdometryType::Flat) { mContact->worldRefKine_.position()(2) = 0.0; }
   }
   k_correct_ = k_data_;
@@ -721,6 +732,19 @@ void LeggedOdometryManager::setOdometryType(OdometryType newOdometryType)
 
 void LeggedOdometryManager::addToLogger(mc_rtc::Logger & logger, const std::string & category)
 {
+  logger.addLogEntry(category + "_leggedOdometryManager_fbAnchorPos_",
+                     [this]() -> so::Vector3 & { return fbAnchorPos_; });
+  logger.addLogEntry(category + "_leggedOdometryManager_worldAnchorPos", [this]() { return worldAnchorPos_; });
+  logger.addLogEntry(category + "_leggedOdometryManager_odometryRobot_posW",
+                     [this]() -> const sva::PTransformd & { return odometryRobot().posW(); });
+
+  logger.addLogEntry(category + "_leggedOdometryManager_odometryRobot_velW",
+                     [this]() -> const sva::MotionVecd & { return odometryRobot().velW(); });
+
+  logger.addLogEntry(category + "_leggedOdometryManager_odometryRobot_accW",
+                     [this]() { return odometryRobot().accW(); });
+  logger.addLogEntry(category + "_debug_OdometryType",
+                     [this]() -> std::string { return measurements::odometryTypeToSstring(odometryType_); });
 }
 
 } // namespace mc_state_observation::odometry

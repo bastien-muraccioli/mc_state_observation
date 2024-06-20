@@ -13,7 +13,7 @@ using OdometryType = measurements::OdometryType;
 using LoContactsManager = odometry::LeggedOdometryManager::ContactsManager;
 
 TiltObserver::TiltObserver(const std::string & type, double dt, bool asBackup, const std::string & observerName)
-: mc_observers::Observer(type, dt), estimator_(alpha_, beta_, gamma_, dt), odometryManager_(observerName)
+: mc_observers::Observer(type, dt), estimator_(alpha_, beta_, gamma_, dt), odometryManager_(observerName, dt)
 {
   asBackup_ = asBackup;
   observerName_ = observerName;
@@ -555,6 +555,7 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
                                mc_rtc::Logger & logger,
                                const std::string & category)
 {
+  odometryManager_.addToLogger(logger, category + "_leggedOdometryManager");
   logger.addLogEntry(category + "_estimatedState_x1", [this]() -> so::Vector3 { return xk_.head(3); });
   logger.addLogEntry(category + "_estimatedState_x2prime",
                      [this]() -> so::Vector3 { return xk_.segment(3, 3).normalized(); });

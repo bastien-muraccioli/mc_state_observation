@@ -64,10 +64,11 @@ void LeggedOdometryManager::initContacts(const mc_control::MCController & ctl,
     if constexpr(!std::is_same_v<OnNewContactObserver, std::nullptr_t>) { (*runParams.onNewContactFn)(newContact); }
   };
 
-  auto onMaintainedContact = [this, &robot, &runParams, &sumForces_position](LoContactWithSensor & maintainedContact)
+  auto onMaintainedContact =
+      [this, &robot, &runParams, &sumForces_position, &ctl](LoContactWithSensor & maintainedContact)
   {
     maintainedContacts_.push_back(&maintainedContact);
-    // indicates that we can compute the position of the floating base using the contacts
+    maintainedContact.lifeTimeIncrement(ctl.timeStep);
 
     // current estimate of the pose of the robot in the world
     const stateObservation::kine::Kinematics worldFbPose =

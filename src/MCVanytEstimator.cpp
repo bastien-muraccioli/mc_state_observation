@@ -15,7 +15,7 @@ using OdometryType = measurements::OdometryType;
 using LoContactsManager = odometry::LeggedOdometryManager::ContactsManager;
 
 MCVanytEstimator::MCVanytEstimator(const std::string & type, double dt, bool asBackup, const std::string & observerName)
-: mc_observers::Observer(type, dt), estimator_(alpha_, beta_, 1 / (2 * M_PI), dt), odometryManager_(observerName)
+: mc_observers::Observer(type, dt), estimator_(alpha_, beta_, 1 / (2 * M_PI), dt), odometryManager_(observerName, dt)
 {
   asBackup_ = asBackup;
   observerName_ = observerName;
@@ -24,26 +24,29 @@ MCVanytEstimator::MCVanytEstimator(const std::string & type, double dt, bool asB
 void MCVanytEstimator::configure(const mc_control::MCController & ctl, const mc_rtc::Configuration & config)
 {
   robot_ = config("robot", ctl.robot().name());
-
   imuSensor_ = config("imuSensor", ctl.robot().bodySensor().name());
 
   config("maxAnchorFrameDiscontinuity", maxAnchorFrameDiscontinuity_);
   config("updateRobot", updateRobot_);
   config("updateSensor", updateSensor_);
 
-  config("initAlpha", alpha_);
-  config("initBeta", beta_);
-  config("initGamma", gamma_);
+  auto odomConfig = config("leggedOdometry");
+  auto contactsConfig = config("contacts");
+  auto filterGainsConfig = config("filterGains");
 
-  config("finalAlpha", finalAlpha_);
-  config("finalBeta", finalBeta_);
-  config("finalGamma", finalGamma_);
+  filterGainsConfig("initAlpha", alpha_);
+  filterGainsConfig("initBeta", beta_);
+  filterGainsConfig("initGamma", gamma_);
 
-  if(config.has("tau")) { estimator_.setTau(config("tau")); }
+  filterGainsConfig("finalAlpha", finalAlpha_);
+  filterGainsConfig("finalBeta", finalBeta_);
+  filterGainsConfig("finalGamma", finalGamma_);
 
-  estimator_.setRho1(config("rho1"));
-  config("muContacts", mu_contacts_);
-  config("muGyro", mu_gyroscope_);
+  if(filterGainsConfig.has("tau")) { estimator_.setTau(filterGainsConfig("tau")); }
+
+  estimator_.setRho1(filterGainsConfig("rho1"));
+  filterGainsConfig("muContacts", mu_contacts_);
+  filterGainsConfig("muGyro", mu_gyroscope_);
 
   anchorFrameFunction_ = "KinematicAnchorFrame::" + ctl.robot(robot_).name();
   // if a user-defined anchor frame function is given, we use it instead
@@ -55,22 +58,20 @@ void MCVanytEstimator::configure(const mc_control::MCController & ctl, const mc_
     }
   }
 
-  std::string odometryTypeStr = static_cast<std::string>(config("odometryType"));
+  std::string odometryTypeStr = static_cast<std::string>(odomConfig("odometryType"));
   // we set the odometry type now because it will be necessary for the next check
   setOdometryType(measurements::stringToOdometryType(odometryTypeStr, observerName_));
 
   // specific configurations for the use of odometry.
-  const auto & robot = ctl.robot(robot_);
-
   bool verbose = config("verbose", true);
-  bool withYawEstimation = config("withYawEstimation", true);
+  bool withYawEstimation = odomConfig("withYawEstimation", true);
 
   // surfaces used for the contact detection. If the desired detection method doesn't use surfaces, we make sure this
   // list is not filled in the configuration file to avoid the use of an undesired method.
   std::vector<std::string> surfacesForContactDetection;
-  config("surfacesForContactDetection", surfacesForContactDetection);
+  contactsConfig("surfacesForContactDetection", surfacesForContactDetection);
 
-  std::string contactsDetectionString = static_cast<std::string>(config("contactsDetection"));
+  std::string contactsDetectionString = static_cast<std::string>(contactsConfig("contactsDetection"));
   LoContactsManager::ContactsDetection contactsDetectionMethod =
       odometryManager_.contactsManager().stringToContactsDetection(contactsDetectionString, observerName_);
 
@@ -82,33 +83,42 @@ void MCVanytEstimator::configure(const mc_control::MCController & ctl, const mc_
                                                      "surfacesForContactDetection variable");
   }
 
-  double contactDetectionPropThreshold = config("contactDetectionPropThreshold", 0.11);
+  double contactDetectionPropThreshold = contactsConfig("contactDetectionPropThreshold", 0.11);
 
-  odometry::LeggedOdometryManager::Configuration odomConfig(robot_, observerName_, odometryManager_.odometryType_);
-  odomConfig.velocityUpdate(odometry::LeggedOdometryManager::VelocityUpdate::NoUpdate)
+  odometry::LeggedOdometryManager::Configuration odometryConfig(robot_, observerName_, odometryManager_.odometryType_);
+  odometryConfig.velocityUpdate(odometry::LeggedOdometryManager::VelocityUpdate::NoUpdate)
       .withYawEstimation(withYawEstimation);
-
+  if(odomConfig.has("kappa"))
+  {
+    double kappa = odomConfig("kappa");
+    odometryConfig.kappa(kappa);
+  }
   if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Surfaces)
   {
+    if(surfacesForContactDetection.size() == 0)
+    {
+      mc_rtc::log::error_and_throw<std::runtime_error>("The list of surfaces for the contact detection is empty.");
+    }
+
     measurements::ContactsManagerSurfacesConfiguration contactsConfig(observerName_, surfacesForContactDetection);
     contactsConfig.contactDetectionPropThreshold(contactDetectionPropThreshold).verbose(verbose);
-    odometryManager_.init(ctl, odomConfig, contactsConfig);
+    odometryManager_.init(ctl, odometryConfig, contactsConfig);
   }
   if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Sensors)
   {
-    std::vector<std::string> forceSensorsToOmit = config("forceSensorsToOmit", std::vector<std::string>());
+    std::vector<std::string> forceSensorsToOmit = odomConfig("forceSensorsToOmit", std::vector<std::string>());
 
     measurements::ContactsManagerSensorsConfiguration contactsConfig(observerName_);
     contactsConfig.contactDetectionPropThreshold(contactDetectionPropThreshold)
         .verbose(verbose)
         .forceSensorsToOmit(forceSensorsToOmit);
-    odometryManager_.init(ctl, odomConfig, contactsConfig);
+    odometryManager_.init(ctl, odometryConfig, contactsConfig);
   }
   if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Solver)
   {
     measurements::ContactsManagerSolverConfiguration contactsConfig(observerName_);
     contactsConfig.contactDetectionPropThreshold(contactDetectionPropThreshold).verbose(verbose);
-    odometryManager_.init(ctl, odomConfig, contactsConfig);
+    odometryManager_.init(ctl, odometryConfig, contactsConfig);
   }
 }
 
@@ -145,7 +155,6 @@ void MCVanytEstimator::reset(const mc_control::MCController & ctl)
   // pose and velocities of the IMU in the world frame for the odometry robot
   so ::kine::Kinematics initWorldImuKine = initWorldParentKine * initParentImuKine;
   const Eigen::Matrix3d cOri = (imu.X_b_s() * realRobot.bodyPosW(imu.parentBody())).rotation();
-
   so::Vector3 initX2 = initWorldImuKine.orientation.toMatrix3().transpose() * so::Vector3::UnitZ();
 
   estimator_.initEstimator(initWorldImuKine.position(), so::Vector3::Zero(), initX2,
@@ -264,6 +273,20 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
     estimator_.addPositionMeasurement(odometryManager_.getWorldRefAnchorPos(), updatedImuAnchorKine_.position());
   }
 
+  for(auto * mContact : odometryManager_.maintainedContacts())
+  {
+    const so::kine::Kinematics & worldContactRefKine = mContact->worldRefKine_;
+
+    const so::kine::Kinematics & contactFbKineOdometryRobot = mContact->contactFbKine_;
+
+    const so::kine::Kinematics worldImuKineOdometryRobot =
+        worldContactRefKine * contactFbKineOdometryRobot * updatedFbImuKine_;
+    mContact->currentWorldFbPose_ = worldContactRefKine * contactFbKineOdometryRobot;
+    measuredOri_ = worldImuKineOdometryRobot.orientation.toMatrix3();
+
+    estimator_.addOrientationMeasurement(measuredOri_, mu_contacts_ * mContact->lambda());
+  }
+
   // estimation of the state with the complementary filters
   xk_ = estimator_.getEstimatedState(k + 1);
 
@@ -285,20 +308,6 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
 
   updatePoseAndVel(xk_.segment(3, 3), imu.angularVelocity());
   backupFbKinematics_.push_back(poseW_);
-
-  for(auto * mContact : odometryManager_.maintainedContacts())
-  {
-    const so::kine::Kinematics & worldContactRefKine = mContact->worldRefKineBeforeCorrection_;
-
-    const so::kine::Kinematics & contactFbKineOdometryRobot = mContact->contactFbKine_;
-
-    const so::kine::Kinematics worldImuKineOdometryRobot =
-        worldContactRefKine * contactFbKineOdometryRobot * updatedFbImuKine_;
-
-    measuredOri_ = worldImuKineOdometryRobot.orientation.toMatrix3();
-
-    estimator_.addOrientationMeasurement(measuredOri_, mu_contacts_);
-  }
 }
 
 void MCVanytEstimator::updatePoseAndVel(const so::Vector3 & localWorldImuLinVel,

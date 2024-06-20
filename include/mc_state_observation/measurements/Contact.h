@@ -21,7 +21,7 @@ protected:
   inline bool operator<(const Contact & rhs) const noexcept { return (id() < rhs.id_); }
 
 public:
-  inline void resetContact() noexcept
+  virtual void resetContact() noexcept
   {
     wasAlreadySet_ = false;
     isSet_ = false;

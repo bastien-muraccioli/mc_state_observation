@@ -11,7 +11,7 @@ namespace so = stateObservation;
 namespace mc_state_observation
 {
 NaiveOdometry::NaiveOdometry(const std::string & type, double dt)
-: mc_observers::Observer(type, dt), odometryManager_(category_)
+: mc_observers::Observer(type, dt), odometryManager_(category_, dt)
 {
 }
 
