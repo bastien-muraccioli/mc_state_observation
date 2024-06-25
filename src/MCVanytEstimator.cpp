@@ -202,7 +202,7 @@ void MCVanytEstimator::updateNecessaryFramesOdom(const mc_control::MCController 
 
 {
   // pose of the floating base' frame in the world for the odometry robot
-  updatedWorldFbKine_ = conversions::kinematics::fromSva(odomRobot.posW(), odomRobot.velW(), true);
+  worldFbKine_ = conversions::kinematics::fromSva(odomRobot.posW(), odomRobot.velW(), true);
 
   const auto & imu = ctl.robot(robot_).bodySensor(imuSensor_);
   const sva::PTransformd & imuXbs = imu.X_b_s();
@@ -210,24 +210,23 @@ void MCVanytEstimator::updateNecessaryFramesOdom(const mc_control::MCController 
       conversions::kinematics::fromSva(imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
 
   // pose of the IMU's parent body in the world for the odometry robot
-  const sva::PTransformd & updatedParentPoseW = odomRobot.bodyPosW(imu.parentBody());
+  const sva::PTransformd & parentPoseW = odomRobot.bodyPosW(imu.parentBody());
   // velocity of the IMU's parent body in the world for the odometry robot
-  const sva::MotionVecd & updated_v_0_imuParent = odomRobot.mbc().bodyVelW[odomRobot.bodyIndexByName(imu.parentBody())];
+  const sva::MotionVecd & v_0_imuParent = odomRobot.mbc().bodyVelW[odomRobot.bodyIndexByName(imu.parentBody())];
 
   // kinematics of the IMU's parent body in the world for the odometry robot
-  so::kine::Kinematics updatedWorldParentKine =
-      conversions::kinematics::fromSva(updatedParentPoseW, updated_v_0_imuParent, true);
+  so::kine::Kinematics worldParentKine = conversions::kinematics::fromSva(parentPoseW, v_0_imuParent, true);
 
   // pose and velocities of the IMU in the world frame for the odometry robot
-  updatedWorldImuKine_ = updatedWorldParentKine * parentImuKine;
+  worldImuKine_ = worldParentKine * parentImuKine;
 
   // pose and velocities of the IMU in the floating base for the odometry robot
-  updatedFbImuKine_ = updatedWorldFbKine_.getInverse() * updatedWorldImuKine_;
+  fbImuKine_ = worldFbKine_.getInverse() * worldImuKine_;
 
   // position and linear velocity of the anchor point in the frame of the IMU.
-  updatedImuAnchorKine_ = odometryManager_.getAnchorKineIn(updatedWorldImuKine_);
+  imuAnchorKine_ = odometryManager_.getAnchorKineIn(worldImuKine_);
 
-  if(odometryManager_.anchorPointMethodChanged_) { updatedImuAnchorKine_.linVel().setZero(); }
+  if(odometryManager_.anchorPointMethodChanged_) { imuAnchorKine_.linVel().setZero(); }
 }
 
 void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & odomRobot)
@@ -265,7 +264,7 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
     estimator_.setBeta(beta_);
     //  estimator_.setGamma(gamma_);
 
-    yv_ = -imu.angularVelocity().cross(updatedImuAnchorKine_.position()) - updatedImuAnchorKine_.linVel();
+    yv_ = -imu.angularVelocity().cross(imuAnchorKine_.position()) - imuAnchorKine_.linVel();
   }
 
   if(odometryManager_.anchorPointMethodChanged_) { estimator_.resetImuLocVelHat(); }
@@ -275,7 +274,7 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
 
   if(odometryManager_.maintainedContacts().size() > 0)
   {
-    estimator_.addPositionMeasurement(odometryManager_.getWorldRefAnchorPos(), updatedImuAnchorKine_.position());
+    estimator_.addPositionMeasurement(odometryManager_.getWorldRefAnchorPos(), imuAnchorKine_.position());
   }
 
   for(auto * mContact : odometryManager_.maintainedContacts())
@@ -302,12 +301,12 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
   estimatedRotationIMU_ = estimatedOri.toMatrix3();
 
   // Estimated orientation of the floating base in the world (especially the tilt)
-  R_0_fb_ = estimatedRotationIMU_ * updatedFbImuKine_.orientation.toMatrix3().transpose();
+  R_0_fb_ = estimatedRotationIMU_ * fbImuKine_.orientation.toMatrix3().transpose();
 
   // retrieving the estimated position
   const so::Vector3 worldImuPos = xk_.head(3);
 
-  so::Vector3 worldFbPos = worldImuPos + estimatedRotationIMU_ * updatedFbImuKine_.getInverse().position();
+  so::Vector3 worldFbPos = worldImuPos + estimatedRotationIMU_ * fbImuKine_.getInverse().position();
 
   odometryManager_.run(ctl, odometry::LeggedOdometryManager::KineParams(poseW_).attitude(R_0_fb_).position(worldFbPos));
 
@@ -324,13 +323,13 @@ void MCVanytEstimator::updatePoseAndVel(const so::Vector3 & localWorldImuLinVel,
   // we use the newly estimated orientation and local linear velocity of the IMU to obtain the one of the floating base.
   correctedWorldImuKine_ =
       correctedWorldFbKine_
-      * updatedFbImuKine_; // corrected pose of the imu in the world. This step is used only to get the
+      * fbImuKine_; // corrected pose of the imu in the world. This step is used only to get the
                            // pose of the IMU in the world that is required for the kinematics composition.
 
   correctedWorldImuKine_.linVel = correctedWorldImuKine_.orientation * localWorldImuLinVel;
   correctedWorldImuKine_.angVel = correctedWorldImuKine_.orientation * localWorldImuAngVel;
 
-  correctedWorldFbKine_ = correctedWorldImuKine_ * updatedFbImuKine_.getInverse();
+  correctedWorldFbKine_ = correctedWorldImuKine_ * fbImuKine_.getInverse();
 
   velW_.linear() = correctedWorldFbKine_.linVel();
   velW_.angular() = correctedWorldFbKine_.angVel();
@@ -687,11 +686,11 @@ void MCVanytEstimator::addToLogger(const mc_control::MCController & ctl,
                        return robot.mbc().bodyVelW[robot.bodyIndexByName(imu.parentBody())].linear();
                      });
 
-  conversions::kinematics::addToLogger(logger, updatedWorldImuKine_, category + "_debug_updatedWorldImuKine");
-  conversions::kinematics::addToLogger(logger, updatedImuAnchorKine_, category + "_debug_updatedImuAnchorKine_");
-  conversions::kinematics::addToLogger(logger, updatedFbImuKine_, category + "_debug_updatedFbImuKine_");
+  conversions::kinematics::addToLogger(logger, worldImuKine_, category + "_debug_worldImuKine");
+  conversions::kinematics::addToLogger(logger, imuAnchorKine_, category + "_debug_imuAnchorKine_");
+  conversions::kinematics::addToLogger(logger, fbImuKine_, category + "_debug_fbImuKine_");
 
-  conversions::kinematics::addToLogger(logger, updatedWorldFbKine_, category + "_debug_updatedWorldFbKine_");
+  conversions::kinematics::addToLogger(logger, worldFbKine_, category + "_debug_worldFbKine_");
   conversions::kinematics::addToLogger(logger, correctedWorldImuKine_, category + "_debug_correctedWorldImuKine_");
 }
 

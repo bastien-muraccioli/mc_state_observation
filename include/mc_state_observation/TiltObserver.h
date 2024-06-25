@@ -155,31 +155,31 @@ protected:
 
   /* kinematics used for computation */
   // kinematics of the IMU in the floating base after the encoders update
-  stateObservation::kine::Kinematics updatedFbImuKine_;
+  stateObservation::kine::Kinematics fbImuKine_;
   // kinematics of the anchor frame of the control robot in the world. Version as a PTransform object.
-  sva::PTransformd X_0_C_;
+  sva::PTransformd X_0_C_ctl_;
   // kinematics of the anchor frame of the control robot updated with the encoders in the world.  Version as a
   // PTransform object.
-  sva::PTransformd X_0_C_updated_;
+  sva::PTransformd X_0_C_;
 
   // kinematics of the anchor frame of the control robot in the world. Version as a Kinematics object.
-  stateObservation::kine::Kinematics worldAnchorKine_;
+  stateObservation::kine::Kinematics worldAnchorKine_ctl_;
   // kinematics of the anchor frame of the control robot updated with the encoders in the world. Version as a Kinematics
   // object.
-  stateObservation::kine::Kinematics updatedWorldAnchorKine_;
+  stateObservation::kine::Kinematics worldAnchorKine_;
 
   // kinematics of the floating base in the world after the encoders update
-  stateObservation::kine::Kinematics updatedWorldFbKine_;
+  stateObservation::kine::Kinematics worldFbKine_;
   // kinematics of the anchor frame in the IMU frame after the encoders update
-  stateObservation::kine::Kinematics updatedImuAnchorKine_;
-  // kinematics of the anchor frame in the world frame for the new iteration
-  stateObservation::kine::Kinematics newWorldAnchorKine_;
+  stateObservation::kine::Kinematics imuAnchorKine_;
+  // kinematics of the anchor frame of the CONTROL robot in the world frame for the new iteration
+  stateObservation::kine::Kinematics newWorldAnchorKine_ctl_;
   // kinematics of the anchor frame in the world frame for the new iteration, after the encoders update
-  stateObservation::kine::Kinematics newUpdatedWorldAnchorKine_;
+  stateObservation::kine::Kinematics newWorldAnchorKine_;
   // kinematics of the IMU in the world for the control robot
-  stateObservation::kine::Kinematics worldImuKine_;
+  stateObservation::kine::Kinematics worldImuKine_ctl_;
   // kinematics of the IMU in the world after the encoders update
-  stateObservation::kine::Kinematics updatedWorldImuKine_;
+  stateObservation::kine::Kinematics worldImuKine_;
 
   /* Estimation results */
 

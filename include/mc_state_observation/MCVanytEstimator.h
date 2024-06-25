@@ -144,14 +144,13 @@ protected:
 
   /* kinematics used for computation */
   // kinematics of the IMU in the floating base after the encoders update
-  stateObservation::kine::Kinematics updatedFbImuKine_;
-
+  stateObservation::kine::Kinematics fbImuKine_;
   // kinematics of the floating base in the world after the encoders update
-  stateObservation::kine::Kinematics updatedWorldFbKine_;
+  stateObservation::kine::Kinematics worldFbKine_;
   // kinematics of the anchor frame in the IMU frame after the encoders update
-  stateObservation::kine::Kinematics updatedImuAnchorKine_;
+  stateObservation::kine::Kinematics imuAnchorKine_;
   // kinematics of the IMU in the world after the encoders update
-  stateObservation::kine::Kinematics updatedWorldImuKine_;
+  stateObservation::kine::Kinematics worldImuKine_;
 
   /* Estimation results */
 
