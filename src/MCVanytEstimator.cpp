@@ -428,6 +428,12 @@ so::kine::Kinematics MCVanytEstimator::applyLastTransformation(const so::kine::K
 
 void MCVanytEstimator::setOdometryType(OdometryType newOdometryType)
 {
+  if((newOdometryType != measurements::OdometryType::Odometry6d)
+     && (newOdometryType != measurements::OdometryType::Flat))
+  {
+    mc_rtc::log::error_and_throw<std::runtime_error>("Please choose between these two odometry types: [6D, Flat]");
+  }
+
   odometryManager_.setOdometryType(newOdometryType);
 }
 
