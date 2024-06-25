@@ -87,8 +87,8 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
 void LeggedOdometryManager::reset()
 {
   worldRefAnchorPosition_ = sva::interpolate(odometryRobot().surfacePose("RightFootCenter"),
-                                        odometryRobot().surfacePose("LeftFootCenter"), 0.5)
-                           .translation();
+                                             odometryRobot().surfacePose("LeftFootCenter"), 0.5)
+                                .translation();
   /*
   refAnchorPosition_ =
       ctl.datastore()
@@ -234,7 +234,7 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
   updateOdometryRobot(ctl, params.vel, params.acc);
 
   // we correct the reference position of the contacts in the world
-  correctContactsRef(robot);
+  correctContactsRef();
 
   // computation of the reference kinematics of the newly set contacts in the world. We cannot use the onNewContacts
   // function as it is used at the beginning of the iteration and we need to compute this at the end
@@ -307,11 +307,7 @@ so::Vector3 LeggedOdometryManager::getWorldFbPosFromAnchor()
     fbAnchorPos_ += mContact->contactFbKine_.getInverse().position() * mContact->lambda();
   }
 
-  if(k_data_ != k_est_)
-  {
-    worldFbPosFromAnchor = getWorldRefAnchorPos() - fbPose_.rotation().transpose() * fbAnchorPos_;
-  }
-  else { worldFbPosFromAnchor = refAnchorPosition_ - fbPose_.rotation().transpose() * fbAnchorPos_; }
+  worldFbPosFromAnchor = getWorldRefAnchorPos() - fbPose_.rotation().transpose() * fbAnchorPos_;
 
   return worldFbPosFromAnchor;
 }
@@ -436,26 +432,23 @@ void LeggedOdometryManager::setNewContact(LoContactWithSensor & contact, const m
   if(odometryType_ == measurements::OdometryType::Flat) { contact.worldRefKine_.position()(2) = 0.0; }
 }
 
-const so::kine::Kinematics & LeggedOdometryManager::getCurrentContactKinematics(LoContactWithSensor & contact,
-                                                                                const mc_rbdyn::ForceSensor & fs)
+const so::kine::Kinematics & LeggedOdometryManager::getCurrentContactKinematics(LoContactWithSensor & contact)
 {
-  // if the kinematics of the contact in the floating base has not been updated yet, we cannot use them.
-  if(k_data_ == k_est_) { return getContactKinematics(contact, fs); }
-
-  // robot is necessary because odometry robot doesn't have the copy of the force measurements
-  const sva::PTransformd & bodyContactSensorPose = fs.X_p_f();
-  so::kine::Kinematics bodyContactSensorKine =
-      conversions::kinematics::fromSva(bodyContactSensorPose, so::kine::Kinematics::Flags::pose);
-
-  // kinematics of the sensor's parent body in the world
-  so::kine::Kinematics worldBodyKineOdometryRobot =
-      conversions::kinematics::fromSva(odometryRobot().mbc().bodyPosW[odometryRobot().bodyIndexByName(fs.parentBody())],
-                                       so::kine::Kinematics::Flags::pose);
-  so::kine::Kinematics worldSensorKineOdometryRobot = worldBodyKineOdometryRobot * bodyContactSensorKine;
-
-  const stateObservation::kine::Kinematics worldFbKine =
-      conversions::kinematics::fromSva(odometryRobot().posW(), odometryRobot().velW());
-  contact.currentWorldKine_ = worldFbKine * contact.contactFbKine_.getInverse();
+  // if the kinematics of the contact in the floating base has not been updated yet (k_est_ = k_iter_ - 1), we cannot
+  // use them.
+  if(k_data_ != k_iter_)
+  {
+    BOOST_ASSERT_MSG(false, "This is the first call to this function for that iteration, please use the overload "
+                            "taking the force sensor as a parameter.");
+  }
+  // if the kinematics of the contact in the floating base have already been updated but the pose of the robot still has
+  // not changed, we don't need to recompute the kinematics of the contact in the world.
+  if(k_data_ != k_est_)
+  {
+    const stateObservation::kine::Kinematics worldFbKine =
+        conversions::kinematics::fromSva(odometryRobot().posW(), odometryRobot().velW());
+    contact.currentWorldKine_ = worldFbKine * contact.contactFbKine_.getInverse();
+  };
 
   return contact.currentWorldKine_;
 }
@@ -549,7 +542,7 @@ void LeggedOdometryManager::removeContactLogEntries(mc_rtc::Logger & logger, con
   logger.removeLogEntries(&contact);
 }
 
-void LeggedOdometryManager::correctContactsRef(const mc_rbdyn::Robot & measurementsRobot)
+void LeggedOdometryManager::correctContactsRef()
 {
   // if the anchor point has not been computed yet, we compute it before the correction of the contact references.
   getWorldRefAnchorPos();
@@ -561,8 +554,7 @@ void LeggedOdometryManager::correctContactsRef(const mc_rbdyn::Robot & measureme
     // double tau = ctl_dt_ / (kappa_ * mContact->lifeTime());
     mContact->weightingCoeff((1 - lambdaInf_) * exp(-kappa_ * mContact->lifeTime()) + lambdaInf_);
 
-    const so::kine::Kinematics & newWorldKine =
-        getCurrentContactKinematics(*mContact, measurementsRobot.forceSensor(mContact->name()));
+    const so::kine::Kinematics & newWorldKine = getCurrentContactKinematics(*mContact);
 
     mContact->newIncomingWorldRefKine_ = newWorldKine;
 
@@ -586,7 +578,7 @@ void LeggedOdometryManager::correctContactsRef(const mc_rbdyn::Robot & measureme
 so::kine::Kinematics LeggedOdometryManager::getContactKineIn(LoContactWithSensor & contact,
                                                              stateObservation::kine::Kinematics & worldTargetKine)
 {
-  so::kine::Kinematics targetContactKine = worldTargetKine.getInverse() * contact.currentWorldKine_;
+  so::kine::Kinematics targetContactKine = worldTargetKine.getInverse() * getCurrentContactKinematics(contact);
   return targetContactKine;
 }
 
@@ -619,8 +611,6 @@ stateObservation::Vector3 & LeggedOdometryManager::getCurrentWorldAnchorPos(cons
 
   if(!posUpdatable_) { return worldAnchorPos_; }
 
-  const auto & robot = ctl.robot(robotName_);
-
   bool linKineUpdatable = false;
 
   anchorPointMethodChanged_ = false;
@@ -634,8 +624,7 @@ stateObservation::Vector3 & LeggedOdometryManager::getCurrentWorldAnchorPos(cons
     if(!(mContact->isSet() && mContact->wasAlreadySet())) { continue; }
     linKineUpdatable = true;
 
-    const so::kine::Kinematics & worldContactKine =
-        getCurrentContactKinematics(*mContact, robot.forceSensor(mContact->name()));
+    const so::kine::Kinematics & worldContactKine = getCurrentContactKinematics(*mContact);
 
     // force weighted sum of the estimated floating base positions
     worldAnchorPos_ += worldContactKine.position() * mContact->lambda();

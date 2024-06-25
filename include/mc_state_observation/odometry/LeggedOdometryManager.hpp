@@ -15,6 +15,8 @@ void LeggedOdometryManager::initLoop(const mc_control::MCController & ctl,
                                                          OnRemovedContactObserver,
                                                          OnAddedContactObserver> & runParams)
 {
+  k_iter_++;
+
   updateJointsConfiguration(ctl);
   odometryRobot().posW(fbPose_);
 

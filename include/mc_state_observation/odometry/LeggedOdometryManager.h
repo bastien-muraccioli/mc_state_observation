@@ -542,8 +542,7 @@ private:
 
   /// @brief Corrects the reference pose of the contacts after the update of the floating base.
   /// @details The new reference pose is obtained by forward kinematics from the updated floating base.
-  /// @param contact The robot containing the sensors.
-  void correctContactsRef(const mc_rbdyn::Robot & measurementsRobot);
+  void correctContactsRef();
 
   /**
    * @brief Updates the floating base kinematics given as argument by the observer.
@@ -671,9 +670,12 @@ protected:
   bool prevAnchorFromContacts_ = true;
   // Indicates if the current anchor point was obtained using contacts
   bool currAnchorFromContacts_ = true;
+  // indicated if the position can be updated using contacts. True if a contact is currently set.
   bool posUpdatable_ = false;
 
-  // time stamp, incremented once the reading of the joint encoders and the contacts are updated.
+  // time stamp, incremented on the intiialization of each iteration.
+  stateObservation::TimeIndex k_iter_ = 0;
+  // time stamp, incremented once the reading of the joint encoders and the contacts are updated
   stateObservation::TimeIndex k_data_ = 0;
   // time stamp, incremented once the iteration of the doometry is completed.
   stateObservation::TimeIndex k_est_ = 0;
