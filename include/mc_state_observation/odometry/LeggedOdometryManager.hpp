@@ -82,6 +82,8 @@ void LeggedOdometryManager::initContacts(const mc_control::MCController & ctl,
 
     maintainedContact.contactFbKine_ = worldContactKine.getInverse() * worldFbPose;
 
+    maintainedContact.worldFbKineFromRef_ = maintainedContact.worldRefKine_ * maintainedContact.contactFbKine_;
+
     if constexpr(!std::is_same_v<OnMaintainedContactObserver, std::nullptr_t>)
     {
       (*runParams.onMaintainedContactFn)(maintainedContact);

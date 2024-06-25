@@ -464,21 +464,20 @@ public:
   /// @param worldTargetKine Kinematics of the target frame in the world frame.
   stateObservation::kine::Kinematics getAnchorKineIn(stateObservation::kine::Kinematics & worldTargetKine);
 
+  /// @brief Computes the kinematics of the contact attached to the odometry robot in the world frame from the current
+  /// floating base pose and encoders. Also updates the reading of the associated force sensor.
+  /// @details Also computes the velocity of the contacts in the world frame, which can be used to obtain their
+  /// velocity in other frames attached to the robot.
+  /// @param contact Contact of which we want to compute the kinematics
+  /// @return stateObservation::kine::Kinematics &
+  const stateObservation::kine::Kinematics & getCurrentContactKinematics(LoContactWithSensor & contact);
+
   /**
    * @brief Returns the position of the anchor point in the world from the current contacts reference position.
    *
    * @return stateObservation::Vector3&
    */
   const stateObservation::Vector3 & getWorldRefAnchorPos();
-
-  const stateObservation::Vector3 getCurrentWorldRefAnchorPos();
-
-  /// @brief Updates the position of the floating base in the world.
-  /// @details For each maintained contact, we compute the position of the floating base in the contact frame, we
-  /// then compute the weighted average wrt to the measured forces at the contact and obtain the estimated
-  /// translation from the anchor point to the floating base.  We apply this translation to the reference position
-  /// of the anchor frame in the world to obtain the new position of the floating base in the word.
-  stateObservation::Vector3 getWorldFbPosFromAnchor();
 
   /// @brief Changes the type of the odometry
   /// @details Version meant to be called by the observer using the odometry during the run through the gui.
@@ -534,6 +533,13 @@ private:
   /// @param runParams Parameters used to run the legged odometry.
   void updateFbAndContacts(const mc_control::MCController & ctl, const KineParams & params);
 
+  /// @brief Updates the position of the floating base in the world.
+  /// @details For each maintained contact, we compute the position of the floating base in the contact frame, we
+  /// then compute the weighted average wrt to the measured forces at the contact and obtain the estimated
+  /// translation from the anchor point to the floating base.  We apply this translation to the reference position
+  /// of the anchor frame in the world to obtain the new position of the floating base in the word.
+  stateObservation::Vector3 getWorldFbPosFromAnchor();
+
   /// @brief Corrects the reference pose of the contacts after the update of the floating base.
   /// @details The new reference pose is obtained by forward kinematics from the updated floating base.
   /// @param contact The robot containing the sensors.
@@ -562,19 +568,10 @@ private:
 
   /// @brief Computes the kinematics of the contact attached to the odometry robot in the world frame from the current
   /// floating base pose and encoders. Also updates the reading of the associated force sensor.
-  /// @details Also comnputes the velocity of the contacts in the world frame, which can be used to obtain their
+  /// @details Also computes the velocity of the contacts in the world frame, which can be used to obtain their
   /// velocity in other frames attached to the robot.
-  /// @param contact Contact of which we want to compute the kinematics
-  /// @param fs The force sensor associated to the contact
-  /// @return stateObservation::kine::Kinematics &
-  const stateObservation::kine::Kinematics & getCurrentContactKinematics(LoContactWithSensor & contact,
-                                                                         const mc_rbdyn::ForceSensor & fs);
-
-  /// @brief Computes the kinematics of the contact attached to the odometry robot in the world frame from the current
-  /// floating base pose and encoders. Also updates the reading of the associated force sensor.
-  /// @details Also comnputes the velocity of the contacts in the world frame, which can be used to obtain their
-  /// velocity in other frames attached to the robot. This version is called at the beginning of the iteration as we can
-  /// then use the faster getCurrentContactKinematics(LoContactWithSensor &, const mc_rbdyn::ForceSensor &) function.
+  /// This version is called at the beginning of the iteration as we can then use the faster
+  /// getCurrentContactKinematics(LoContactWithSensor &) function.
   /// @param contact Contact of which we want to compute the kinematics.
   /// @param fs The force sensor associated to the contact.
   /// @return stateObservation::kine::Kinematics &.
