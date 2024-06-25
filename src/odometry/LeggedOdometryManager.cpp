@@ -61,7 +61,7 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
     worldAnchorKine = ctl.datastore().call<sva::PTransformd>("KinematicAnchorFrame::" + ctl.robot(robotName_).name(),
                                                              ctl.robot(robotName_));
   }
-  refAnchorPosition_ = worldAnchorKine.translation();
+  worldRefAnchorPosition_ = worldAnchorKine.translation();
   worldAnchorPos_ = worldAnchorKine.translation();
 
   fbAnchorPos_ =
@@ -86,7 +86,7 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
 
 void LeggedOdometryManager::reset()
 {
-  refAnchorPosition_ = sva::interpolate(odometryRobot().surfacePose("RightFootCenter"),
+  worldRefAnchorPosition_ = sva::interpolate(odometryRobot().surfacePose("RightFootCenter"),
                                         odometryRobot().surfacePose("LeftFootCenter"), 0.5)
                            .translation();
   /*
@@ -99,7 +99,7 @@ void LeggedOdometryManager::reset()
   // prevRefAnchorPosition_.setZero();
 
   fbAnchorPos_ = -odometryRobot().posW().rotation() * odometryRobot().posW().translation()
-                 + odometryRobot().posW().rotation().transpose() * refAnchorPosition_;
+                 + odometryRobot().posW().rotation().transpose() * worldRefAnchorPosition_;
 
   // the anchor frame cannot be computed from the contacts on the first iteration so we need to use this
   // initialization.
@@ -172,7 +172,7 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
         // the orientation can be updated using 1 contact
         fbPose_.rotation() =
             stateObservation::kine::mergeRoll1Pitch1WithYaw2AxisAgnostic(
-                tilt, contactsManager_.oriOdometryContacts_.begin()->get().currentWorldFbPose_.orientation)
+                tilt, contactsManager_.oriOdometryContacts_.begin()->get().worldFbKineFromRef_.orientation)
                 .transpose();
       }
       if(contactsManager_.oriOdometryContacts_.size() == 2) // the orientation can be updated using 2 contacts
@@ -180,8 +180,8 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
         const auto & contact1 = (*contactsManager_.oriOdometryContacts_.begin()).get();
         const auto & contact2 = (*std::next(contactsManager_.oriOdometryContacts_.begin(), 1)).get();
 
-        const auto & R1 = contact1.currentWorldFbPose_.orientation.toMatrix3();
-        const auto & R2 = contact2.currentWorldFbPose_.orientation.toMatrix3();
+        const auto & R1 = contact1.worldFbKineFromRef_.orientation.toMatrix3();
+        const auto & R2 = contact2.worldFbKineFromRef_.orientation.toMatrix3();
 
         double u = contact1.forceNorm() / sumForces_orientation;
 
@@ -276,7 +276,7 @@ void LeggedOdometryManager::selectForOrientationOdometry(bool & oriUpdatable, do
 
       sumForcesOrientation += oriOdomContact.forceNorm();
 
-      oriOdomContact.currentWorldFbPose_.orientation = so::Matrix3(
+      oriOdomContact.worldFbKineFromRef_.orientation = so::Matrix3(
           oriOdomContact.worldRefKine_.orientation.toMatrix3() * oriOdomContact.contactFbKine_.orientation.toMatrix3());
     }
   }
@@ -512,8 +512,8 @@ void LeggedOdometryManager::addContactLogEntries(mc_rtc::Logger & logger, const 
 
   conversions::kinematics::addToLogger(logger, contact.worldRefKine_,
                                        odometryName_ + "_leggedOdometryManager_" + contactName + "_refPose");
-  conversions::kinematics::addToLogger(logger, contact.currentWorldFbPose_,
-                                       odometryName_ + "_leggedOdometryManager_" + contactName + "_currentWorldFbPose");
+  conversions::kinematics::addToLogger(logger, contact.worldFbKineFromRef_,
+                                       odometryName_ + "_leggedOdometryManager_" + contactName + "_worldFbKineFromRef");
   conversions::kinematics::addToLogger(logger, contact.currentWorldKine_,
                                        odometryName_ + "_leggedOdometryManager_" + contactName
                                            + "_currentWorldContactKine");
@@ -542,7 +542,7 @@ void LeggedOdometryManager::removeContactLogEntries(mc_rtc::Logger & logger, con
 {
   conversions::kinematics::removeFromLogger(logger, contact.worldRefKine_);
   conversions::kinematics::removeFromLogger(logger, contact.worldRefKineBeforeCorrection_);
-  conversions::kinematics::removeFromLogger(logger, contact.currentWorldFbPose_);
+  conversions::kinematics::removeFromLogger(logger, contact.worldFbKineFromRef_);
   conversions::kinematics::removeFromLogger(logger, contact.currentWorldKine_);
   conversions::kinematics::removeFromLogger(logger, contact.contactFbKine_);
   conversions::kinematics::removeFromLogger(logger, contact.newIncomingWorldRefKine_);
@@ -671,7 +671,7 @@ stateObservation::Vector3 & LeggedOdometryManager::getCurrentWorldAnchorPos(cons
   return worldAnchorPos_;
 }
 
-const so::Vector3 LeggedOdometryManager::getCurrentWorldRefAnchorPos()
+const so::Vector3 & LeggedOdometryManager::getWorldRefAnchorPos()
 {
   // if true, the contacts were not corrected since the last anchor computation, the anchor remains the same.
   bool contactsUnchanged = (k_anchor_ != k_correct_);
@@ -681,10 +681,10 @@ const so::Vector3 LeggedOdometryManager::getCurrentWorldRefAnchorPos()
   // If the anchor point cannot be updated, we return the previously computed value.
   // We also return it if the anchor point has already been computed and the contacts have not been corrected yet (the
   // anchor therefore has not changed yet).
-  if(!posUpdatable_ || (anchorComputed && contactsUnchanged)) { return refAnchorPosition_; }
+  if(!posUpdatable_ || (anchorComputed && contactsUnchanged)) { return worldRefAnchorPosition_; }
 
   // "force-weighted" sum of the estimated floating base positions
-  so::Vector3 worldRefAnchorPos = so::Vector3::Zero();
+  worldRefAnchorPosition_.setZero();
 
   // checks that the position and orientation can be updated from the currently set contacts and computes the pose of
   // the floating base obtained from each contact
@@ -693,20 +693,12 @@ const so::Vector3 LeggedOdometryManager::getCurrentWorldRefAnchorPos()
     const so::kine::Kinematics & worldContactRefKine = mContact->worldRefKine_;
 
     // force weighted sum of the estimated floating base positions
-    worldRefAnchorPos += worldContactRefKine.position() * mContact->lambda();
+    worldRefAnchorPosition_ += worldContactRefKine.position() * mContact->lambda();
   }
 
   k_anchor_ = k_data_;
 
-  return worldRefAnchorPos;
-}
-
-const so::Vector3 & LeggedOdometryManager::getWorldRefAnchorPos()
-{
-  // if the anchor frame has not been computed yet, we compute it, otherwise we return it directly
-  if(posUpdatable_ && (k_anchor_ != k_data_)) { refAnchorPosition_ = getCurrentWorldRefAnchorPos(); }
-
-  return refAnchorPosition_;
+  return worldRefAnchorPosition_;
 }
 
 void LeggedOdometryManager::setOdometryType(OdometryType newOdometryType)

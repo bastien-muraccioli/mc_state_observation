@@ -56,7 +56,7 @@ public:
   bool useForOrientation_ = false;
   // current estimation of the kinematics of the floating base in the world, obtained from the reference pose of the
   // contact in the world
-  stateObservation::kine::Kinematics currentWorldFbPose_;
+  stateObservation::kine::Kinematics worldFbKineFromRef_;
   // current estimation of the kinematics of the contact in the world
   stateObservation::kine::Kinematics currentWorldKine_;
   // kinematics of the frame of the floating base in the frame of the contact, obtained by forward kinematics.
@@ -666,7 +666,7 @@ protected:
   // position of the anchor point of the robot in the world
   stateObservation::Vector3 worldAnchorPos_;
   // position of the anchor point of the robot in the world, obtained from the contact references.
-  stateObservation::Vector3 refAnchorPosition_;
+  stateObservation::Vector3 worldRefAnchorPosition_;
   // position of the anchor point in the frame of the floating base.
   stateObservation::Vector3 fbAnchorPos_;
 
