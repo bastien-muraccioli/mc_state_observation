@@ -93,6 +93,11 @@ void MCVanytEstimator::configure(const mc_control::MCController & ctl, const mc_
     double kappa = odomConfig("kappa");
     odometryConfig.kappa(kappa);
   }
+  if(odomConfig.has("lambdaInf"))
+  {
+    double lambdaInf = odomConfig("lambdaInf");
+    odometryConfig.lambdaInf(lambdaInf);
+  }
   if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Surfaces)
   {
     if(surfacesForContactDetection.size() == 0)
@@ -431,7 +436,7 @@ void MCVanytEstimator::addToLogger(const mc_control::MCController & ctl,
                                    mc_rtc::Logger & logger,
                                    const std::string & category)
 {
-  odometryManager_.addToLogger(logger, category + "_leggedOdometryManager");
+  odometryManager_.addToLogger(logger, category + "_leggedOdometryManager_");
   logger.addLogEntry(category + "_estimatedState_p", [this]() -> so::Vector3 { return xk_.segment(0, 3); });
 
   logger.addLogEntry(category + "_estimatedState_x1", [this]() -> so::Vector3 { return xk_.segment(3, 3); });

@@ -34,6 +34,7 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
   velocityUpdate_ = odomConfig.velocityUpdate_;
   odometryName_ = odomConfig.odometryName_;
   kappa_ = odomConfig.kappa_;
+  lambdaInf_ = odomConfig.lambdaInf_;
 
   fbPose_.translation() = robot.posW().translation();
   fbPose_.rotation() = robot.posW().rotation();
@@ -233,7 +234,7 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
   updateOdometryRobot(ctl, params.vel, params.acc);
 
   // we correct the reference position of the contacts in the world
-  correctContactsRef();
+  correctContactsRef(robot);
 
   // computation of the reference kinematics of the newly set contacts in the world. We cannot use the onNewContacts
   // function as it is used at the beginning of the iteration and we need to compute this at the end
@@ -395,6 +396,8 @@ void LeggedOdometryManager::updateOdometryRobot(const mc_control::MCController &
 
 void LeggedOdometryManager::setNewContact(LoContactWithSensor & contact, const mc_rbdyn::Robot & measurementsRobot)
 {
+  contact.resetLifeTime();
+
   const mc_rbdyn::ForceSensor & forceSensor = measurementsRobot.forceSensor(contact.forceSensor());
   // If the contact is not detected using surfaces, we must consider that the frame of the sensor is the one of the
   // surface).
@@ -428,6 +431,7 @@ void LeggedOdometryManager::setNewContact(LoContactWithSensor & contact, const m
     contact.worldRefKine_.orientation = so::Matrix3(worldSurfacePoseOdometryRobot.rotation().transpose());
   }
   contact.worldRefKineBeforeCorrection_ = contact.worldRefKine_;
+  contact.newIncomingWorldRefKine_ = contact.worldRefKine_;
 
   if(odometryType_ == measurements::OdometryType::Flat) { contact.worldRefKine_.position()(2) = 0.0; }
 }
@@ -528,6 +532,10 @@ void LeggedOdometryManager::addContactLogEntries(mc_rtc::Logger & logger, const 
                      [&contact]() -> double { return contact.lambda(); });
   logger.addLogEntry(odometryName_ + "_leggedOdometryManager_" + contactName + "_forceNorm", &contact,
                      [&contact]() -> double { return contact.forceNorm(); });
+  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_" + contactName + "_lifeTime", &contact,
+                     [&contact]() -> double { return contact.lifeTime(); });
+  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_" + contactName + "_weightingCoeff", &contact,
+                     [&contact]() -> double { return contact.weightingCoeff(); });
 }
 
 void LeggedOdometryManager::removeContactLogEntries(mc_rtc::Logger & logger, const LoContactWithSensor & contact)
@@ -545,47 +553,31 @@ void LeggedOdometryManager::correctContactsRef(const mc_rbdyn::Robot & measureme
 {
   // if the anchor point has not been computed yet, we compute it before the correction of the contact references.
   getWorldRefAnchorPos();
-  double lambda_inf = 0.05;
-
   for(auto * mContact : maintainedContacts_)
   {
     // we store the pose of the contact before it is corrected
     mContact->worldRefKineBeforeCorrection_ = mContact->worldRefKine_;
 
     // double tau = ctl_dt_ / (kappa_ * mContact->lifeTime());
-    double weighingCoeff = (1 - lambda_inf) * exp(-kappa_ * kappa_ * mContact->lifeTime()) + lambda_inf;
+    mContact->weightingCoeff((1 - lambdaInf_) * exp(-kappa_ * mContact->lifeTime()) + lambdaInf_);
 
     const so::kine::Kinematics & newWorldKine =
         getCurrentContactKinematics(*mContact, measurementsRobot.forceSensor(mContact->name()));
 
     mContact->newIncomingWorldRefKine_ = newWorldKine;
-    // double currentYawAxisAgnostic = so::kine::rotationMatrixToYawAxisAgnostic(mContact->worldRefKine_.orientation);
-    // double newYawAxisAgnostic = so::kine::rotationMatrixToYawAxisAgnostic(newWorldKine.orientation);
 
-    // // newly corrected reference pose of the contact
+    so::kine::Orientation Rtilde(so::Matrix3(mContact->worldRefKineBeforeCorrection_.orientation.toMatrix3().transpose()
+                                             * newWorldKine.orientation.toMatrix3()));
 
-    // double correctedYawAxisAgnostic =
-    //     exp(-ctl_dt_ / tau) * currentYawAxisAgnostic + (1 - exp(-ctl_dt_ / tau)) * newYawAxisAgnostic;
+    so::Vector3 logRtilde =
+        so::kine::skewSymmetricToRotationVector(Rtilde.toMatrix3() - Rtilde.toMatrix3().transpose());
+    mContact->worldRefKine_.orientation =
+        so::Matrix3(mContact->worldRefKineBeforeCorrection_.orientation.toMatrix3()
+                    * so::kine::rotationVectorToRotationMatrix(mContact->weightingCoeff() / 2.0 * logRtilde));
 
-    // Eigen::AngleAxis<double> correctedYawAngleAxis =
-    //     Eigen::AngleAxis<double>(correctedYawAxisAgnostic, so::Vector3::UnitZ());
-    // Eigen::Matrix3d correctedYawRotMat = Eigen::Matrix3d(correctedYawAngleAxis);
-
-    // mContact->worldRefKine_.orientation = so::kine::mergeRoll1Pitch1WithYaw2AxisAgnostic(
-    //     mContact->worldRefKine_.orientation.toMatrix3(), correctedYawRotMat);
-    // so::Matrix3 Rtilde =
-    //     newWorldKine.orientation.toMatrix3() * mContact->worldRefKine_.orientation.toMatrix3().transpose();
-    // mContact->worldRefKine_.orientation =
-    //     so::Matrix3(mContact->worldRefKine_.orientation.toMatrix3()
-    //                 * so::kine::rotationVectorToRotationMatrix(
-    //                     weighingCoeff * so::kine::skewSymmetricToRotationVector(Rtilde - Rtilde.transpose())));
-
-    mContact->worldRefKine_.position = mContact->worldRefKine_.position()
-                                       + weighingCoeff * (newWorldKine.position() - mContact->worldRefKine_.position());
-    /*
-    mContact->worldRefKine_.position = exp(-ctl_dt_ / kappa_) * mContact->worldRefKine_.position()
-                                       + (1 - exp(-ctl_dt_ / kappa_)) * newWorldKine.position();
-    */
+    mContact->worldRefKine_.position =
+        mContact->worldRefKine_.position()
+        + mContact->weightingCoeff() * (newWorldKine.position() - mContact->worldRefKine_.position());
     if(odometryType_ == measurements::OdometryType::Flat) { mContact->worldRefKine_.position()(2) = 0.0; }
   }
   k_correct_ = k_data_;
@@ -730,20 +722,20 @@ void LeggedOdometryManager::setOdometryType(OdometryType newOdometryType)
   }
 }
 
-void LeggedOdometryManager::addToLogger(mc_rtc::Logger & logger, const std::string & category)
+void LeggedOdometryManager::addToLogger(mc_rtc::Logger & logger, const std::string & leggedOdomCategory)
 {
-  logger.addLogEntry(category + "_leggedOdometryManager_fbAnchorPos_",
-                     [this]() -> so::Vector3 & { return fbAnchorPos_; });
-  logger.addLogEntry(category + "_leggedOdometryManager_worldAnchorPos", [this]() { return worldAnchorPos_; });
-  logger.addLogEntry(category + "_leggedOdometryManager_odometryRobot_posW",
+  logger.addLogEntry(leggedOdomCategory + "fbAnchorPos_", [this]() -> so::Vector3 & { return fbAnchorPos_; });
+  logger.addLogEntry(leggedOdomCategory + "worldAnchorPos", [this]() { return worldAnchorPos_; });
+  logger.addLogEntry(leggedOdomCategory + "odometryRobot_posW",
                      [this]() -> const sva::PTransformd & { return odometryRobot().posW(); });
-
-  logger.addLogEntry(category + "_leggedOdometryManager_odometryRobot_velW",
+  logger.addLogEntry(leggedOdomCategory + "odometryRobot_velW",
                      [this]() -> const sva::MotionVecd & { return odometryRobot().velW(); });
+  logger.addLogEntry(leggedOdomCategory + "odometryRobot_accW", [this]() { return odometryRobot().accW(); });
 
-  logger.addLogEntry(category + "_leggedOdometryManager_odometryRobot_accW",
-                     [this]() { return odometryRobot().accW(); });
-  logger.addLogEntry(category + "_debug_OdometryType",
+  logger.addLogEntry(leggedOdomCategory + "kappa", [this]() { return kappa_; });
+  logger.addLogEntry(leggedOdomCategory + "lambdaInf", [this]() { return lambdaInf_; });
+
+  logger.addLogEntry(leggedOdomCategory + "OdometryType",
                      [this]() -> std::string { return measurements::odometryTypeToSstring(odometryType_); });
 }
 

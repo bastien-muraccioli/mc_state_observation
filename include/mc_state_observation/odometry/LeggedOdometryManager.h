@@ -37,12 +37,13 @@ public:
   }
 
   inline void lambda(double lambda) { lambda_ = lambda; }
+  inline void resetLifeTime() { lifeTime_ = 0.0; }
+  inline void lifeTimeIncrement(double dt) { lifeTime_ += dt; }
+  inline void weightingCoeff(double weightingCoeff) { weightingCoeff_ = weightingCoeff; }
 
   inline double lambda() const noexcept { return lambda_; }
-
-  inline void lifeTimeIncrement(double dt) { lifeTime_ += dt; }
-
   inline double lifeTime() const noexcept { return lifeTime_; }
+  inline double weightingCoeff() const noexcept { return weightingCoeff_; }
 
 public:
   // reference of the contact in the world
@@ -69,6 +70,8 @@ protected:
   double lambda_;
   // time ellapsed since the creation of the contact.
   double lifeTime_;
+  // defines the weighting of the contribution of the newly "measured" reference pose of the contact and the current one
+  double weightingCoeff_;
 };
 
 /// @brief Structure that implements all the necessary functions to perform legged odometry.
@@ -344,6 +347,9 @@ public:
     measurements::OdometryType odometryType_;
     // time constant defining how fast the contact reference poses are corrected by the one of the floating base
     double kappa_ = 1 / (2 * M_PI);
+    // gain allowing for the contribution of the contact pose measurement into the reference pose even after a long
+    // contact's lifetime.
+    double lambdaInf_ = 0.02;
     // Indicates if the orientation must be estimated by this odometry.
     bool withYaw_ = true;
     // If true, adds the possiblity to switch between 6d and flat odometry from the gui.
@@ -365,6 +371,11 @@ public:
     inline Configuration & kappa(double kappa) noexcept
     {
       kappa_ = kappa;
+      return *this;
+    }
+    inline Configuration & lambdaInf(double lambdaInf) noexcept
+    {
+      lambdaInf_ = lambdaInf;
       return *this;
     }
 
@@ -643,6 +654,9 @@ protected:
   std::vector<LoContactWithSensor *> maintainedContacts_;
   // time constant defining how fast the contact reference poses are corrected by the one of the floating base
   double kappa_;
+  // gain allowing for the contribution of the contact pose measurement into the reference pose even after a long
+  // contact's lifetime.
+  double lambdaInf_ = 0.02;
   // timestep used in the controller
   double ctl_dt_;
 
