@@ -352,6 +352,8 @@ public:
     double lambdaInf_ = 0.02;
     // Indicates if the orientation must be estimated by this odometry.
     bool withYaw_ = true;
+    // Indicates if the reference pose of the contacts must be corrected at the end of each iteration.
+    bool correctContacts_ = true;
     // If true, adds the possiblity to switch between 6d and flat odometry from the gui.
     // Should be set to false if this feature is implemented in the estimator using this library.
     bool withModeSwitchInGui_ = true;
@@ -366,6 +368,11 @@ public:
     inline Configuration & withYawEstimation(bool withYaw) noexcept
     {
       withYaw_ = withYaw;
+      return *this;
+    }
+    inline Configuration & correctContacts(bool correctContacts) noexcept
+    {
+      correctContacts_ = correctContacts;
       return *this;
     }
     inline Configuration & kappa(double kappa) noexcept
@@ -660,6 +667,8 @@ protected:
 
   // indicates whether we want to update the yaw using this method or not
   bool withYawEstimation_;
+  // Indicates if the reference pose of the contacts must be corrected at the end of each iteration.
+  bool correctContacts_ = true;
 
   // position of the anchor point of the robot in the world
   stateObservation::Vector3 worldAnchorPos_;

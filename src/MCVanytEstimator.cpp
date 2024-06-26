@@ -63,6 +63,7 @@ void MCVanytEstimator::configure(const mc_control::MCController & ctl, const mc_
   // specific configurations for the use of odometry.
   bool verbose = config("verbose", true);
   bool withYawEstimation = odomConfig("withYawEstimation", true);
+  bool correctContacts = odomConfig("correctContacts", true);
 
   // surfaces used for the contact detection. If the desired detection method doesn't use surfaces, we make sure this
   // list is not filled in the configuration file to avoid the use of an undesired method.
@@ -85,7 +86,9 @@ void MCVanytEstimator::configure(const mc_control::MCController & ctl, const mc_
 
   odometry::LeggedOdometryManager::Configuration odometryConfig(robot_, observerName_, odometryManager_.odometryType_);
   odometryConfig.velocityUpdate(odometry::LeggedOdometryManager::VelocityUpdate::NoUpdate)
-      .withYawEstimation(withYawEstimation);
+      .withYawEstimation(withYawEstimation)
+      .correctContacts(correctContacts);
+
   if(odomConfig.has("kappa"))
   {
     double kappa = odomConfig("kappa");
