@@ -58,9 +58,9 @@ void LeggedOdometryManager::initContacts(const mc_control::MCController & ctl,
   newContacts_.clear();
   maintainedContacts_.clear();
 
-  auto onNewContact = [this, &logger, &runParams](LoContactWithSensor & newContact)
+  auto onNewContact = [this, &ctl, &logger, &runParams](LoContactWithSensor & newContact)
   {
-    addContactLogEntries(logger, newContact);
+    addContactLogEntries(ctl, logger, newContact);
 
     newContacts_.push_back(&newContact);
     if constexpr(!std::is_same_v<OnNewContactObserver, std::nullptr_t>) { (*runParams.onNewContactFn)(newContact); }

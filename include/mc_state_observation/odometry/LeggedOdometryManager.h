@@ -614,7 +614,9 @@ private:
   /// @brief Add the log entries corresponding to the contact.
   /// @param logger
   /// @param contactName
-  void addContactLogEntries(mc_rtc::Logger & logger, const LoContactWithSensor & contact);
+  void addContactLogEntries(const mc_control::MCController & ctl,
+                            mc_rtc::Logger & logger,
+                            const LoContactWithSensor & contact);
 
   /// @brief Remove the log entries corresponding to the contact.
   /// @param logger

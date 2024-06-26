@@ -31,6 +31,7 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
 
   odometryType_ = odomConfig.odometryType_;
   withYawEstimation_ = odomConfig.withYaw_;
+  correctContacts_ = odomConfig.correctContacts_;
   velocityUpdate_ = odomConfig.velocityUpdate_;
   odometryName_ = odomConfig.odometryName_;
   kappa_ = odomConfig.kappa_;
@@ -234,7 +235,7 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
   updateOdometryRobot(ctl, params.vel, params.acc);
 
   // we correct the reference position of the contacts in the world
-  correctContactsRef();
+  if(correctContacts_) { correctContactsRef(); }
 
   // computation of the reference kinematics of the newly set contacts in the world. We cannot use the onNewContacts
   // function as it is used at the beginning of the iteration and we need to compute this at the end
@@ -499,7 +500,9 @@ const so::kine::Kinematics & LeggedOdometryManager::getContactKinematics(LoConta
   return contact.currentWorldKine_;
 }
 
-void LeggedOdometryManager::addContactLogEntries(mc_rtc::Logger & logger, const LoContactWithSensor & contact)
+void LeggedOdometryManager::addContactLogEntries(const mc_control::MCController & ctl,
+                                                 mc_rtc::Logger & logger,
+                                                 const LoContactWithSensor & contact)
 {
   const std::string & contactName = contact.name();
 
@@ -518,6 +521,15 @@ void LeggedOdometryManager::addContactLogEntries(mc_rtc::Logger & logger, const 
   conversions::kinematics::addToLogger(logger, contact.newIncomingWorldRefKine_,
                                        odometryName_ + "_leggedOdometryManager_" + contactName
                                            + "_newIncomingWorldRefKine");
+
+  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_" + contactName + "_realRobot_pos", &contact,
+                     [&ctl, &contact, this]()
+                     { return ctl.realRobot(robotName_).surfacePose(contact.surface()).translation(); });
+  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_" + contactName + "_realRobot_ori", &contact,
+                     [&ctl, &contact, this]() {
+                       return Eigen::Quaterniond(ctl.realRobot(robotName_).surfacePose(contact.surface()).rotation());
+                     });
+
   logger.addLogEntry(odometryName_ + "_leggedOdometryManager_" + contactName + "_isSet", &contact,
                      [&contact]() -> std::string { return contact.isSet() ? "Set" : "notSet"; });
 
