@@ -303,13 +303,13 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
   R_0_fb_ = estimatedRotationIMU_ * fbImuKine_.orientation.toMatrix3().transpose();
 
   // retrieving the estimated position
-  const so::Vector3 worldImuPos = xk_.head(3);
+  const so::Vector3 worldImuPos = xk_.segment<3>(6);
 
   so::Vector3 worldFbPos = worldImuPos + estimatedRotationIMU_ * fbImuKine_.getInverse().position();
 
   odometryManager_.run(ctl, odometry::LeggedOdometryManager::KineParams(poseW_).attitude(R_0_fb_).position(worldFbPos));
 
-  updatePoseAndVel(xk_.segment(3, 3), imu.angularVelocity());
+  updatePoseAndVel(xk_.segment(0, 3), imu.angularVelocity());
   backupFbKinematics_.push_back(poseW_);
 }
 
@@ -323,7 +323,7 @@ void MCVanytEstimator::updatePoseAndVel(const so::Vector3 & localWorldImuLinVel,
   correctedWorldImuKine_ =
       correctedWorldFbKine_
       * fbImuKine_; // corrected pose of the imu in the world. This step is used only to get the
-                           // pose of the IMU in the world that is required for the kinematics composition.
+                    // pose of the IMU in the world that is required for the kinematics composition.
 
   correctedWorldImuKine_.linVel = correctedWorldImuKine_.orientation * localWorldImuLinVel;
   correctedWorldImuKine_.angVel = correctedWorldImuKine_.orientation * localWorldImuAngVel;
@@ -441,9 +441,9 @@ void MCVanytEstimator::addToLogger(const mc_control::MCController & ctl,
                                    const std::string & category)
 {
   odometryManager_.addToLogger(logger, category + "_leggedOdometryManager_");
-  logger.addLogEntry(category + "_estimatedState_p", [this]() -> so::Vector3 { return xk_.segment(0, 3); });
+  logger.addLogEntry(category + "_estimatedState_p", [this]() -> so::Vector3 { return xk_.segment(6, 3); });
 
-  logger.addLogEntry(category + "_estimatedState_x1", [this]() -> so::Vector3 { return xk_.segment(3, 3); });
+  logger.addLogEntry(category + "_estimatedState_x1", [this]() -> so::Vector3 { return xk_.segment(0, 3); });
 
   logger.addLogEntry(category + "_debug_measuredOri_",
                      [this]() -> Eigen::Quaterniond { return measuredOri_.toQuaternion().inverse(); });
@@ -451,13 +451,19 @@ void MCVanytEstimator::addToLogger(const mc_control::MCController & ctl,
   logger.addLogEntry(category + "_debug_posContacts_",
                      [this]() -> const so::Vector3 & { return estimator_.getPosContacts(); });
 
-  logger.addLogEntry(category + "_debug_oriCorrection_",
+  logger.addLogEntry(category + "_debug_corrections_oriCorrection_",
                      [this]() -> const so::Vector3 & { return estimator_.getOriCorrection(); });
+  logger.addLogEntry(category + "_debug_corrections_oriCorrFromOriMeas_",
+                     [this]() -> const so::Vector3 & { return estimator_.getOriCorrFromOriMeas(); });
+  logger.addLogEntry(category + "_debug_corrections_posCorrFromContactPos_",
+                     [this]() -> const so::Vector3 & { return estimator_.getPosCorrectionFromContactPos(); });
+  logger.addLogEntry(category + "_debug_corrections_oriCorrFromContactPos_",
+                     [this]() -> const so::Vector3 & { return estimator_.geOriCorrectionFromContactPos(); });
 
   logger.addLogEntry(category + "_debug_posX1_", [this]() -> const so::Vector3 & { return estimator_.getPosX1(); });
 
   logger.addLogEntry(category + "_estimatedState_x2prime",
-                     [this]() -> so::Vector3 { return xk_.segment(6, 3).normalized(); });
+                     [this]() -> so::Vector3 { return xk_.segment(3, 3).normalized(); });
   logger.addLogEntry(category + "_estimatedState_R",
                      [this]()
                      {
@@ -710,12 +716,11 @@ void MCVanytEstimator::removeFromLogger(mc_rtc::Logger & logger, const std::stri
 }
 
 void MCVanytEstimator::addToGUI(const mc_control::MCController &,
-                                mc_rtc::gui::StateBuilder & gui,
-                                const std::vector<std::string> & category)
+                                mc_rtc::gui::StateBuilder &,
+                                const std::vector<std::string> &)
 {
   using namespace mc_state_observation::gui;
-  gui.addElement(category, make_input_element("alpha", alpha_), make_input_element("beta", beta_),
-                 make_input_element("gamma", gamma_));
+  // gui.addElement(category, make_input_element("alpha", alpha_), make_input_element("beta", beta_));
 }
 
 } // namespace mc_state_observation
