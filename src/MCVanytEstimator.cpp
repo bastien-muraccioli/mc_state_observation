@@ -277,15 +277,17 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
   for(auto * mContact : odometryManager_.maintainedContacts())
   {
     const so::kine::Kinematics & worldContactRefKine = mContact->worldRefKine_;
+    const so::kine::Kinematics & contactFbKine = mContact->contactFbKine_;
+    const so::kine::Kinematics worldImuKine_fromContactRef = worldContactRefKine * contactFbKine * fbImuKine_;
+    const so::Vector3 imuContactPos =
+        -fbImuKine_.orientation.toMatrix3().transpose() * fbImuKine_.position()
+        - fbImuKine_.orientation.toMatrix3().transpose()
+              * (contactFbKine.orientation.toMatrix3().transpose() * contactFbKine.position());
 
-    const so::kine::Kinematics & contactFbKineOdometryRobot = mContact->contactFbKine_;
-
-    const so::kine::Kinematics worldImuKineOdometryRobot =
-        worldContactRefKine * contactFbKineOdometryRobot * updatedFbImuKine_;
-    mContact->currentWorldFbPose_ = worldContactRefKine * contactFbKineOdometryRobot;
-    measuredOri_ = worldImuKineOdometryRobot.orientation.toMatrix3();
-
+    measuredOri_ = worldImuKine_fromContactRef.orientation.toMatrix3();
     estimator_.addOrientationMeasurement(measuredOri_, mu_contacts_ * mContact->lambda());
+    estimator_.addContactPosMeasurement(worldContactRefKine.position(), imuContactPos, lambda_contacts_,
+                                        gamma_contacts_);
   }
 
   // estimation of the state with the complementary filters
