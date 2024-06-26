@@ -202,6 +202,8 @@ protected:
 
   double mu_contacts_ = 2;
   double mu_gyroscope_ = 2;
+  double lambda_contacts_ = 2;
+  double gamma_contacts_ = 2;
 };
 
 } // namespace mc_state_observation
