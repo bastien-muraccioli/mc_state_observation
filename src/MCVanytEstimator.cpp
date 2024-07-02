@@ -36,15 +36,14 @@ void MCVanytEstimator::configure(const mc_control::MCController & ctl, const mc_
 
   filterGainsConfig("initAlpha", alpha_);
   filterGainsConfig("initBeta", beta_);
+  filterGainsConfig("initRho", rho_);
   filterGainsConfig("finalAlpha", finalAlpha_);
   filterGainsConfig("finalBeta", finalBeta_);
+  filterGainsConfig("finalRho", finalRho_);
   filterGainsConfig("gammaContacts", gamma_contacts_);
   filterGainsConfig("lambdaContacts", lambda_contacts_);
   filterGainsConfig("muContacts", mu_contacts_);
   filterGainsConfig("muGyro", mu_gyroscope_);
-
-  if(filterGainsConfig.has("tau")) { estimator_.setTau(filterGainsConfig("tau")); }
-  estimator_.setRho1(filterGainsConfig("rho1"));
 
   anchorFrameFunction_ = "KinematicAnchorFrame::" + ctl.robot(robot_).name();
   // if a user-defined anchor frame function is given, we use it instead
@@ -183,6 +182,7 @@ bool MCVanytEstimator::run(const mc_control::MCController & ctl)
   {
     alpha_ = finalAlpha_;
     beta_ = finalBeta_;
+    rho_ = finalRho_;
   }
 
   odometryManager_.initLoop(ctl, logger, odometry::LeggedOdometryManager::RunParameters());
@@ -260,6 +260,7 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
   {
     estimator_.setAlpha(alpha_);
     estimator_.setBeta(beta_);
+    estimator_.setRho(rho_);
 
     yv_ = -imu.angularVelocity().cross(imuAnchorKine_.position()) - imuAnchorKine_.linVel();
   }
@@ -519,13 +520,12 @@ void MCVanytEstimator::addToLogger(const mc_control::MCController & ctl,
                        return (worldImuKine.orientation.toMatrix3().transpose() * so::Vector3::UnitZ()).normalized();
                      });
 
-  logger.addLogEntry(category + "_constants_alpha", [this]() -> double { return estimator_.getAlpha(); });
-  logger.addLogEntry(category + "_constants_beta", [this]() -> double { return estimator_.getBeta(); });
-  logger.addLogEntry(category + "_constants_rho1", [this]() -> double { return estimator_.getRho1(); });
-  logger.addLogEntry(category + "_constants_tau", [this]() -> double { return estimator_.getTau(); });
-  logger.addLogEntry(category + "_constants_mu_contacts", [this]() -> double { return mu_contacts_; });
-  logger.addLogEntry(category + "_constants_lambdaContacts", [this]() -> double { return lambda_contacts_; });
-  logger.addLogEntry(category + "_constants_gammaContacts", [this]() -> double { return gamma_contacts_; });
+  logger.addLogEntry(category + "_constants_gains_alpha", [this]() -> double { return estimator_.getAlpha(); });
+  logger.addLogEntry(category + "_constants_gains_beta", [this]() -> double { return estimator_.getBeta(); });
+  logger.addLogEntry(category + "_constants_gains_rho", [this]() -> double { return estimator_.getRho(); });
+  logger.addLogEntry(category + "_constants_gains_contacts_mu", [this]() -> double { return mu_contacts_; });
+  logger.addLogEntry(category + "_constants_gains_contacts_lambda", [this]() -> double { return lambda_contacts_; });
+  logger.addLogEntry(category + "_constants_gains_contacts_gamma", [this]() -> double { return gamma_contacts_; });
 
   logger.addLogEntry(category + "_debug_OdometryType",
                      [this]() -> std::string
