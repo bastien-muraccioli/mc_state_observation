@@ -26,6 +26,12 @@ void MCVanytEstimator::configure(const mc_control::MCController & ctl, const mc_
   robot_ = config("robot", ctl.robot().name());
   imuSensor_ = config("imuSensor", ctl.robot().bodySensor().name());
 
+  if(ctl.realRobot(robot_).hasBodySensor("VisualGyroSensor"))
+  {
+    delayedOriBufferCapacity_ = static_cast<unsigned long>(1 / ctl.timeStep);
+    delayedOriMeasBuffer_.set_capacity(delayedOriBufferCapacity_);
+  }
+
   config("maxAnchorFrameDiscontinuity", maxAnchorFrameDiscontinuity_);
   config("updateRobot", updateRobot_);
   config("updateSensor", updateSensor_);
@@ -231,8 +237,7 @@ void MCVanytEstimator::updateNecessaryFramesOdom(const mc_control::MCController 
 
 void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & odomRobot)
 {
-  estimator_.setAlpha(alpha_);
-  estimator_.setBeta(beta_);
+  DelayedOriMeasBufferedIter delayedOriBufferIter;
 
   updateNecessaryFramesOdom(ctl, odomRobot);
 
@@ -270,11 +275,6 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
   estimator_.setMeasurement(yv_, imu.linearAcceleration(), imu.angularVelocity(), k + 1);
   measurements_ = estimator_.getMeasurement(estimator_.getMeasurementTime());
 
-  if(odometryManager_.maintainedContacts().size() > 0)
-  {
-    estimator_.addPositionMeasurement(odometryManager_.getWorldRefAnchorPos(), imuAnchorKine_.position());
-  }
-
   for(auto * mContact : odometryManager_.maintainedContacts())
   {
     const so::kine::Kinematics & worldContactRefKine = mContact->worldRefKine_;
@@ -289,6 +289,22 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
     estimator_.addOrientationMeasurement(measuredOri_, mu_contacts_ * mContact->lambda());
     estimator_.addContactPosMeasurement(worldContactRefKine.position(), imuContactPos, lambda_contacts_,
                                         gamma_contacts_);
+
+    if(ctl.realRobot(robot_).hasBodySensor("VisualGyroSensor"))
+    {
+      delayedOriBufferIter.contactPosMeasurements_.push_front(DelayedOriMeasBufferedIter::ContactPosMeasurement(
+          worldContactRefKine.position(), imuContactPos, lambda_contacts_, gamma_contacts_));
+      delayedOriBufferIter.oriDirectMeasurements_.push_front(
+          DelayedOriMeasBufferedIter::OriDirectMeasurement(measuredOri_, mu_contacts_ * mContact->lambda()));
+    }
+  }
+
+  if(ctl.realRobot(robot_).hasBodySensor("VisualGyroSensor"))
+  {
+    delayedOriBufferIter.initState_ = estimator_.getCurrentEstimatedState();
+    delayedOriBufferIter.initMeas_ = measurements_;
+
+    delayedOriBufferIter.gains = {{estimator_.getAlpha(), estimator_.getBeta(), estimator_.getRho()}};
   }
 
   // estimation of the state with the complementary filters
@@ -311,7 +327,28 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
   odometryManager_.run(ctl, odometry::LeggedOdometryManager::KineParams(poseW_).attitude(R_0_fb_).position(worldFbPos));
 
   updatePoseAndVel(xk_.segment(0, 3), imu.angularVelocity());
-  backupFbKinematics_.push_back(poseW_);
+
+  /* Backups */
+
+  // for the Kinetics Observer
+  backupFbKinematics_.push_back(conversions::kinematics::fromSva(poseW_, so::kine::Kinematics::Flags::pose));
+
+  if(ctl.realRobot(robot_).hasBodySensor("VisualGyroSensor"))
+  {
+    const mc_rbdyn::BodySensor & visualGyro = ctl.realRobot(robot_).bodySensor("VisualGyroSensor");
+    // state obtained without the orientation measurement
+    delayedOriBufferIter.estWithoutOri_ = estimator_.getCurrentEstimatedState();
+
+    if(ctl.datastore().has("VisualGyroSensorDelay"))
+    {
+      delayedOriMeasurementHandler(visualGyro.orientation().toRotationMatrix(),
+                                   ctl.datastore().get<unsigned long>("VisualGyroSensorDelay"), mu_gyroscope_);
+    }
+
+    // the latest buffered iterations are the first in the buffer. This way, to call the iteration stored n iterations
+    // ago, we can directly call delayedOriMeasBuffer_.at(n)
+    delayedOriMeasBuffer_.push_front(delayedOriBufferIter);
+  }
 }
 
 void MCVanytEstimator::updatePoseAndVel(const so::Vector3 & localWorldImuLinVel,
@@ -374,8 +411,7 @@ const so::kine::Kinematics MCVanytEstimator::backupFb(
   so::kine::Kinematics worldResetKine = *(koBackupFbKinematics->begin());
 
   // original initial pose of the floating base
-  so::kine::Kinematics worldFbInitBackup =
-      conversions::kinematics::fromSva(backupFbKinematics_.front(), so::kine::Kinematics::Flags::pose);
+  so::kine::Kinematics worldFbInitBackup = backupFbKinematics_.front();
 
   so::kine::Kinematics fbWorldInitBackup = worldFbInitBackup.getInverse();
 
@@ -384,8 +420,7 @@ const so::kine::Kinematics MCVanytEstimator::backupFb(
   for(int i = 0; i < koBackupFbKinematics->size(); i++)
   {
     // Intermediary pose of the floating base estimated by the tilt estimator
-    so::kine::Kinematics worldFbIntermBackup =
-        conversions::kinematics::fromSva(backupFbKinematics_.at(i), so::kine::Kinematics::Flags::pose);
+    so::kine::Kinematics worldFbIntermBackup = backupFbKinematics_.at(i);
 
     // transformation between the initial and the intermediary pose during the backup interval
     so::kine::Kinematics initInterm = fbWorldInitBackup * worldFbIntermBackup;
@@ -403,27 +438,61 @@ const so::kine::Kinematics MCVanytEstimator::backupFb(
   return koBackupFbKinematics->back();
 }
 
-so::kine::Kinematics MCVanytEstimator::applyLastTransformation(const so::kine::Kinematics & previousKine)
+void MCVanytEstimator::delayedOriMeasurementHandler(const so::Matrix3 & delayedOriMeas,
+                                                    unsigned long delay,
+                                                    double delayedOriGain)
 {
-  so::kine::Kinematics worldFbPreviousBackup = conversions::kinematics::fromSva(
-      backupFbKinematics_.at(backupFbKinematics_.size() - 2), so::kine::Kinematics::Flags::pose);
+  // Let us denote k the time on which the orientation measurement started to be computed, but is still not available.
+  // We replay the estimation at time k using the buffered state and measurements, this time using the newly available
+  // orientation measurement. We then apply the transformation between the time k+1 and the current iteration.
 
-  so::kine::Kinematics fbWorldPreviousBackup = worldFbPreviousBackup.getInverse();
-  so::kine::Kinematics worldFbFinalBackup =
-      conversions::kinematics::fromSva(backupFbKinematics_.back(), so::kine::Kinematics::Flags::pose);
+  if(delayedOriMeasBuffer_.empty())
+  {
+    mc_rtc::log::warning("A delayed measurement was received although the estimation just started. Please make sure "
+                         "that you pass a delayed orientation measurement. The measurement will be ignored.");
+    return;
+  }
+  if(delay > delayedOriMeasBuffer_.size())
+  {
+    mc_rtc::log::warning("The orientation measurement is too old, the measurement will be ignored.");
+    return;
+  }
 
-  so::kine::Kinematics lastTransformation = fbWorldPreviousBackup * worldFbFinalBackup;
+  DelayedOriMeasBufferedIter & bufferedIter = delayedOriMeasBuffer_.at(delay);
 
-  so::kine::Kinematics newKine = previousKine * lastTransformation;
+  // current kinematics of the robot in the world
+  so::Vector latestState = estimator_.getCurrentEstimatedState();
+  so::kine::Kinematics latestKine(latestState.tail(7), so::kine::Kinematics::Flags::pose);
+  // kinematics of the robot at time k+1, without the orientation measurement
+  so::kine::Kinematics kineEstWithoutOri(bufferedIter.estWithoutOri_.tail(7), so::kine::Kinematics::Flags::pose);
+  // transformation between the current kinematics and the one at time k+1 without the orientation measurement
+  so::kine::Kinematics deltaKine = latestKine * kineEstWithoutOri.getInverse();
 
-  so::Vector3 tiltLocalLinVel = poseW_.rotation() * velW_.linear();
-  so::Vector3 tiltLocalAngVel = poseW_.rotation() * velW_.angular();
+  // we replay the estimation made by the filter but this time with the orientation measurement.
+  estimator_.setCurrentState(bufferedIter.initState_);
+  estimator_.setMeasurement(bufferedIter.initMeas_, estimator_.getCurrentTime());
+  for(auto & contactPosMeas : bufferedIter.contactPosMeasurements_)
+  {
+    estimator_.addContactPosMeasurement(contactPosMeas.worldContactRefPos_, contactPosMeas.imuContactPos_,
+                                        contactPosMeas.lambda_, contactPosMeas.gamma_);
+  }
+  for(auto & oriDirectMeas : bufferedIter.oriDirectMeasurements_)
+  {
+    estimator_.addOrientationMeasurement(oriDirectMeas.measuredOri_, oriDirectMeas.gain_);
+  }
+  estimator_.addOrientationMeasurement(delayedOriMeas, delayedOriGain);
+  estimator_.replayBufferedIteration(bufferedIter.initState_, bufferedIter.initMeas_, bufferedIter.gains);
 
-  // koBackupFbKinematics->back() is the new last pose of the kinetics observer
-  newKine.linVel = newKine.orientation.toMatrix3() * tiltLocalLinVel;
-  newKine.angVel = newKine.orientation.toMatrix3() * tiltLocalAngVel;
+  // the variable initState_ has been modified, we alias its name fore more clarity
+  so::Vector & newState = bufferedIter.initState_;
+  // we apply the transformation computed between the iteration at time k+1 and the current iteration.
+  so::kine::Kinematics newKine(newState.tail(7), so::kine::Kinematics::Flags::pose);
 
-  return newKine;
+  so::kine::Kinematics newCurrentKine = deltaKine * newKine;
+  // we replace the kinematics in our current state by the newly computed ones.
+  latestState.tail(7) = newCurrentKine.toVector(so::kine::Kinematics::Flags::pose);
+  // we replace the current state in the estimator
+  estimator_.setCurrentState(latestState);
 }
 
 void MCVanytEstimator::setOdometryType(OdometryType newOdometryType)

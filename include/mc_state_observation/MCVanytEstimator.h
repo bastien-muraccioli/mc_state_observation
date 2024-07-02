@@ -2,11 +2,66 @@
 
 #include <boost/circular_buffer.hpp>
 
+#include <forward_list>
 #include <mc_state_observation/odometry/LeggedOdometryManager.h>
 #include <state-observation/observer/vanyt-estimator.hpp>
 
 namespace mc_state_observation
 {
+/// @brief Buffer containing all the variables necessary to use a-posteriori a delayed orientation measurement
+/// @details Given k the time of beginning of acquisition of the measurement (ex: the acquisition of the image used to
+/// get the orientation), we need to store the state at time k-1, the measurements at time k, and the state at time k
+/// that was obtained without the orientation measurement.
+struct DelayedOriMeasBufferedIter
+{
+  /// @brief Buffer containing the measurements coming from the contact position.
+  struct ContactPosMeasurement
+  {
+    ContactPosMeasurement(stateObservation::Vector3 worldContactRefPos,
+                          stateObservation::Vector3 imuContactPos,
+                          double lambda,
+                          double gamma)
+    : worldContactRefPos_(worldContactRefPos), imuContactPos_(imuContactPos), lambda_(lambda), gamma_(gamma)
+    {
+    }
+
+  public:
+    stateObservation::Vector3 worldContactRefPos_;
+    stateObservation::Vector3 imuContactPos_;
+    double lambda_;
+    double gamma_;
+  };
+
+  /// @brief Buffer containing direct (non-delayed) orientation measurements.
+  struct OriDirectMeasurement
+  {
+    OriDirectMeasurement(stateObservation::kine::Orientation measuredOri, double gain)
+    : measuredOri_(measuredOri), gain_(gain)
+    {
+    }
+
+  public:
+    stateObservation::kine::Orientation measuredOri_;
+    double gain_;
+  };
+
+public:
+  // alpha: gain for the convergence of x1 at the initial iteration.
+  // beta: gain for the convergence of x2_prime at the initial iteration.
+  // rho: gain related to the convergence of x2 with respect of the orthogonality at the initial iteration.
+  std::array<double, 3> gains;
+  // state at time k-1
+  stateObservation::Vector initState_;
+  // measurements at time k
+  stateObservation::Vector initMeas_;
+  // list containing all the measurements coming from the contact positions.
+  std::forward_list<ContactPosMeasurement> contactPosMeasurements_;
+  // list containing all the direct (non-delayed) orientation measurements.
+  std::forward_list<OriDirectMeasurement> oriDirectMeasurements_;
+
+  // state at time k without the orientation measurement
+  stateObservation::Vector estWithoutOri_;
+};
 
 struct MCVanytEstimator : public mc_observers::Observer
 {
@@ -65,12 +120,17 @@ public:
   const stateObservation::kine::Kinematics backupFb(
       boost::circular_buffer<stateObservation::kine::Kinematics> * koBackupFbKinematics);
 
-  /// @brief Computes the pose transformation estimated by the Tilt Observer between the last two iterations and
-  /// applies it to the given kinematics.
-  /// @details Also fills the velocity with the velocity estimated by the Tilt Observer (expressed in the new frame)
-  /// @param kine The kinematics on which to apply the transformation
-  /// @return stateObservation::kine::Kinematics
-  stateObservation::kine::Kinematics applyLastTransformation(const stateObservation::kine::Kinematics & kine);
+  /// @brief Re-estimates the current state using a delayed orientation measurement.
+  /// @details Let us denote k the time on which the orientation measurement started to be computed, but is still not
+  /// available. We replay the estimation at time k using the buffered state and measurements, this time using the newly
+  /// available orientation measurement. We then apply the transformation between the time k+1 and the current
+  /// iteration.
+  /// @param delayedOriMeas The delayed orientation measurement.
+  /// @param delayIters Number of iterations corresponding to the measurement delay.
+  /// @param delayedOriGain The gain associated to the delayed orientation within the filter.
+  void delayedOriMeasurementHandler(const stateObservation::Matrix3 & delayedOriMeas,
+                                    unsigned long delayIters,
+                                    double delayedOriGain);
 
 protected:
   /*! \brief update the robot pose in the world only for visualization purpose
@@ -120,7 +180,7 @@ protected:
   ///  parameter related to the fast convergence of the tilt
   double finalBeta_ = 1;
   /// parameter related to the orthogonality
-  double finalGamma_ = 2;
+  double finalRho_ = 2;
 
   /*!
    * initial value of the parameter related to the convergence of the linear velocity
@@ -130,7 +190,7 @@ protected:
   /// initial value of the parameter related to the fast convergence of the tilt
   double beta_ = 1;
   /// initial value of the parameter related to the orthogonality
-  double gamma_ = 2;
+  double rho_ = 2;
 
   // flag indicating the variables we want in the resulting Kinematics object
   stateObservation::kine::Kinematics::Flags::Byte flagPoseVels_ =
@@ -187,7 +247,11 @@ protected:
   // indicates if the estimator is used as a backup or not
   bool asBackup_ = false;
   // Buffer containing the estimated pose of the floating base in the world over the whole backup interval.
-  boost::circular_buffer<sva::PTransformd> backupFbKinematics_;
+  boost::circular_buffer<stateObservation::kine::Kinematics> backupFbKinematics_;
+
+  // Buffer containing the estimated pose of the floating base in the world over the whole backup interval.
+  boost::circular_buffer<DelayedOriMeasBufferedIter> delayedOriMeasBuffer_;
+  unsigned long delayedOriBufferCapacity_;
 
   /* Debug variables */
   // "measured" local linear velocity of the IMU
