@@ -228,10 +228,10 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   /* Configuration of the backup based on the Tilt Observer */
   // interval (in s) on which the backup will recover
   int backupInterval = config("backupInterval", 1);
-  backupIterInterval_ = int(backupInterval / ctl.timeStep);
+  fbBackupCapacity_ = int(backupInterval / ctl.timeStep);
 
-  koBackupFbKinematics_.set_capacity(backupIterInterval_);
-  tiltObserver_.backupFbKinematics_.set_capacity(backupIterInterval_);
+  koBackupFbKinematics_.set_capacity(fbBackupCapacity_);
+  tiltObserver_.backupFbKinematics_.set_capacity(fbBackupCapacity_);
 
   invincibilityFrame_ = int(1.5 / ctl.timeStep);
 
@@ -524,14 +524,14 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
       // an error was just detected, we reset the state vector and covariances and start the invicibility frame, during
       // which we let the Kinetics Observer converge before using it again.
       auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
-      if(logger.t() / ctl.timeStep < backupIterInterval_)
+      if(logger.t() / ctl.timeStep < fbBackupCapacity_)
       {
         mc_rtc::log::warning("The backup function was called before the required time was ellapsed. The backup will be "
                              "performed using the last {} seconds",
                              logger.t());
       }
 
-      if(logger.t() / ctl.timeStep - lastBackupIter_ < backupIterInterval_)
+      if(logger.t() / ctl.timeStep - lastBackupIter_ < fbBackupCapacity_)
       {
         mc_rtc::log::warning("The backup function was called again too quickly. The backup will be "
                              "performed using the last {} seconds",

@@ -473,7 +473,7 @@ private:
   // iteration on which the backup was required for the last time
   int lastBackupIter_;
   // number of iterations on which we perform the backup
-  int backupIterInterval_ = 0;
+  int fbBackupCapacity_ = 0;
   // time during which the Kinetics Observer is still getting updated by the Tilt Observer after the need of a backup,
   // so the Kalman Filter has time to converge again
   int invincibilityFrame_ = 0;
