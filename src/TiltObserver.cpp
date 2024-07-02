@@ -419,7 +419,8 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
   }
 
   updatePoseAndVel(xk_.head(3), imu.angularVelocity());
-  backupFbKinematics_.push_back(poseW_);
+
+  if(asBackup_) { backupFbKinematics_.push_back(correctedWorldFbKine_); }
 }
 
 void TiltObserver::updatePoseAndVel(const so::Vector3 & localWorldImuLinVel, const so::Vector3 & localWorldImuAngVel)
@@ -493,8 +494,7 @@ const so::kine::Kinematics TiltObserver::backupFb(boost::circular_buffer<so::kin
   so::kine::Kinematics worldResetKine = *(koBackupFbKinematics->begin());
 
   // original initial pose of the floating base
-  so::kine::Kinematics worldFbInitBackup =
-      conversions::kinematics::fromSva(backupFbKinematics_.front(), so::kine::Kinematics::Flags::pose);
+  so::kine::Kinematics worldFbInitBackup = backupFbKinematics_.front();
 
   so::kine::Kinematics fbWorldInitBackup = worldFbInitBackup.getInverse();
 
@@ -503,8 +503,7 @@ const so::kine::Kinematics TiltObserver::backupFb(boost::circular_buffer<so::kin
   for(int i = 0; i < koBackupFbKinematics->size(); i++)
   {
     // Intermediary pose of the floating base estimated by the tilt estimator
-    so::kine::Kinematics worldFbIntermBackup =
-        conversions::kinematics::fromSva(backupFbKinematics_.at(i), so::kine::Kinematics::Flags::pose);
+    so::kine::Kinematics worldFbIntermBackup = backupFbKinematics_.at(i);
 
     // transformation between the initial and the intermediary pose during the backup interval
     so::kine::Kinematics initInterm = fbWorldInitBackup * worldFbIntermBackup;
@@ -524,12 +523,10 @@ const so::kine::Kinematics TiltObserver::backupFb(boost::circular_buffer<so::kin
 
 so::kine::Kinematics TiltObserver::applyLastTransformation(const so::kine::Kinematics & previousKine)
 {
-  so::kine::Kinematics worldFbPreviousBackup = conversions::kinematics::fromSva(
-      backupFbKinematics_.at(backupFbKinematics_.size() - 2), so::kine::Kinematics::Flags::pose);
+  so::kine::Kinematics worldFbPreviousBackup = backupFbKinematics_.at(backupFbKinematics_.size() - 2);
 
   so::kine::Kinematics fbWorldPreviousBackup = worldFbPreviousBackup.getInverse();
-  so::kine::Kinematics worldFbFinalBackup =
-      conversions::kinematics::fromSva(backupFbKinematics_.back(), so::kine::Kinematics::Flags::pose);
+  so::kine::Kinematics worldFbFinalBackup = backupFbKinematics_.back();
 
   so::kine::Kinematics lastTransformation = fbWorldPreviousBackup * worldFbFinalBackup;
 

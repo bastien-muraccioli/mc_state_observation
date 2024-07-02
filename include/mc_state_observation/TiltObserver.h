@@ -214,7 +214,7 @@ protected:
   // indicates if the estimator is used as a backup or not
   bool asBackup_ = false;
   // Buffer containing the estimated pose of the floating base in the world over the whole backup interval.
-  boost::circular_buffer<sva::PTransformd> backupFbKinematics_;
+  boost::circular_buffer<stateObservation::kine::Kinematics> backupFbKinematics_;
 
   /* Debug variables */
   // "measured" local linear velocity of the IMU
