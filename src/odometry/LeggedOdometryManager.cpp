@@ -34,8 +34,6 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
   correctContacts_ = odomConfig.correctContacts_;
   velocityUpdate_ = odomConfig.velocityUpdate_;
   odometryName_ = odomConfig.odometryName_;
-  kappa_ = odomConfig.kappa_;
-  lambdaInf_ = odomConfig.lambdaInf_;
 
   fbPose_.translation() = robot.posW().translation();
   fbPose_.rotation() = robot.posW().rotation();
@@ -556,6 +554,13 @@ void LeggedOdometryManager::removeContactLogEntries(mc_rtc::Logger & logger, con
 
 void LeggedOdometryManager::correctContactsRef()
 {
+  double prevKappa = kappa_;
+
+  if(resetContactsCorrection_)
+  {
+    kappa_ = 0.0;
+    for(auto & contact : maintainedContacts()) { contact->resetLifeTime(); }
+  }
   // if the anchor point has not been computed yet, we compute it before the correction of the contact references.
   getWorldRefAnchorPos();
   for(auto * mContact : maintainedContacts_)
@@ -584,6 +589,9 @@ void LeggedOdometryManager::correctContactsRef()
         + mContact->weightingCoeff() * (newWorldKine.position() - mContact->worldRefKine_.position());
     if(odometryType_ == measurements::OdometryType::Flat) { mContact->worldRefKine_.position()(2) = 0.0; }
   }
+
+  kappa_ = prevKappa;
+  resetContactsCorrection_ = false;
   k_correct_ = k_data_;
 }
 

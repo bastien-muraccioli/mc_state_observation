@@ -345,11 +345,7 @@ public:
     std::string odometryName_;
     // Desired kind of odometry (6D or flat)
     measurements::OdometryType odometryType_;
-    // time constant defining how fast the contact reference poses are corrected by the one of the floating base
-    double kappa_ = 1 / (2 * M_PI);
-    // gain allowing for the contribution of the contact pose measurement into the reference pose even after a long
-    // contact's lifetime.
-    double lambdaInf_ = 0.02;
+
     // Indicates if the orientation must be estimated by this odometry.
     bool withYaw_ = true;
     // Indicates if the reference pose of the contacts must be corrected at the end of each iteration.
@@ -373,16 +369,6 @@ public:
     inline Configuration & correctContacts(bool correctContacts) noexcept
     {
       correctContacts_ = correctContacts;
-      return *this;
-    }
-    inline Configuration & kappa(double kappa) noexcept
-    {
-      kappa_ = kappa;
-      return *this;
-    }
-    inline Configuration & lambdaInf(double lambdaInf) noexcept
-    {
-      lambdaInf_ = lambdaInf;
       return *this;
     }
 
@@ -490,6 +476,11 @@ public:
   /// @details Version meant to be called by the observer using the odometry during the run through the gui.
   /// @param newOdometryType The string naming the new type of odometry to use.
   void setOdometryType(measurements::OdometryType newOdometryType);
+
+  /// @brief indicates that the contact references got reset so we must use only the measurement on this iteration
+  inline void resetContactsCorrection() noexcept { resetContactsCorrection_ = true; }
+  inline void kappa(double kappa) noexcept { kappa_ = kappa; }
+  inline void lambdaInf(double lambdaInf) noexcept { lambdaInf_ = lambdaInf; }
 
   /// @brief Getter for the odometry robot used for the estimation.
   inline mc_rbdyn::Robot & odometryRobot() { return odometryRobot_->robot("odometryRobot"); }
@@ -658,10 +649,12 @@ protected:
   // contacts maintained during the current iteration
   std::vector<LoContactWithSensor *> maintainedContacts_;
   // time constant defining how fast the contact reference poses are corrected by the one of the floating base
-  double kappa_;
+  double kappa_ = 1 / (2 * M_PI);
   // gain allowing for the contribution of the contact pose measurement into the reference pose even after a long
   // contact's lifetime.
   double lambdaInf_ = 0.02;
+  // indicates that the contact references got reset so we must use only the measurement on this iteration
+  bool resetContactsCorrection_ = false;
   // timestep used in the controller
   double ctl_dt_;
 
