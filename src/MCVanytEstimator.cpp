@@ -97,12 +97,12 @@ void MCVanytEstimator::configure(const mc_control::MCController & ctl, const mc_
   if(odomConfig.has("kappa"))
   {
     double kappa = odomConfig("kappa");
-    odometryConfig.kappa(kappa);
+    odometryManager_.kappa(kappa);
   }
   if(odomConfig.has("lambdaInf"))
   {
     double lambdaInf = odomConfig("lambdaInf");
-    odometryConfig.lambdaInf(lambdaInf);
+    odometryManager_.lambdaInf(lambdaInf);
   }
   if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Surfaces)
   {
@@ -238,6 +238,16 @@ void MCVanytEstimator::updateNecessaryFramesOdom(const mc_control::MCController 
 void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & odomRobot)
 {
   DelayedOriMeasBufferedIter delayedOriBufferIter;
+  if(ctl.realRobot(robot_).hasBodySensor("VisualGyroSensor"))
+  {
+    const mc_rbdyn::BodySensor & visualGyro = ctl.realRobot(robot_).bodySensor("VisualGyroSensor");
+
+    if(ctl.datastore().has("VisualGyroSensorDelay"))
+    {
+      delayedOriMeasurementHandler(visualGyro.orientation().toRotationMatrix(),
+                                   ctl.datastore().get<unsigned long>("VisualGyroSensorDelay"), mu_gyroscope_);
+    }
+  }
 
   updateNecessaryFramesOdom(ctl, odomRobot);
 
@@ -335,18 +345,11 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
 
   if(ctl.realRobot(robot_).hasBodySensor("VisualGyroSensor"))
   {
-    const mc_rbdyn::BodySensor & visualGyro = ctl.realRobot(robot_).bodySensor("VisualGyroSensor");
     // state obtained without the orientation measurement
     delayedOriBufferIter.estWithoutOri_ = estimator_.getCurrentEstimatedState();
 
-    if(ctl.datastore().has("VisualGyroSensorDelay"))
-    {
-      delayedOriMeasurementHandler(visualGyro.orientation().toRotationMatrix(),
-                                   ctl.datastore().get<unsigned long>("VisualGyroSensorDelay"), mu_gyroscope_);
-    }
-
     // the latest buffered iterations are the first in the buffer. This way, to call the iteration stored n iterations
-    // ago, we can directly call delayedOriMeasBuffer_.at(n)
+    // ago, we can directly call delayedOriMeasBuffer_.at(n - 1) as we call it at the beginning of the new iteration.
     delayedOriMeasBuffer_.push_front(delayedOriBufferIter);
   }
 }
@@ -458,7 +461,7 @@ void MCVanytEstimator::delayedOriMeasurementHandler(const so::Matrix3 & delayedO
     return;
   }
 
-  DelayedOriMeasBufferedIter & bufferedIter = delayedOriMeasBuffer_.at(delay);
+  DelayedOriMeasBufferedIter & bufferedIter = delayedOriMeasBuffer_.at(delay - 1);
 
   // current kinematics of the robot in the world
   so::Vector latestState = estimator_.getCurrentEstimatedState();
@@ -493,6 +496,8 @@ void MCVanytEstimator::delayedOriMeasurementHandler(const so::Matrix3 & delayedO
   latestState.tail(7) = newCurrentKine.toVector(so::kine::Kinematics::Flags::pose);
   // we replace the current state in the estimator
   estimator_.setCurrentState(latestState);
+
+  odometryManager_.resetContactsCorrection();
 }
 
 void MCVanytEstimator::setOdometryType(OdometryType newOdometryType)
