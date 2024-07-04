@@ -14,22 +14,53 @@ namespace mc_state_observation
 /// that was obtained without the orientation measurement.
 struct DelayedOriMeasBufferedIter
 {
-  /// @brief Buffer containing the measurements coming from the contact position.
-  struct ContactPosMeasurement
+  struct ContactInfos
   {
-    ContactPosMeasurement(stateObservation::Vector3 worldContactRefPos,
-                          stateObservation::Vector3 imuContactPos,
-                          double lambda,
-                          double gamma)
-    : worldContactRefPos_(worldContactRefPos), imuContactPos_(imuContactPos), lambda_(lambda), gamma_(gamma)
+    /// @brief Buffer containing the measurements coming from the contact position.
+    struct ContactPosMeasurement
+    {
+      ContactPosMeasurement(stateObservation::Vector3 worldContactRefPos,
+                            stateObservation::Vector3 imuContactPos,
+                            double lambda,
+                            double gamma)
+      : worldContactRefPos_(worldContactRefPos), imuContactPos_(imuContactPos), lambda_(lambda), gamma_(gamma)
+      {
+      }
+
+    public:
+      stateObservation::Vector3 worldContactRefPos_;
+      stateObservation::Vector3 imuContactPos_;
+      double lambda_;
+      double gamma_;
+    };
+
+    struct ContactOriMeasurement
+    {
+      ContactOriMeasurement(stateObservation::kine::Orientation measuredOri, double gain)
+      : measuredOri_(measuredOri), gain_(gain)
+      {
+      }
+
+    public:
+      stateObservation::kine::Orientation measuredOri_;
+      double gain_;
+    };
+
+    ContactInfos(const ContactPosMeasurement & contactPosMeasurement,
+                 const ContactOriMeasurement & contactOriMeasurement,
+                 const stateObservation::kine::Kinematics & worldRefKine,
+                 const stateObservation::kine::Kinematics & worldRefKineBeforeCorrection)
+    : contactPosMeasurement_(contactPosMeasurement), contactOriMeasurement_(contactOriMeasurement),
+      worldRefKine_(worldRefKine), worldRefKineBeforeCorrection_(worldRefKineBeforeCorrection)
     {
     }
 
-  public:
-    stateObservation::Vector3 worldContactRefPos_;
-    stateObservation::Vector3 imuContactPos_;
-    double lambda_;
-    double gamma_;
+    ContactPosMeasurement contactPosMeasurement_;
+    ContactOriMeasurement contactOriMeasurement_;
+    // reference of the contact in the world
+    stateObservation::kine::Kinematics worldRefKine_;
+    // reference of the contact in the world before correction
+    stateObservation::kine::Kinematics worldRefKineBeforeCorrection_;
   };
 
   /// @brief Buffer containing direct (non-delayed) orientation measurements.
@@ -55,12 +86,14 @@ public:
   // measurements at time k
   stateObservation::Vector initMeas_;
   // list containing all the measurements coming from the contact positions.
-  std::forward_list<ContactPosMeasurement> contactPosMeasurements_;
+  std::forward_list<ContactInfos> contactInfos_;
   // list containing all the direct (non-delayed) orientation measurements.
   std::forward_list<OriDirectMeasurement> oriDirectMeasurements_;
 
   // state at time k without the orientation measurement
   stateObservation::Vector estWithoutOri_;
+
+  int iter_;
 };
 
 struct MCVanytEstimator : public mc_observers::Observer
@@ -251,7 +284,6 @@ protected:
 
   // Buffer containing the estimated pose of the floating base in the world over the whole backup interval.
   boost::circular_buffer<DelayedOriMeasBufferedIter> delayedOriMeasBuffer_;
-  unsigned long delayedOriBufferCapacity_;
 
   /* Debug variables */
   // "measured" local linear velocity of the IMU

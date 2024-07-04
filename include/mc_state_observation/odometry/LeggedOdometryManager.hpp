@@ -33,7 +33,7 @@ void LeggedOdometryManager::initLoop(const mc_control::MCController & ctl,
 
   initContacts(ctl, logger, runParams);
 
-  ++k_data_;
+  k_data_ = k_iter_;
 }
 
 template<typename OnNewContactObserver,

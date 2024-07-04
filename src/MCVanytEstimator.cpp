@@ -28,8 +28,8 @@ void MCVanytEstimator::configure(const mc_control::MCController & ctl, const mc_
 
   if(ctl.realRobot(robot_).hasBodySensor("VisualGyroSensor"))
   {
-    delayedOriBufferCapacity_ = static_cast<unsigned long>(1 / ctl.timeStep);
-    delayedOriMeasBuffer_.set_capacity(delayedOriBufferCapacity_);
+    unsigned long delayedOriBufferCapacity = static_cast<unsigned long>(10 / ctl.timeStep);
+    delayedOriMeasBuffer_.set_capacity(delayedOriBufferCapacity);
   }
 
   config("maxAnchorFrameDiscontinuity", maxAnchorFrameDiscontinuity_);
@@ -238,6 +238,7 @@ void MCVanytEstimator::updateNecessaryFramesOdom(const mc_control::MCController 
 void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & odomRobot)
 {
   DelayedOriMeasBufferedIter delayedOriBufferIter;
+
   if(ctl.realRobot(robot_).hasBodySensor("VisualGyroSensor"))
   {
     const mc_rbdyn::BodySensor & visualGyro = ctl.realRobot(robot_).bodySensor("VisualGyroSensor");
@@ -302,10 +303,13 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
 
     if(ctl.realRobot(robot_).hasBodySensor("VisualGyroSensor"))
     {
-      delayedOriBufferIter.contactPosMeasurements_.push_front(DelayedOriMeasBufferedIter::ContactPosMeasurement(
-          worldContactRefKine.position(), imuContactPos, lambda_contacts_, gamma_contacts_));
-      delayedOriBufferIter.oriDirectMeasurements_.push_front(
-          DelayedOriMeasBufferedIter::OriDirectMeasurement(measuredOri_, mu_contacts_ * mContact->lambda()));
+      DelayedOriMeasBufferedIter::ContactInfos contactInfos(
+          DelayedOriMeasBufferedIter::ContactInfos::ContactPosMeasurement(worldContactRefKine.position(), imuContactPos,
+                                                                          lambda_contacts_, gamma_contacts_),
+          DelayedOriMeasBufferedIter::ContactInfos::ContactOriMeasurement(measuredOri_,
+                                                                          mu_contacts_ * mContact->lambda()),
+          mContact->worldRefKine_, mContact->worldRefKineBeforeCorrection_);
+      delayedOriBufferIter.contactInfos_.push_front(contactInfos);
     }
   }
 
@@ -315,6 +319,7 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
     delayedOriBufferIter.initMeas_ = measurements_;
 
     delayedOriBufferIter.gains = {{estimator_.getAlpha(), estimator_.getBeta(), estimator_.getRho()}};
+    delayedOriBufferIter.iter_ = iter_;
   }
 
   // estimation of the state with the complementary filters
@@ -449,6 +454,8 @@ void MCVanytEstimator::delayedOriMeasurementHandler(const so::Matrix3 & delayedO
   // We replay the estimation at time k using the buffered state and measurements, this time using the newly available
   // orientation measurement. We then apply the transformation between the time k+1 and the current iteration.
 
+  std::cout << std::endl
+            << "Received an orientation measurement with a delay of " << delay << " iterations" << std::endl;
   if(delayedOriMeasBuffer_.empty())
   {
     mc_rtc::log::warning("A delayed measurement was received although the estimation just started. Please make sure "
@@ -474,30 +481,37 @@ void MCVanytEstimator::delayedOriMeasurementHandler(const so::Matrix3 & delayedO
   // we replay the estimation made by the filter but this time with the orientation measurement.
   estimator_.setCurrentState(bufferedIter.initState_);
   estimator_.setMeasurement(bufferedIter.initMeas_, estimator_.getCurrentTime());
-  for(auto & contactPosMeas : bufferedIter.contactPosMeasurements_)
+  for(auto & contactInfo : bufferedIter.contactInfos_)
   {
-    estimator_.addContactPosMeasurement(contactPosMeas.worldContactRefPos_, contactPosMeas.imuContactPos_,
-                                        contactPosMeas.lambda_, contactPosMeas.gamma_);
+    estimator_.addContactPosMeasurement(
+        contactInfo.contactPosMeasurement_.worldContactRefPos_, contactInfo.contactPosMeasurement_.imuContactPos_,
+        contactInfo.contactPosMeasurement_.lambda_, contactInfo.contactPosMeasurement_.gamma_);
+
+    estimator_.addOrientationMeasurement(contactInfo.contactOriMeasurement_.measuredOri_,
+                                         contactInfo.contactOriMeasurement_.gain_);
   }
   for(auto & oriDirectMeas : bufferedIter.oriDirectMeasurements_)
   {
     estimator_.addOrientationMeasurement(oriDirectMeas.measuredOri_, oriDirectMeas.gain_);
   }
   estimator_.addOrientationMeasurement(delayedOriMeas, delayedOriGain);
-  estimator_.replayBufferedIteration(bufferedIter.initState_, bufferedIter.initMeas_, bufferedIter.gains);
 
-  // the variable initState_ has been modified, we alias its name fore more clarity
-  so::Vector & newState = bufferedIter.initState_;
+  so::Vector estWithOri = bufferedIter.initState_;
+  estimator_.replayBufferedIteration(estWithOri, bufferedIter.initMeas_, bufferedIter.gains);
+
   // we apply the transformation computed between the iteration at time k+1 and the current iteration.
-  so::kine::Kinematics newKine(newState.tail(7), so::kine::Kinematics::Flags::pose);
+  so::kine::Kinematics newKine(estWithOri.tail(7), so::kine::Kinematics::Flags::pose);
 
   so::kine::Kinematics newCurrentKine = deltaKine * newKine;
+
   // we replace the kinematics in our current state by the newly computed ones.
   latestState.tail(7) = newCurrentKine.toVector(so::kine::Kinematics::Flags::pose);
   // we replace the current state in the estimator
   estimator_.setCurrentState(latestState);
 
-  odometryManager_.resetContactsCorrection();
+  // we replace the pose of the odometry robot by the one we just computed.
+  sva::PTransformd newWorldPose(newCurrentKine.orientation.toMatrix3().transpose(), newCurrentKine.position());
+  odometryManager_.replaceRobotPose(newWorldPose);
 }
 
 void MCVanytEstimator::setOdometryType(OdometryType newOdometryType)
@@ -523,9 +537,6 @@ void MCVanytEstimator::addToLogger(const mc_control::MCController & ctl,
   logger.addLogEntry(category + "_debug_measuredOri_",
                      [this]() -> Eigen::Quaterniond { return measuredOri_.toQuaternion().inverse(); });
 
-  logger.addLogEntry(category + "_debug_posContacts_",
-                     [this]() -> const so::Vector3 & { return estimator_.getPosContacts(); });
-
   logger.addLogEntry(category + "_debug_corrections_oriCorrection_",
                      [this]() -> const so::Vector3 & { return estimator_.getOriCorrection(); });
   logger.addLogEntry(category + "_debug_corrections_oriCorrFromOriMeas_",
@@ -534,8 +545,6 @@ void MCVanytEstimator::addToLogger(const mc_control::MCController & ctl,
                      [this]() -> const so::Vector3 & { return estimator_.getPosCorrectionFromContactPos(); });
   logger.addLogEntry(category + "_debug_corrections_oriCorrFromContactPos_",
                      [this]() -> const so::Vector3 & { return estimator_.geOriCorrectionFromContactPos(); });
-
-  logger.addLogEntry(category + "_debug_posX1_", [this]() -> const so::Vector3 & { return estimator_.getPosX1(); });
 
   logger.addLogEntry(category + "_estimatedState_x2prime",
                      [this]() -> so::Vector3 { return xk_.segment(3, 3).normalized(); });

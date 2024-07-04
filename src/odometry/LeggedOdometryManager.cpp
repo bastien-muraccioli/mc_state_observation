@@ -88,21 +88,9 @@ void LeggedOdometryManager::reset()
   worldRefAnchorPosition_ = sva::interpolate(odometryRobot().surfacePose("RightFootCenter"),
                                              odometryRobot().surfacePose("LeftFootCenter"), 0.5)
                                 .translation();
-  /*
-  refAnchorPosition_ =
-      ctl.datastore()
-          .call<sva::PTransformd>("KinematicAnchorFrame::" + ctl.robot(robotName_).name(), ctl.robot(robotName_))
-          .translation();
-          */
-  // refAnchorPositionBeforeCorrection_.setZero();
-  // prevRefAnchorPosition_.setZero();
 
   fbAnchorPos_ = -odometryRobot().posW().rotation() * odometryRobot().posW().translation()
                  + odometryRobot().posW().rotation().transpose() * worldRefAnchorPosition_;
-
-  // the anchor frame cannot be computed from the contacts on the first iteration so we need to use this
-  // initialization.
-  k_anchor_++;
 }
 
 void LeggedOdometryManager::updateJointsConfiguration(const mc_control::MCController & ctl)
@@ -137,7 +125,7 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl, KineParams
   // updates the floating base kinematics in the observer
   updateFbKinematicsPvt(kineParams.pose, kineParams.vel, kineParams.acc);
 
-  ++k_est_;
+  k_est_ = k_iter_;
 }
 
 void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController & ctl, const KineParams & params)
@@ -327,6 +315,56 @@ void LeggedOdometryManager::updateFbKinematicsPvt(sva::PTransformd & pose, sva::
   {
     acc->linear() = odometryRobot().accW().linear();
     acc->angular() = odometryRobot().accW().angular();
+  }
+}
+
+void LeggedOdometryManager::replaceRobotPose(const sva::PTransformd & newPose, bool updateVel, bool updateAcc)
+{
+  stateObservation::kine::Kinematics prevPoseKine =
+      conversions::kinematics::fromSva(fbPose_, so::kine::Kinematics::Flags::pose);
+
+  stateObservation::kine::Kinematics newPoseKine =
+      conversions::kinematics::fromSva(newPose, so::kine::Kinematics::Flags::pose);
+
+  so::kine::Kinematics deltaKine = newPoseKine * prevPoseKine.getInverse();
+
+  fbPose_ = newPose;
+  odometryRobot().posW(fbPose_);
+  odometryRobot().forwardKinematics();
+
+  for(auto & contact : maintainedContacts())
+  {
+    contact->worldRefKineBeforeCorrection_ = deltaKine * contact->worldRefKineBeforeCorrection_;
+    contact->worldRefKine_ = deltaKine * contact->worldRefKine_;
+  }
+
+  // we impose the re-computation of the anchor point as the contact references changed.
+  k_anchor_ = k_data_ - 1;
+
+  if(updateVel)
+  {
+    so::Vector3 localLinVel = prevPoseKine.orientation.toMatrix3().transpose() * odometryRobot().velW().linear();
+    so::Vector3 localAngVel = prevPoseKine.orientation.toMatrix3().transpose() * odometryRobot().velW().angular();
+
+    sva::MotionVecd vel;
+
+    vel.linear() = newPoseKine.orientation.toMatrix3() * localLinVel;
+    vel.angular() = newPoseKine.orientation.toMatrix3() * localAngVel;
+    odometryRobot().velW(vel);
+    odometryRobot().forwardVelocity();
+  }
+
+  if(updateAcc)
+  {
+    so::Vector3 localLinAcc = prevPoseKine.orientation.toMatrix3().transpose() * odometryRobot().accW().linear();
+    so::Vector3 localAngAcc = prevPoseKine.orientation.toMatrix3().transpose() * odometryRobot().accW().angular();
+
+    sva::MotionVecd acc;
+
+    acc.linear() = newPoseKine.orientation.toMatrix3() * localLinAcc;
+    acc.angular() = newPoseKine.orientation.toMatrix3() * localAngAcc;
+    odometryRobot().accW(acc);
+    odometryRobot().forwardAcceleration();
   }
 }
 
@@ -554,29 +592,18 @@ void LeggedOdometryManager::removeContactLogEntries(mc_rtc::Logger & logger, con
 
 void LeggedOdometryManager::correctContactsRef()
 {
-  double prevKappa = kappa_;
-
-  if(resetContactsCorrection_)
-  {
-    kappa_ = 0.0;
-    for(auto & contact : maintainedContacts()) { contact->resetLifeTime(); }
-  }
-  // if the anchor point has not been computed yet, we compute it before the correction of the contact references.
-  getWorldRefAnchorPos();
   for(auto * mContact : maintainedContacts_)
   {
     // we store the pose of the contact before it is corrected
     mContact->worldRefKineBeforeCorrection_ = mContact->worldRefKine_;
 
+    mContact->newIncomingWorldRefKine_ = getCurrentContactKinematics(*mContact);
+
     // double tau = ctl_dt_ / (kappa_ * mContact->lifeTime());
     mContact->weightingCoeff((1 - lambdaInf_) * exp(-kappa_ * mContact->lifeTime()) + lambdaInf_);
 
-    const so::kine::Kinematics & newWorldKine = getCurrentContactKinematics(*mContact);
-
-    mContact->newIncomingWorldRefKine_ = newWorldKine;
-
     so::kine::Orientation Rtilde(so::Matrix3(mContact->worldRefKineBeforeCorrection_.orientation.toMatrix3().transpose()
-                                             * newWorldKine.orientation.toMatrix3()));
+                                             * mContact->newIncomingWorldRefKine_.orientation.toMatrix3()));
 
     so::Vector3 logRtilde =
         so::kine::skewSymmetricToRotationVector(Rtilde.toMatrix3() - Rtilde.toMatrix3().transpose());
@@ -586,12 +613,11 @@ void LeggedOdometryManager::correctContactsRef()
 
     mContact->worldRefKine_.position =
         mContact->worldRefKine_.position()
-        + mContact->weightingCoeff() * (newWorldKine.position() - mContact->worldRefKine_.position());
+        + mContact->weightingCoeff()
+              * (mContact->newIncomingWorldRefKine_.position() - mContact->worldRefKine_.position());
     if(odometryType_ == measurements::OdometryType::Flat) { mContact->worldRefKine_.position()(2) = 0.0; }
   }
 
-  kappa_ = prevKappa;
-  resetContactsCorrection_ = false;
   k_correct_ = k_data_;
 }
 
@@ -629,7 +655,11 @@ stateObservation::Vector3 & LeggedOdometryManager::getCurrentWorldAnchorPos(cons
 {
   if(k_data_ == k_est_) { mc_rtc::log::error_and_throw("Please call initLoop before this function"); }
 
-  if(!posUpdatable_) { return worldAnchorPos_; }
+  if(!posUpdatable_)
+  {
+    mc_rtc::log::warning("No contact detected, the anchor point will be unchanged.");
+    return worldAnchorPos_;
+  }
 
   bool linKineUpdatable = false;
 

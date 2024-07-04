@@ -451,6 +451,14 @@ public:
   /// see the documentation of the KineParams class).
   void run(const mc_control::MCController & ctl, KineParams & kineParams);
 
+  /// @brief Replaces the current pose of the odometry robot by the given one.
+  /// @details Also changes the reference pose of the contacts. Updates the velocity and acceleration with the new
+  /// orientation if required.
+  /// @param newPose New pose of the odometry robot.
+  /// @param updateVel Indicates if the velocity must be updated.
+  /// @param updateVel Indicates if the acceleration must be updated.
+  void replaceRobotPose(const sva::PTransformd & newPose, bool updateVel = false, bool updateAcc = false);
+
   /// @brief Gives the kinematics (position and linear velocity) of the anchor point in the desired frame.
   /// @details If the velocity of the target frame in the world frame is given, the velocity of the anchor point in the
   /// target frame will also be contained in the returned Kinematics object.
@@ -477,8 +485,6 @@ public:
   /// @param newOdometryType The string naming the new type of odometry to use.
   void setOdometryType(measurements::OdometryType newOdometryType);
 
-  /// @brief indicates that the contact references got reset so we must use only the measurement on this iteration
-  inline void resetContactsCorrection() noexcept { resetContactsCorrection_ = true; }
   inline void kappa(double kappa) noexcept { kappa_ = kappa; }
   inline void lambdaInf(double lambdaInf) noexcept { lambdaInf_ = lambdaInf; }
 
@@ -653,8 +659,6 @@ protected:
   // gain allowing for the contribution of the contact pose measurement into the reference pose even after a long
   // contact's lifetime.
   double lambdaInf_ = 0.02;
-  // indicates that the contact references got reset so we must use only the measurement on this iteration
-  bool resetContactsCorrection_ = false;
   // timestep used in the controller
   double ctl_dt_;
 
