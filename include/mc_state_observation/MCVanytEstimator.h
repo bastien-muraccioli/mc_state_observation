@@ -8,93 +8,6 @@
 
 namespace mc_state_observation
 {
-/// @brief Buffer containing all the variables necessary to use a-posteriori a delayed orientation measurement
-/// @details Given k the time of beginning of acquisition of the measurement (ex: the acquisition of the image used to
-/// get the orientation), we need to store the state at time k-1, the measurements at time k, and the state at time k
-/// that was obtained without the orientation measurement.
-struct DelayedOriMeasBufferedIter
-{
-  struct ContactInfos
-  {
-    /// @brief Buffer containing the measurements coming from the contact position.
-    struct ContactPosMeasurement
-    {
-      ContactPosMeasurement(stateObservation::Vector3 worldContactRefPos,
-                            stateObservation::Vector3 imuContactPos,
-                            double lambda,
-                            double gamma)
-      : worldContactRefPos_(worldContactRefPos), imuContactPos_(imuContactPos), lambda_(lambda), gamma_(gamma)
-      {
-      }
-
-    public:
-      stateObservation::Vector3 worldContactRefPos_;
-      stateObservation::Vector3 imuContactPos_;
-      double lambda_;
-      double gamma_;
-    };
-
-    struct ContactOriMeasurement
-    {
-      ContactOriMeasurement(stateObservation::kine::Orientation measuredOri, double gain)
-      : measuredOri_(measuredOri), gain_(gain)
-      {
-      }
-
-    public:
-      stateObservation::kine::Orientation measuredOri_;
-      double gain_;
-    };
-
-    ContactInfos(const ContactPosMeasurement & contactPosMeasurement,
-                 const ContactOriMeasurement & contactOriMeasurement,
-                 const stateObservation::kine::Kinematics & worldRefKine,
-                 const stateObservation::kine::Kinematics & worldRefKineBeforeCorrection)
-    : contactPosMeasurement_(contactPosMeasurement), contactOriMeasurement_(contactOriMeasurement),
-      worldRefKine_(worldRefKine), worldRefKineBeforeCorrection_(worldRefKineBeforeCorrection)
-    {
-    }
-
-    ContactPosMeasurement contactPosMeasurement_;
-    ContactOriMeasurement contactOriMeasurement_;
-    // reference of the contact in the world
-    stateObservation::kine::Kinematics worldRefKine_;
-    // reference of the contact in the world before correction
-    stateObservation::kine::Kinematics worldRefKineBeforeCorrection_;
-  };
-
-  /// @brief Buffer containing direct (non-delayed) orientation measurements.
-  struct OriDirectMeasurement
-  {
-    OriDirectMeasurement(stateObservation::kine::Orientation measuredOri, double gain)
-    : measuredOri_(measuredOri), gain_(gain)
-    {
-    }
-
-  public:
-    stateObservation::kine::Orientation measuredOri_;
-    double gain_;
-  };
-
-public:
-  // alpha: gain for the convergence of x1 at the initial iteration.
-  // beta: gain for the convergence of x2_prime at the initial iteration.
-  // rho: gain related to the convergence of x2 with respect of the orthogonality at the initial iteration.
-  std::array<double, 3> gains;
-  // state at time k-1
-  stateObservation::Vector initState_;
-  // measurements at time k
-  stateObservation::Vector initMeas_;
-  // list containing all the measurements coming from the contact positions.
-  std::forward_list<ContactInfos> contactInfos_;
-  // list containing all the direct (non-delayed) orientation measurements.
-  std::forward_list<OriDirectMeasurement> oriDirectMeasurements_;
-
-  // state at time k without the orientation measurement
-  stateObservation::Vector estWithoutOri_;
-
-  int iter_;
-};
 
 struct MCVanytEstimator : public mc_observers::Observer
 {
@@ -281,9 +194,6 @@ protected:
   bool asBackup_ = false;
   // Buffer containing the estimated pose of the floating base in the world over the whole backup interval.
   boost::circular_buffer<stateObservation::kine::Kinematics> backupFbKinematics_;
-
-  // Buffer containing the estimated pose of the floating base in the world over the whole backup interval.
-  boost::circular_buffer<DelayedOriMeasBufferedIter> delayedOriMeasBuffer_;
 
   /* Debug variables */
   // "measured" local linear velocity of the IMU

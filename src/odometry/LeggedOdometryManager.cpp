@@ -336,6 +336,12 @@ void LeggedOdometryManager::replaceRobotPose(const sva::PTransformd & newPose, b
   {
     contact->worldRefKineBeforeCorrection_ = deltaKine * contact->worldRefKineBeforeCorrection_;
     contact->worldRefKine_ = deltaKine * contact->worldRefKine_;
+
+    if(odometryType_ == measurements::OdometryType::Flat)
+    {
+      contact->worldRefKineBeforeCorrection_.position()(2) = 0.0;
+      contact->worldRefKine_.position()(2) = 0.0;
+    }
   }
 
   // we impose the re-computation of the anchor point as the contact references changed.
