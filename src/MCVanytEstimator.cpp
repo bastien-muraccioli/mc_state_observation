@@ -236,8 +236,6 @@ void MCVanytEstimator::updateNecessaryFramesOdom(const mc_control::MCController 
 
 void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & odomRobot)
 {
-  DelayedOriMeasBufferedIter delayedOriBufferIter;
-
   if(ctl.realRobot(robot_).hasBodySensor("VisualGyroSensor"))
   {
     auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
