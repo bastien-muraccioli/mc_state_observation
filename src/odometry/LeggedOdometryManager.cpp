@@ -334,8 +334,12 @@ void LeggedOdometryManager::replaceRobotPose(const sva::PTransformd & newPose, b
 
   for(auto & contact : maintainedContacts())
   {
-    contact->worldRefKineBeforeCorrection_ = deltaKine * contact->worldRefKineBeforeCorrection_;
-    contact->worldRefKine_ = deltaKine * contact->worldRefKine_;
+    so::kine::Kinematics fbWorldRefKine = prevPoseKine.getInverse() * contact->worldRefKine_;
+    so::kine::Kinematics fbWorldRefKineBeforeCorrection =
+        prevPoseKine.getInverse() * contact->worldRefKineBeforeCorrection_;
+
+    contact->worldRefKine_ = newPoseKine * fbWorldRefKine;
+    contact->worldRefKineBeforeCorrection_ = newPoseKine * fbWorldRefKineBeforeCorrection;
 
     if(odometryType_ == measurements::OdometryType::Flat)
     {

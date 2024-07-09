@@ -11,6 +11,15 @@ namespace mc_state_observation
 
 struct MCVanytEstimator : public mc_observers::Observer
 {
+  /// @brief Structure containing information about delayed orientation measurements.
+  struct DelayedOriMeasurement
+  {
+    stateObservation::Matrix3 meas_;
+    double gain_;
+    stateObservation::kine::Kinematics updatedPoseWithoutMeas_;
+    stateObservation::kine::Kinematics updatedPoseWithMeas_;
+  };
+
   // we define MCKineticsObserver as a friend as it can instantiate this observer as a backup
   friend struct MCKineticsObserver;
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -69,12 +78,14 @@ public:
   /// @brief Re-estimates the current state using a delayed orientation measurement.
   /// @details Let us denote k the time on which the orientation measurement started to be computed, but is still not
   /// available. We replay the estimation at time k using the buffered state and measurements, this time using the newly
-  /// available orientation measurement. We then apply the transformation between the time k+1 and the current
+  /// available orientation measurement. We then apply the transformation between the pose at time k+1 and the current
   /// iteration.
+  /// @param ctl The delayed orientation measurement.
   /// @param delayedOriMeas The delayed orientation measurement.
   /// @param delayIters Number of iterations corresponding to the measurement delay.
   /// @param delayedOriGain The gain associated to the delayed orientation within the filter.
-  void delayedOriMeasurementHandler(const stateObservation::Matrix3 & delayedOriMeas,
+  void delayedOriMeasurementHandler(const mc_control::MCController & ctl,
+                                    const stateObservation::Matrix3 & delayedOriMeas,
                                     unsigned long delayIters,
                                     double delayedOriGain);
 
@@ -105,6 +116,22 @@ protected:
   void addToGUI(const mc_control::MCController &,
                 mc_rtc::gui::StateBuilder &,
                 const std::vector<std::string> & /* category */) override;
+
+  /*! \brief Add logs related to delayed orientation measurements
+   * @param logger
+   * @param category Category in which to log this observer
+   * @param delayedMeas delayed measurement
+   */
+  void addDelayedOriMeasLogs(mc_rtc::Logger &, const std::string & category, const DelayedOriMeasurement & delayedMeas);
+
+  /*! \brief Remove the logs related to delayed orientation measurements
+   * @param logger
+   * @param category Category in which to log this observer
+   * @param delayedMeas delayed measurement
+   */
+  void removeDelayedOriMeasLogs(mc_rtc::Logger &,
+                                const std::string & category,
+                                const DelayedOriMeasurement & delayedMeas);
 
 protected:
   // name of the observer
@@ -172,7 +199,6 @@ protected:
   /* Floating base's kinematics */
   Eigen::Matrix3d R_0_fb_; // estimated orientation of the floating base in the world frame
   sva::PTransformd poseW_; ///< Estimated pose of the floating-base in world frame */
-  sva::PTransformd prevPoseW_; ///< Estimated pose of the floating-base in world frame */
   sva::MotionVecd velW_; ///< Estimated velocity of the floating-base in world frame */
 
   // anchor frame's variables
@@ -209,7 +235,10 @@ protected:
   double mu_contacts_ = 2;
   double mu_gyroscope_ = 2;
   double lambda_contacts_ = 2;
-  double gamma_contacts_ = 2;
+  double gamma_contacts_ = 1;
+
+  // delayed IMU orientation measurement
+  DelayedOriMeasurement delayedOriMeas_;
 };
 
 } // namespace mc_state_observation

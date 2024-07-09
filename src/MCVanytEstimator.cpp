@@ -152,7 +152,6 @@ void MCVanytEstimator::reset(const mc_control::MCController & ctl)
   // reset of the floating base kinematics
   poseW_ = realRobot.posW();
   velW_ = realRobot.velW();
-  prevPoseW_ = sva::PTransformd::Identity();
   velW_ = sva::MotionVecd::Zero();
 
   // initialization of the estimator
@@ -241,11 +240,13 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
 
   if(ctl.realRobot(robot_).hasBodySensor("VisualGyroSensor"))
   {
-    const mc_rbdyn::BodySensor & visualGyro = ctl.realRobot(robot_).bodySensor("VisualGyroSensor");
+    auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
 
+    removeDelayedOriMeasLogs(logger, observerName_, delayedOriMeas_);
     if(ctl.datastore().has("VisualGyroSensorDelay"))
     {
-      delayedOriMeasurementHandler(visualGyro.orientation().toRotationMatrix(),
+      const mc_rbdyn::BodySensor & visualGyro = ctl.realRobot(robot_).bodySensor("VisualGyroSensor");
+      delayedOriMeasurementHandler(ctl, visualGyro.orientation().toRotationMatrix(),
                                    ctl.datastore().get<unsigned long>("VisualGyroSensorDelay"), mu_gyroscope_);
     }
   }
@@ -302,6 +303,7 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
               * (contactFbKine.orientation.toMatrix3().transpose() * contactFbKine.position());
 
     measuredOri_ = worldImuKine_fromContactRef.orientation.toMatrix3();
+
     estimator_.addOrientationMeasurement(measuredOri_, mu_contacts_ * mContact->lambda());
     estimator_.addContactPosMeasurement(worldContactRefKine.position(), imuContactPos, lambda_contacts_,
                                         gamma_contacts_);
@@ -322,7 +324,7 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
   // retrieving the estimated position
   const so::Vector3 worldImuPos = xk_.segment<3>(6);
 
-  so::Vector3 worldFbPos = worldImuPos + estimatedRotationIMU_ * fbImuKine_.getInverse().position();
+  so::Vector3 worldFbPos = worldImuPos - R_0_fb_ * fbImuKine_.position();
 
   odometryManager_.run(ctl, odometry::LeggedOdometryManager::KineParams(poseW_).attitude(R_0_fb_).position(worldFbPos));
 
@@ -421,14 +423,19 @@ const so::kine::Kinematics MCVanytEstimator::backupFb(
   return koBackupFbKinematics->back();
 }
 
-void MCVanytEstimator::delayedOriMeasurementHandler(const so::Matrix3 & delayedOriMeas,
+void MCVanytEstimator::delayedOriMeasurementHandler(const mc_control::MCController & ctl,
+                                                    const so::Matrix3 & meas,
                                                     unsigned long delay,
-                                                    double delayedOriGain)
+                                                    double gain)
 {
   const auto & iterationsBuffer = estimator_.getIterationsBuffer();
   // Let us denote k the time on which the orientation measurement started to be computed, but is still not available.
   // We replay the estimation at time k using the buffered state and measurements, this time using the newly available
   // orientation measurement. We then apply the transformation between the time k+1 and the current iteration.
+
+  delayedOriMeas_.meas_ = meas;
+  delayedOriMeas_.gain_ = gain;
+  delayedOriMeas_.updatedPoseWithoutMeas_ = iterationsBuffer.at(delay - 1).updatedPose_;
 
   mc_rtc::log::info("Received an orientation measurement with a delay of " + std::to_string(delay) + " iterations");
   if(iterationsBuffer.empty())
@@ -444,12 +451,20 @@ void MCVanytEstimator::delayedOriMeasurementHandler(const so::Matrix3 & delayedO
   }
 
   // we replay the estimation made by the filter but this time with the orientation measurement.
-  so::Vector replayedEstWithOri = estimator_.replayIterationWithDelayedOri(delay, delayedOriMeas, delayedOriGain);
+  so::Vector replayedWorldImuEstWithOri = estimator_.replayIterationsWithDelayedOri(delay, meas, gain);
+  so::kine::Kinematics replayedWorldImuKineEst(replayedWorldImuEstWithOri.tail(7), so::kine::Kinematics::Flags::pose);
 
-  // we replace the pose of the odometry robot by the one we just computed.
-  so::kine::Kinematics replayedEstKine(replayedEstWithOri.tail(7), so::kine::Kinematics::Flags::pose);
-  sva::PTransformd newWorldPose(replayedEstKine.orientation.toMatrix3().transpose(), replayedEstKine.position());
-  odometryManager_.replaceRobotPose(newWorldPose);
+  // we get the new kinematics of the floating base in the world frame from the ones of the IMU
+  so::Matrix3 replayedWorldFbOri =
+      replayedWorldImuKineEst.orientation.toMatrix3() * fbImuKine_.orientation.toMatrix3().transpose();
+  so::Vector3 replayedWorldFbPos = replayedWorldImuKineEst.position() - replayedWorldFbOri * fbImuKine_.position();
+
+  sva::PTransformd newWorldFbPose_(replayedWorldFbOri.transpose(), replayedWorldFbPos);
+  odometryManager_.replaceRobotPose(newWorldFbPose_);
+
+  auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
+  delayedOriMeas_.updatedPoseWithMeas_ = iterationsBuffer.at(delay - 1).updatedPose_;
+  addDelayedOriMeasLogs(logger, observerName_, delayedOriMeas_);
 }
 
 void MCVanytEstimator::setOdometryType(OdometryType newOdometryType)
@@ -461,6 +476,41 @@ void MCVanytEstimator::setOdometryType(OdometryType newOdometryType)
   }
 
   odometryManager_.setOdometryType(newOdometryType);
+}
+
+void MCVanytEstimator::addDelayedOriMeasLogs(mc_rtc::Logger & logger,
+                                             const std::string & category,
+                                             const DelayedOriMeasurement & delayedMeas)
+{
+  logger.addLogEntry(category + "_delayedOriMeas_" + "meas", &delayedMeas,
+                     [&delayedMeas]() -> Eigen::Quaterniond
+                     {
+                       std::cout << std::endl
+                                 << "meas_: " << Eigen::Quaterniond(delayedMeas.meas_).coeffs() << std::endl;
+                       return Eigen::Quaterniond(delayedMeas.meas_);
+                     });
+  logger.addLogEntry(category + "_delayedOriMeas_" + "gain", &delayedMeas,
+                     [&delayedMeas]() -> double
+                     {
+                       std::cout << std::endl << "gain: " << delayedMeas.gain_ << std::endl;
+                       return delayedMeas.gain_;
+                     });
+  logger.addLogEntry(category + "_delayedOriMeas_" + "delayedoriRecieved", &delayedMeas,
+                     []() -> std::string { return "received"; });
+
+  conversions::kinematics::addToLogger(logger, delayedMeas.updatedPoseWithoutMeas_,
+                                       category + "_delayedOriMeas_" + "updatedPoseWithoutMeas");
+  conversions::kinematics::addToLogger(logger, delayedMeas.updatedPoseWithMeas_,
+                                       category + "_delayedOriMeas_" + "updatedPoseWithMeas");
+}
+
+void MCVanytEstimator::removeDelayedOriMeasLogs(mc_rtc::Logger & logger,
+                                                const std::string &,
+                                                const DelayedOriMeasurement & delayedMeas)
+{
+  logger.removeLogEntries(&delayedMeas);
+  conversions::kinematics::removeFromLogger(logger, delayedMeas.updatedPoseWithMeas_);
+  conversions::kinematics::removeFromLogger(logger, delayedMeas.updatedPoseWithoutMeas_);
 }
 
 void MCVanytEstimator::addToLogger(const mc_control::MCController & ctl,
