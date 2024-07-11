@@ -18,85 +18,97 @@ MocapVisualizer::MocapVisualizer(const std::string & type, double dt) : mc_obser
 
 void MocapVisualizer::configure(const mc_control::MCController & ctl, const mc_rtc::Configuration & config)
 {
-  robot_ = config("robot", ctl.robot().name());
-  csvPath_ = "/home/arnaud/Documents/mocap/resampledMocapData.csv";
+  firstRun_ = config("firstRun");
 
-  double contactDetectionPropThreshold = config("contactDetectionPropThreshold", 0.11);
-
-  using ContactsManager = measurements::ContactsManager<MocapContact>;
-
-  mocapBodyName_ = static_cast<std::string>(config("mocapBodyName"));
-
-  std::string contactsDetectionString = static_cast<std::string>(config("contactsDetection"));
-  ContactsManager::ContactsDetection contactsDetectionMethod =
-      contactsManager_.stringToContactsDetection(contactsDetectionString, observerName_);
-
-  if(contactsDetectionMethod == ContactsManager::ContactsDetection::Surfaces)
+  if(!firstRun_)
   {
-    std::vector<std::string> surfacesForContactDetection =
-        config("surfacesForContactDetection", std::vector<std::string>());
+    robot_ = config("robot", ctl.robot().name());
 
-    measurements::ContactsManagerSurfacesConfiguration contactsConfig(observerName_, surfacesForContactDetection);
+    mocapBodyName_ = static_cast<std::string>(config("mocapBodyName"));
 
-    contactsConfig.contactDetectionPropThreshold(contactDetectionPropThreshold).verbose(true);
+    csvPath_ = "/home/arnaud/Documents/mocap/realignedMocapLimbData.csv";
 
-    contactsManager_.init(ctl, robot_, contactsConfig);
-  }
-  if(contactsDetectionMethod == ContactsManager::ContactsDetection::Sensors)
-  {
-    measurements::ContactsManagerSensorsConfiguration contactsConfig(observerName_);
-    contactsConfig.contactDetectionPropThreshold(contactDetectionPropThreshold).verbose(true);
-    contactsManager_.init(ctl, robot_, contactsConfig);
-  }
-  if(contactsDetectionMethod == ContactsManager::ContactsDetection::Solver)
-  {
-    measurements::ContactsManagerSolverConfiguration contactsConfig(observerName_);
-    contactsConfig.contactDetectionPropThreshold(contactDetectionPropThreshold).verbose(true);
-    contactsManager_.init(ctl, robot_, contactsConfig);
+    double contactDetectionPropThreshold = config("contactDetectionPropThreshold", 0.11);
+
+    using ContactsManager = measurements::ContactsManager<MocapContact>;
+
+    std::string contactsDetectionString = static_cast<std::string>(config("contactsDetection"));
+    ContactsManager::ContactsDetection contactsDetectionMethod =
+        contactsManager_.stringToContactsDetection(contactsDetectionString, observerName_);
+
+    if(contactsDetectionMethod == ContactsManager::ContactsDetection::Surfaces)
+    {
+      std::vector<std::string> surfacesForContactDetection =
+          config("surfacesForContactDetection", std::vector<std::string>());
+
+      measurements::ContactsManagerSurfacesConfiguration contactsConfig(observerName_, surfacesForContactDetection);
+
+      contactsConfig.contactDetectionPropThreshold(contactDetectionPropThreshold).verbose(true);
+
+      contactsManager_.init(ctl, robot_, contactsConfig);
+    }
+    if(contactsDetectionMethod == ContactsManager::ContactsDetection::Sensors)
+    {
+      measurements::ContactsManagerSensorsConfiguration contactsConfig(observerName_);
+      contactsConfig.contactDetectionPropThreshold(contactDetectionPropThreshold).verbose(true);
+      contactsManager_.init(ctl, robot_, contactsConfig);
+    }
+    if(contactsDetectionMethod == ContactsManager::ContactsDetection::Solver)
+    {
+      measurements::ContactsManagerSolverConfiguration contactsConfig(observerName_);
+      contactsConfig.contactDetectionPropThreshold(contactDetectionPropThreshold).verbose(true);
+      contactsManager_.init(ctl, robot_, contactsConfig);
+    }
   }
 }
 
 void MocapVisualizer::reset(const mc_control::MCController & ctl)
 {
-  const auto & robot = ctl.robot(robot_);
-  const auto & realRobot = ctl.realRobot(robot_);
+  if(!firstRun_)
+  {
+    const auto & robot = ctl.robot(robot_);
+    const auto & realRobot = ctl.realRobot(robot_);
 
-  my_robots_ = mc_rbdyn::Robots::make();
-  my_robots_->robotCopy(robot, robot.name());
-  ctl.gui()->addElement(
-      {"Robots"},
-      mc_rtc::gui::Robot("MocapVisualizer", [this]() -> const mc_rbdyn::Robot & { return my_robots_->robot(); }));
+    my_robots_ = mc_rbdyn::Robots::make();
+    my_robots_->robotCopy(robot, robot.name());
+    ctl.gui()->addElement(
+        {"Robots"},
+        mc_rtc::gui::Robot("MocapVisualizer", [this]() -> const mc_rbdyn::Robot & { return my_robots_->robot(); }));
 
-  initBodyKine_ = conversions::kinematics::fromSva(realRobot.bodyPosW(mocapBodyName_),
-                                                   stateObservation::kine::Kinematics::Flags::pose);
-  currentWorldBodyKine_ = initBodyKine_;
+    initBodyKine_ = conversions::kinematics::fromSva(realRobot.bodyPosW(mocapBodyName_),
+                                                     stateObservation::kine::Kinematics::Flags::pose);
+    currentWorldBodyKine_ = initBodyKine_;
 
-  extractTransformFromMocap();
+    extractTransformFromMocap();
+  }
 }
 
 bool MocapVisualizer::run(const mc_control::MCController & ctl)
 {
-  const auto & realRobot = ctl.realRobot(robot_);
+  if(!firstRun_)
+  {
+    const auto & realRobot = ctl.realRobot(robot_);
 
-  currentWorldBodyKine_ = initBodyKine_ * mocapMappedData_.at(currentIter_);
+    stateObservation::kine::Kinematics worldFbKine_RealRobot =
+        conversions::kinematics::fromSva(realRobot.posW(), stateObservation::kine::Kinematics::Flags::pose);
+    stateObservation::kine::Kinematics worldBodyKineRealRobot = conversions::kinematics::fromSva(
+        realRobot.bodyPosW(mocapBodyName_), stateObservation::kine::Kinematics::Flags::pose);
+    bodyFbKine_ = worldBodyKineRealRobot.getInverse() * worldFbKine_RealRobot;
 
-  stateObservation::kine::Kinematics worldFbKineRealRobot =
-      conversions::kinematics::fromSva(realRobot.posW(), stateObservation::kine::Kinematics::Flags::pose);
-  stateObservation::kine::Kinematics worldBodyKineRealRobot = conversions::kinematics::fromSva(
-      realRobot.bodyPosW(mocapBodyName_), stateObservation::kine::Kinematics::Flags::pose);
-  bodyFbKine_ = worldBodyKineRealRobot.getInverse() * worldFbKineRealRobot;
+    currentWorldBodyKine_ = mocapTransforms_.at(currentIter_) * initBodyKine_;
 
-  stateObservation::kine::Kinematics worldFbKine = currentWorldBodyKine_ * bodyFbKine_;
+    worldFbKine_ = currentWorldBodyKine_ * bodyFbKine_;
 
-  X_0_fb_.translation() = worldFbKine.position();
-  X_0_fb_.rotation() = worldFbKine.orientation.toMatrix3().transpose();
+    X_0_fb_.translation() = worldFbKine_.position();
+    X_0_fb_.rotation() = worldFbKine_.orientation.toMatrix3().transpose();
 
-  my_robots_->robot().mbc().q = ctl.realRobot().mbc().q;
-  update(my_robots_->robot());
-  updateContacts(ctl);
+    my_robots_->robot().mbc().q = ctl.realRobot().mbc().q;
+    update(my_robots_->robot());
+    updateContacts(ctl);
 
-  currentIter_++;
-  currentMocapDataTime_ += ctl.timeStep;
+    currentIter_++;
+    currentMocapDataTime_ += ctl.timeStep;
+  }
 
   return true;
 }
@@ -169,14 +181,35 @@ void MocapVisualizer::addToLogger(const mc_control::MCController &,
                                   mc_rtc::Logger & logger,
                                   const std::string & category)
 {
-  logger.addLogEntry(category + "_mocap_fb_posW", [this]() -> const sva::PTransformd & { return X_0_fb_; });
-  logger.addLogEntry(category + "_mocap_fb_yaw",
-                     [this]() -> double
-                     { return -stateObservation::kine::rotationMatrixToYawAxisAgnostic(X_0_fb_.rotation()); });
-  logger.addLogEntry(category + "_mocap_bodyFbPose_ori",
-                     [this]() -> const Eigen::Quaterniond { return bodyFbKine_.orientation.toQuaternion().inverse(); });
-  logger.addLogEntry(category + "_mocap_bodyFbPose_pos",
-                     [this]() -> const Eigen::Vector3d & { return bodyFbKine_.position(); });
+  if(!firstRun_)
+  {
+    logger.addLogEntry(category + "_mocap_worldHead_ori",
+                       [this]() -> const Eigen::Quaterniond
+                       { return mocapHeadKine_.at(currentIter_ - 1).orientation.toQuaternion().inverse(); });
+    logger.addLogEntry(category + "_mocap_worldHead_pos",
+                       [this]() { return mocapHeadKine_.at(currentIter_ - 1).position(); });
+
+    logger.addLogEntry(category + "_worldFb_ori",
+                       [this]() -> const Eigen::Quaterniond
+                       { return worldFbKine_.orientation.toQuaternion().inverse(); });
+    logger.addLogEntry(category + "_worldFb_pos", [this]() { return worldFbKine_.position(); });
+
+    logger.addLogEntry(category + "_mocap_headTransformation_ori",
+                       [this]() -> const Eigen::Quaterniond
+                       { return mocapTransforms_.at(currentIter_ - 1).orientation.toQuaternion().inverse(); });
+    logger.addLogEntry(category + "_mocap_headTransformation_pos",
+                       [this]() { return mocapTransforms_.at(currentIter_ - 1).position(); });
+    logger.addLogEntry(category + "_mocap_fbPose_posW", [this]() -> const sva::PTransformd & { return X_0_fb_; });
+    logger.addLogEntry(category + "_mocap_fbPose_yaw",
+                       [this]() -> double
+                       { return -stateObservation::kine::rotationMatrixToYawAxisAgnostic(X_0_fb_.rotation()); });
+
+    logger.addLogEntry(category + "_mocap_bodyFbPose_ori",
+                       [this]() -> const Eigen::Quaterniond
+                       { return bodyFbKine_.orientation.toQuaternion().inverse(); });
+    logger.addLogEntry(category + "_mocap_bodyFbPose_pos",
+                       [this]() -> const Eigen::Vector3d & { return bodyFbKine_.position(); });
+  }
 }
 
 void MocapVisualizer::addContactsLogs(MocapContact & contact, mc_rtc::Logger & logger)
@@ -216,10 +249,11 @@ void MocapVisualizer::extractTransformFromMocap()
 
   std::fstream file(fname, std::ios::in);
 
+  stateObservation::kine::Kinematics currentMocapKine;
+
   if(file.is_open())
   {
     int i = 0;
-    stateObservation::kine::Kinematics currentKine;
 
     // Ignore the first line containing headers
     std::getline(file, line);
@@ -231,9 +265,9 @@ void MocapVisualizer::extractTransformFromMocap()
 
       while(getline(str, word, ',')) row.push_back(word);
 
-      currentKine.position.set()(0) = std::stod(row.at(1));
-      currentKine.position.set()(1) = std::stod(row.at(2));
-      currentKine.position.set()(2) = std::stod(row.at(3));
+      currentMocapKine.position.set()(0) = std::stod(row.at(1));
+      currentMocapKine.position.set()(1) = std::stod(row.at(2));
+      currentMocapKine.position.set()(2) = std::stod(row.at(3));
 
       stateObservation::Vector4 quat;
 
@@ -242,17 +276,19 @@ void MocapVisualizer::extractTransformFromMocap()
       quat(2) = std::stod(row.at(5)); // y
       quat(3) = std::stod(row.at(6)); // z
 
-      currentKine.orientation = Eigen::Quaterniond(quat(0), quat(1), quat(2), quat(3)).normalized();
+      currentMocapKine.orientation = Eigen::Quaterniond(quat(0), quat(1), quat(2), quat(3)).normalized();
 
-      mocapMappedData_.insert(std::make_pair(i, currentKine));
+      mocapTransforms_.insert(std::make_pair(i, currentMocapKine));
+      mocapHeadKine_.insert(std::make_pair(i, currentMocapKine));
 
       i++;
     }
   }
   else { mc_rtc::log::error_and_throw<std::runtime_error>("Could not open the file\n"); }
 
-  stateObservation::kine::Kinematics initKineT = mocapMappedData_.at(0).getInverse();
-  for(int j = 0; j < mocapMappedData_.size(); j++) { mocapMappedData_.at(j) = initKineT * mocapMappedData_.at(j); }
+  stateObservation::kine::Kinematics initKineT = mocapTransforms_.at(0).getInverse();
+  std::cout << std::endl << "size: " << mocapTransforms_.size() << std::endl;
+  for(int j = 0; j < mocapTransforms_.size(); j++) { mocapTransforms_.at(j) = mocapTransforms_.at(j) * initKineT; }
 }
 
 } // namespace mc_state_observation

@@ -98,7 +98,12 @@ private:
   stateObservation::kine::Kinematics initBodyKine_;
   stateObservation::kine::Kinematics currentWorldBodyKine_;
   stateObservation::kine::Kinematics bodyFbKine_;
+
+  stateObservation::kine::Kinematics worldFbKine_;
+
   sva::PTransformd X_0_fb_;
+
+  bool firstRun_ = true;
 
   double currentMocapDataTime_ = 0.0;
   int currentIter_ = 0;
@@ -108,7 +113,8 @@ private:
   /* custom list of robots to display */
   std::shared_ptr<mc_rbdyn::Robots> my_robots_;
 
-  std::unordered_map<int, stateObservation::kine::Kinematics> mocapMappedData_;
+  std::unordered_map<int, stateObservation::kine::Kinematics> mocapHeadKine_;
+  std::unordered_map<int, stateObservation::kine::Kinematics> mocapTransforms_;
 
   measurements::ContactsManager<MocapContact> contactsManager_;
 };
