@@ -95,8 +95,8 @@ private:
 
   std::string csvPath_;
 
-  stateObservation::kine::Kinematics initBodyKine_;
-  stateObservation::kine::Kinematics currentWorldBodyKine_;
+  stateObservation::kine::Kinematics init_worldBodyKine_;
+  stateObservation::kine::Kinematics current_WorldBodyKine_;
   stateObservation::kine::Kinematics bodyFbKine_;
 
   stateObservation::kine::Kinematics worldFbKine_;
@@ -113,8 +113,11 @@ private:
   /* custom list of robots to display */
   std::shared_ptr<mc_rbdyn::Robots> my_robots_;
 
-  std::unordered_map<int, stateObservation::kine::Kinematics> mocapHeadKine_;
+  std::unordered_map<int, stateObservation::kine::Kinematics> mocap_wordBodyKine_;
   std::unordered_map<int, stateObservation::kine::Kinematics> mocapTransforms_;
+
+  bool overlappingDatas_;
+  std::unordered_map<int, int> overlapTime_;
 
   measurements::ContactsManager<MocapContact> contactsManager_;
 };

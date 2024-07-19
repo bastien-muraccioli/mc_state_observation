@@ -25,8 +25,9 @@ void MocapVisualizer::configure(const mc_control::MCController & ctl, const mc_r
     robot_ = config("robot", ctl.robot().name());
 
     mocapBodyName_ = static_cast<std::string>(config("mocapBodyName"));
+    // csvPath_ = static_cast<std::string>(config("csvPath"));
 
-    csvPath_ = "/home/arnaud/Documents/mocap/realignedMocapLimbData.csv";
+    csvPath_ = "/home/arnaud/devel/src/MocapAligner/output_data/resultMocapLimbData.csv";
 
     double contactDetectionPropThreshold = config("contactDetectionPropThreshold", 0.11);
 
@@ -75,11 +76,9 @@ void MocapVisualizer::reset(const mc_control::MCController & ctl)
         {"Robots"},
         mc_rtc::gui::Robot("MocapVisualizer", [this]() -> const mc_rbdyn::Robot & { return my_robots_->robot(); }));
 
-    initBodyKine_ = conversions::kinematics::fromSva(realRobot.bodyPosW(mocapBodyName_),
-                                                     stateObservation::kine::Kinematics::Flags::pose);
-    currentWorldBodyKine_ = initBodyKine_;
-
     extractTransformFromMocap();
+
+    current_WorldBodyKine_ = init_worldBodyKine_;
   }
 }
 
@@ -95,9 +94,9 @@ bool MocapVisualizer::run(const mc_control::MCController & ctl)
         realRobot.bodyPosW(mocapBodyName_), stateObservation::kine::Kinematics::Flags::pose);
     bodyFbKine_ = worldBodyKineRealRobot.getInverse() * worldFbKine_RealRobot;
 
-    currentWorldBodyKine_ = mocapTransforms_.at(currentIter_) * initBodyKine_;
+    current_WorldBodyKine_ = mocapTransforms_.at(currentIter_) * init_worldBodyKine_;
 
-    worldFbKine_ = currentWorldBodyKine_ * bodyFbKine_;
+    worldFbKine_ = current_WorldBodyKine_ * bodyFbKine_;
 
     X_0_fb_.translation() = worldFbKine_.position();
     X_0_fb_.rotation() = worldFbKine_.orientation.toMatrix3().transpose();
@@ -106,6 +105,7 @@ bool MocapVisualizer::run(const mc_control::MCController & ctl)
     update(my_robots_->robot());
     updateContacts(ctl);
 
+    overlappingDatas_ = overlapTime_.at(currentIter_) == 1 ? true : false;
     currentIter_++;
     currentMocapDataTime_ += ctl.timeStep;
   }
@@ -183,21 +183,21 @@ void MocapVisualizer::addToLogger(const mc_control::MCController &,
 {
   if(!firstRun_)
   {
-    logger.addLogEntry(category + "_mocap_worldHead_ori",
+    logger.addLogEntry(category + "_mocap_worldBody_ori",
                        [this]() -> const Eigen::Quaterniond
-                       { return mocapHeadKine_.at(currentIter_ - 1).orientation.toQuaternion().inverse(); });
-    logger.addLogEntry(category + "_mocap_worldHead_pos",
-                       [this]() { return mocapHeadKine_.at(currentIter_ - 1).position(); });
+                       { return mocap_wordBodyKine_.at(currentIter_ - 1).orientation.toQuaternion().inverse(); });
+    logger.addLogEntry(category + "_mocap_worldBody_pos",
+                       [this]() { return mocap_wordBodyKine_.at(currentIter_ - 1).position(); });
 
     logger.addLogEntry(category + "_worldFb_ori",
                        [this]() -> const Eigen::Quaterniond
                        { return worldFbKine_.orientation.toQuaternion().inverse(); });
     logger.addLogEntry(category + "_worldFb_pos", [this]() { return worldFbKine_.position(); });
 
-    logger.addLogEntry(category + "_mocap_headTransformation_ori",
+    logger.addLogEntry(category + "_mocap_BodyTransformation_ori",
                        [this]() -> const Eigen::Quaterniond
                        { return mocapTransforms_.at(currentIter_ - 1).orientation.toQuaternion().inverse(); });
-    logger.addLogEntry(category + "_mocap_headTransformation_pos",
+    logger.addLogEntry(category + "_mocap_BodyTransformation_pos",
                        [this]() { return mocapTransforms_.at(currentIter_ - 1).position(); });
     logger.addLogEntry(category + "_mocap_fbPose_posW", [this]() -> const sva::PTransformd & { return X_0_fb_; });
     logger.addLogEntry(category + "_mocap_fbPose_yaw",
@@ -209,6 +209,9 @@ void MocapVisualizer::addToLogger(const mc_control::MCController &,
                        { return bodyFbKine_.orientation.toQuaternion().inverse(); });
     logger.addLogEntry(category + "_mocap_bodyFbPose_pos",
                        [this]() -> const Eigen::Vector3d & { return bodyFbKine_.position(); });
+    logger.addLogEntry(category + "_mocap_datasOverlapping",
+                       [this]() -> std::string
+                       { return overlappingDatas_ == 1 ? "Datas overlap" : "Datas not overlapping"; });
   }
 }
 
@@ -249,13 +252,13 @@ void MocapVisualizer::extractTransformFromMocap()
 
   std::fstream file(fname, std::ios::in);
 
-  stateObservation::kine::Kinematics currentMocapKine;
+  stateObservation::kine::Kinematics current_worldBodyKine_mocap;
 
   if(file.is_open())
   {
     int i = 0;
 
-    // Ignore the first line containing headers
+    // Ignore the first line containing Bodyers
     std::getline(file, line);
 
     while(getline(file, line))
@@ -265,9 +268,9 @@ void MocapVisualizer::extractTransformFromMocap()
 
       while(getline(str, word, ',')) row.push_back(word);
 
-      currentMocapKine.position.set()(0) = std::stod(row.at(1));
-      currentMocapKine.position.set()(1) = std::stod(row.at(2));
-      currentMocapKine.position.set()(2) = std::stod(row.at(3));
+      current_worldBodyKine_mocap.position.set()(0) = std::stod(row.at(1));
+      current_worldBodyKine_mocap.position.set()(1) = std::stod(row.at(2));
+      current_worldBodyKine_mocap.position.set()(2) = std::stod(row.at(3));
 
       stateObservation::Vector4 quat;
 
@@ -276,18 +279,20 @@ void MocapVisualizer::extractTransformFromMocap()
       quat(2) = std::stod(row.at(5)); // y
       quat(3) = std::stod(row.at(6)); // z
 
-      currentMocapKine.orientation = Eigen::Quaterniond(quat(0), quat(1), quat(2), quat(3)).normalized();
+      current_worldBodyKine_mocap.orientation = Eigen::Quaterniond(quat(0), quat(1), quat(2), quat(3)).normalized();
 
-      mocapTransforms_.insert(std::make_pair(i, currentMocapKine));
-      mocapHeadKine_.insert(std::make_pair(i, currentMocapKine));
+      mocapTransforms_.insert(std::make_pair(i, current_worldBodyKine_mocap));
+      mocap_wordBodyKine_.insert(std::make_pair(i, current_worldBodyKine_mocap));
+      overlapTime_.insert(std::make_pair(i, std::stoi(row.at(8))));
 
       i++;
     }
   }
-  else { mc_rtc::log::error_and_throw<std::runtime_error>("Could not open the file\n"); }
+  else { mc_rtc::log::error_and_throw<std::runtime_error>("Could not open the resulting mocap data file\n"); }
 
-  stateObservation::kine::Kinematics initKineT = mocapTransforms_.at(0).getInverse();
-  std::cout << std::endl << "size: " << mocapTransforms_.size() << std::endl;
+  init_worldBodyKine_ = mocap_wordBodyKine_.at(0);
+  stateObservation::kine::Kinematics initKineT = init_worldBodyKine_.getInverse();
+
   for(int j = 0; j < mocapTransforms_.size(); j++) { mocapTransforms_.at(j) = mocapTransforms_.at(j) * initKineT; }
 }
 
