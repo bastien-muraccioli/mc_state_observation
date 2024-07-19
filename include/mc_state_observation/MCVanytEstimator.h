@@ -89,6 +89,8 @@ public:
                                     unsigned long delayIters,
                                     double delayedOriGain);
 
+  inline const odometry::LeggedOdometryManager & odometryManager() { return odometryManager_; }
+
 protected:
   /*! \brief update the robot pose in the world only for visualization purpose
    *
@@ -132,6 +134,10 @@ protected:
   void removeDelayedOriMeasLogs(mc_rtc::Logger &,
                                 const std::string & category,
                                 const DelayedOriMeasurement & delayedMeas);
+
+public:
+  // estimated kinematics of the IMU in the world
+  stateObservation::kine::Kinematics correctedWorldImuKine_;
 
 protected:
   // name of the observer
@@ -193,8 +199,6 @@ protected:
   stateObservation::Vector xk_;
   // estimated kinematics of the floating base in the world
   stateObservation::kine::Kinematics correctedWorldFbKine_;
-  // estimated kinematics of the IMU in the world
-  stateObservation::kine::Kinematics correctedWorldImuKine_;
 
   /* Floating base's kinematics */
   Eigen::Matrix3d R_0_fb_; // estimated orientation of the floating base in the world frame
