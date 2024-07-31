@@ -27,7 +27,8 @@ void MocapVisualizer::configure(const mc_control::MCController & ctl, const mc_r
     mocapBodyName_ = static_cast<std::string>(config("mocapBodyName"));
     // csvPath_ = static_cast<std::string>(config("csvPath"));
 
-    csvPath_ = "/home/arnaud/devel/src/MocapAligner/output_data/resultMocapLimbData.csv";
+    std::string projectName = static_cast<std::string>(config("projectName"));
+    csvPath_ = "/home/arnaud/devel/src/MocapAligner/Projects/" + projectName + "/output_data/resultMocapLimbData.csv";
 
     double contactDetectionPropThreshold = config("contactDetectionPropThreshold", 0.11);
 
@@ -68,7 +69,6 @@ void MocapVisualizer::reset(const mc_control::MCController & ctl)
   if(!firstRun_)
   {
     const auto & robot = ctl.robot(robot_);
-    const auto & realRobot = ctl.realRobot(robot_);
 
     my_robots_ = mc_rbdyn::Robots::make();
     my_robots_->robotCopy(robot, robot.name());
@@ -77,8 +77,6 @@ void MocapVisualizer::reset(const mc_control::MCController & ctl)
         mc_rtc::gui::Robot("MocapVisualizer", [this]() -> const mc_rbdyn::Robot & { return my_robots_->robot(); }));
 
     extractTransformFromMocap();
-
-    current_WorldBodyKine_ = init_worldBodyKine_;
   }
 }
 
@@ -94,7 +92,7 @@ bool MocapVisualizer::run(const mc_control::MCController & ctl)
         realRobot.bodyPosW(mocapBodyName_), stateObservation::kine::Kinematics::Flags::pose);
     bodyFbKine_ = worldBodyKineRealRobot.getInverse() * worldFbKine_RealRobot;
 
-    current_WorldBodyKine_ = mocapTransforms_.at(currentIter_) * init_worldBodyKine_;
+    current_WorldBodyKine_ = init_worldBodyKine_ * mocapTransforms_.at(currentIter_);
 
     worldFbKine_ = current_WorldBodyKine_ * bodyFbKine_;
 
@@ -124,7 +122,7 @@ const stateObservation::kine::Kinematics & MocapVisualizer::getContactKinematics
     // the contact surface frame directly.
     const sva::PTransformd & bodyContactSensorPose = fs.X_p_f();
     stateObservation::kine::Kinematics bodyContactSensorKine =
-        conversions::kinematics::fromSva(bodyContactSensorPose, stateObservation::kine::Kinematics::Flags::vel);
+        conversions::kinematics::fromSva(bodyContactSensorPose, stateObservation::kine::Kinematics::Flags::pose);
 
     // kinematics of the sensor's parent body in the world
     stateObservation::kine::Kinematics worldBodyKine =
@@ -136,7 +134,7 @@ const stateObservation::kine::Kinematics & MocapVisualizer::getContactKinematics
   else // the kinematics of the contact are the ones of the associated surface
   {
     contact.worldKine_ = conversions::kinematics::fromSva(mocapRobot.surfacePose(contact.surface()),
-                                                          stateObservation::kine::Kinematics::Flags::vel);
+                                                          stateObservation::kine::Kinematics::Flags::pose);
   }
 
   return contact.worldKine_;
@@ -185,9 +183,9 @@ void MocapVisualizer::addToLogger(const mc_control::MCController &,
   {
     logger.addLogEntry(category + "_mocap_worldBody_ori",
                        [this]() -> const Eigen::Quaterniond
-                       { return mocap_wordBodyKine_.at(currentIter_ - 1).orientation.toQuaternion().inverse(); });
+                       { return mocap_worldBodyKine_.at(currentIter_ - 1).orientation.toQuaternion().inverse(); });
     logger.addLogEntry(category + "_mocap_worldBody_pos",
-                       [this]() { return mocap_wordBodyKine_.at(currentIter_ - 1).position(); });
+                       [this]() { return mocap_worldBodyKine_.at(currentIter_ - 1).position(); });
 
     logger.addLogEntry(category + "_worldFb_ori",
                        [this]() -> const Eigen::Quaterniond
@@ -282,18 +280,23 @@ void MocapVisualizer::extractTransformFromMocap()
       current_worldBodyKine_mocap.orientation = Eigen::Quaterniond(quat(0), quat(1), quat(2), quat(3)).normalized();
 
       mocapTransforms_.insert(std::make_pair(i, current_worldBodyKine_mocap));
-      mocap_wordBodyKine_.insert(std::make_pair(i, current_worldBodyKine_mocap));
+      mocap_worldBodyKine_.insert(std::make_pair(i, current_worldBodyKine_mocap));
       overlapTime_.insert(std::make_pair(i, std::stoi(row.at(8))));
 
       i++;
     }
   }
-  else { mc_rtc::log::error_and_throw<std::runtime_error>("Could not open the resulting mocap data file\n"); }
+  else
+  {
+    mc_rtc::log::error_and_throw<std::runtime_error>("Could not open the resulting mocap data file: {} \n", csvPath_);
+  }
 
-  init_worldBodyKine_ = mocap_wordBodyKine_.at(0);
-  stateObservation::kine::Kinematics initKineT = init_worldBodyKine_.getInverse();
+  stateObservation::kine::Kinematics & worldInitKine_mocap = mocap_worldBodyKine_.at(0);
+  init_worldBodyKine_ = worldInitKine_mocap;
 
-  for(int j = 0; j < mocapTransforms_.size(); j++) { mocapTransforms_.at(j) = mocapTransforms_.at(j) * initKineT; }
+  stateObservation::kine::Kinematics initKineT = worldInitKine_mocap.getInverse();
+
+  for(int j = 0; j < mocapTransforms_.size(); j++) { mocapTransforms_.at(j) = initKineT * mocapTransforms_.at(j); }
 }
 
 } // namespace mc_state_observation

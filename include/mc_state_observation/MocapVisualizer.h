@@ -113,7 +113,7 @@ private:
   /* custom list of robots to display */
   std::shared_ptr<mc_rbdyn::Robots> my_robots_;
 
-  std::unordered_map<int, stateObservation::kine::Kinematics> mocap_wordBodyKine_;
+  std::unordered_map<int, stateObservation::kine::Kinematics> mocap_worldBodyKine_;
   std::unordered_map<int, stateObservation::kine::Kinematics> mocapTransforms_;
 
   bool overlappingDatas_;
