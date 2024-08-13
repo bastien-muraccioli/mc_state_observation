@@ -264,7 +264,7 @@ void MocapVisualizer::extractTransformFromMocap()
       row.clear();
       std::stringstream str(line);
 
-      while(getline(str, word, ',')) row.push_back(word);
+      while(getline(str, word, ';')) row.push_back(word);
 
       current_worldBodyKine_mocap.position.set()(0) = std::stod(row.at(1));
       current_worldBodyKine_mocap.position.set()(1) = std::stod(row.at(2));
