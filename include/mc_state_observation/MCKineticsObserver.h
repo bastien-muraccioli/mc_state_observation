@@ -68,7 +68,7 @@ protected:
 
   /// @brief Initializer for the Kinetics Observer's state vector
   /// @param robot The control robot
-  void initObserverStateVector(const mc_rbdyn::Robot & robot);
+  void initObserverStateVector(const mc_control::MCController & ctl, const mc_rbdyn::Robot & robot);
 
   /// @brief Sums up the wrenches measured by the unused force sensors expressed in the centroid frame to give them as
   /// an input to the Kinetics Observer

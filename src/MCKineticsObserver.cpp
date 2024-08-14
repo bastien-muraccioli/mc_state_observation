@@ -325,7 +325,7 @@ void MCKineticsObserver::reset(const mc_control::MCController & ctl)
 
   X_0_fb_ = realRobot.posW().translation();
 
-  initObserverStateVector(realRobot);
+  initObserverStateVector(ctl, realRobot);
 }
 
 void MCKineticsObserver::addSensorsAsInputs(const mc_rbdyn::Robot & inputRobot,
@@ -390,21 +390,11 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
   /** Accelerometers **/
   updateIMUs(robot, inputRobot);
 
-  /*
-  so::kine::Orientation oriMeasurement;
-  //oriMeasurement = so::Matrix3(realRobot.posW().rotation().transpose());
-  observer_.setAbsoluteOriSensor(oriMeasurement);
-  */
-
-  /** Inertias **/
-  /** TODO : Merge inertias into CoM inertia and/or get it from fd() **/
-
   observer_.setCoMAngularMomentum(
       rbd::computeCentroidalMomentum(inputRobot.mb(), inputRobot.mbc(), inputRobot.com()).moment());
 
   observer_.setCoMInertiaMatrix(so::Matrix3(
       inertiaWaist_.inertia() + observer_.getMass() * so::kine::skewSymmetric2(observer_.getCenterOfMass()())));
-  /* Step once, and return result */
 
   res_ = observer_.update();
 
@@ -638,16 +628,18 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
 /// -------------------------Called functions--------------------------
 ///////////////////////////////////////////////////////////////////////
 
-void MCKineticsObserver::initObserverStateVector(const mc_rbdyn::Robot & robot)
+void MCKineticsObserver::initObserverStateVector(const mc_control::MCController & ctl, const mc_rbdyn::Robot & robot)
 {
-  so::kine::Orientation initOrientation;
-  initOrientation.setZeroRotation<so::Quaternion>();
+  so::kine::Orientation initOrientation(so::Matrix3(ctl.realRobot(robot_).posW().rotation().transpose()));
+
   Eigen::VectorXd initStateVector;
   initStateVector = Eigen::VectorXd::Zero(observer_.getStateSize());
 
-  initStateVector.segment(observer_.posIndex(), observer_.sizePos) = robot.com();
+  initStateVector.segment(observer_.posIndex(), observer_.sizePos) =
+      initOrientation.toMatrix3().transpose() * robot.com();
   initStateVector.segment(observer_.oriIndex(), observer_.sizeOri) = initOrientation.toVector4();
-  initStateVector.segment(observer_.linVelIndex(), observer_.sizeLinVel) = robot.comVelocity();
+  initStateVector.segment(observer_.linVelIndex(), observer_.sizeLinVel) =
+      initOrientation.toMatrix3().transpose() * robot.comVelocity();
 
   observer_.setInitWorldCentroidStateVector(initStateVector);
 }
