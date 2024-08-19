@@ -1422,18 +1422,18 @@ void MCKineticsObserver::addToLogger(const mc_control::MCController & ctl,
   {
     const KoContactWithSensor & contact = contactWithSensor.second;
     logger.addLogEntry(observerName_ + "_debug_wrenchesInCentroid_" + contact.name() + "_force",
-                       [contact]() -> Eigen::Vector3d { return contact.wrenchInCentroid_.segment<3>(0); });
+                       [&contact]() -> Eigen::Vector3d { return contact.wrenchInCentroid_.segment<3>(0); });
     logger.addLogEntry(observerName_ + "_debug_wrenchesInCentroid_" + contact.name() + "_torque",
-                       [contact]() -> Eigen::Vector3d { return contact.wrenchInCentroid_.segment<3>(3); });
+                       [&contact]() -> Eigen::Vector3d { return contact.wrenchInCentroid_.segment<3>(3); });
     logger.addLogEntry(observerName_ + "_debug_wrenchesInCentroid_" + contact.name() + "_forceWithUnmodeled",
-                       [this, contact]() -> Eigen::Vector3d
+                       [this, &contact]() -> Eigen::Vector3d
                        {
                          return observer_.getCurrentStateVector().segment(observer_.unmodeledForceIndex(),
                                                                           observer_.sizeForce)
                                 + contact.wrenchInCentroid_.segment<3>(0);
                        });
     logger.addLogEntry(observerName_ + "_debug_wrenchesInCentroid_" + contact.name() + "_torqueWithUnmodeled",
-                       [this, contact]() -> Eigen::Vector3d
+                       [this, &contact]() -> Eigen::Vector3d
                        {
                          return observer_.getCurrentStateVector().segment(observer_.unmodeledTorqueIndex(),
                                                                           observer_.sizeTorque)
