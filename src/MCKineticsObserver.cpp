@@ -150,7 +150,9 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
       (variancesConfig("stateAngVelInitVariance").operator so::Vector3()).matrix().asDiagonal();
   gyroBiasInitCovariance_.setZero();
   unmodeledWrenchInitCovariance_.setZero();
+
   contactInitCovarianceFirstContacts_.setZero();
+  contactInitCovarianceFirstContacts_flat_.setZero();
   // if we stick to the control robot's anchor frame, we don't allow the correction of the contacts pose
   contactInitCovarianceFirstContacts_.block<3, 3>(0, 0) =
       (variancesConfig("contactPositionInitVarianceFirstContacts").operator so::Vector3()).matrix().asDiagonal();
@@ -162,6 +164,7 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
       (variancesConfig("contactTorqueInitVarianceFirstContacts").operator so::Vector3()).matrix().asDiagonal();
 
   contactInitCovarianceNewContacts_.setZero();
+  contactInitCovarianceNewContacts_flat_.setZero();
   // if we stick to the control robot's anchor frame, we don't allow the correction of the contacts pose
 
   contactInitCovarianceNewContacts_.block<3, 3>(0, 0) =
@@ -173,9 +176,6 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
       (variancesConfig("contactForceInitVarianceNewContacts").operator so::Vector3()).matrix().asDiagonal();
   contactInitCovarianceNewContacts_.block<3, 3>(9, 9) =
       (variancesConfig("contactTorqueInitVarianceNewContacts").operator so::Vector3()).matrix().asDiagonal();
-
-  contactInitCovarianceNewContacts_flat_(2, 2) = 0.0;
-  contactInitCovarianceFirstContacts_flat_(2, 2) = 0.0;
 
   // Process //
   statePositionProcessCovariance_ =
@@ -942,6 +942,9 @@ void MCKineticsObserver::setNewContact(const mc_control::MCController & ctl,
   {
     if(odometryType_ == measurements::OdometryType::Flat)
     {
+      contactInitCovarianceNewContacts_flat_.diagonal() = contactInitCovarianceNewContacts_.diagonal();
+      contactInitCovarianceNewContacts_flat_(2, 2) = 0.0;
+
       observer_.addContact(worldContactKineRef, contactInitCovarianceNewContacts_flat_, contactProcessCovariance_,
                            contact.id(), linStiffness_, linDamping_, angStiffness_, angDamping_);
     }
@@ -955,6 +958,9 @@ void MCKineticsObserver::setNewContact(const mc_control::MCController & ctl,
   {
     if(odometryType_ == measurements::OdometryType::Flat)
     {
+      contactInitCovarianceFirstContacts_flat_.diagonal() = contactInitCovarianceFirstContacts_.diagonal();
+      contactInitCovarianceFirstContacts_flat_(2, 2) = 0.0;
+
       observer_.addContact(worldContactKineRef, contactInitCovarianceFirstContacts_flat_, contactProcessCovariance_,
                            contact.id(), linStiffness_, linDamping_, angStiffness_, angDamping_);
     }
@@ -1476,6 +1482,7 @@ void MCKineticsObserver::removeFromLogger(mc_rtc::Logger & logger, const std::st
   logger.removeLogEntry(category + "_posW");
   logger.removeLogEntry(category + "_velW");
   logger.removeLogEntry(category + "_mass");
+
   logger.removeLogEntry(category + "_flexStiffness");
   logger.removeLogEntry(category + "_flexDamping");
 }
@@ -1498,10 +1505,39 @@ void MCKineticsObserver::addToGUI(const mc_control::MCController &,
 {
   using namespace mc_rtc::gui;
   // clang-format off
-  gui.addElement(category,
-    mc_state_observation::gui::make_input_element("Accel Covariance", acceleroSensorCovariance_(0,0)),
-    mc_state_observation::gui::make_input_element("Force Covariance", contactSensorCovariance_(0,0)),
-    mc_state_observation::gui::make_input_element("Gyro Covariance", gyroSensorCovariance_(0,0)));
+  std::vector<std::string> covsCategory = category;
+  covsCategory.insert(covsCategory.end(), {"Covariances"});
+
+  std::vector<std::string> initCovsCategory = covsCategory;
+  initCovsCategory.insert(initCovsCategory.end(), {"Init"});
+  std::vector<std::string> processCovsCategory = covsCategory;
+  processCovsCategory.insert(processCovsCategory.end(), {"Process"});
+  std::vector<std::string> sensorCovsCategory = covsCategory;
+  sensorCovsCategory.insert(sensorCovsCategory.end(), {"Sensors"});
+
+  gui.addElement(initCovsCategory,
+            mc_state_observation::gui::make_input_element("Contact pos x", contactInitCovarianceNewContacts_(0,0)),
+            mc_state_observation::gui::make_input_element("Contact pos y", contactInitCovarianceNewContacts_(1,1)),
+            mc_state_observation::gui::make_input_element("Contact pos z", contactInitCovarianceNewContacts_(2,2)),
+            mc_state_observation::gui::make_input_element("Contact ori x", contactInitCovarianceNewContacts_(0,0)),
+            mc_state_observation::gui::make_input_element("Contact ori y", contactInitCovarianceNewContacts_(1,1)),
+            mc_state_observation::gui::make_input_element("Contact ori z", contactInitCovarianceNewContacts_(2,2)));
+
+  gui.addElement(sensorCovsCategory,
+            mc_state_observation::gui::make_input_element("Gyro x", gyroSensorCovariance_(0,0)),
+            mc_state_observation::gui::make_input_element("Gyro y", gyroSensorCovariance_(1,1)),
+            mc_state_observation::gui::make_input_element("Gyro z", gyroSensorCovariance_(2,2)),
+            mc_state_observation::gui::make_input_element("Accelero x", acceleroSensorCovariance_(0,0)),
+            mc_state_observation::gui::make_input_element("Accelero y", acceleroSensorCovariance_(1,1)),
+            mc_state_observation::gui::make_input_element("Accelero z", acceleroSensorCovariance_(2,2)),
+            mc_state_observation::gui::make_input_element("Force x", contactSensorCovariance_(0,0)),
+            mc_state_observation::gui::make_input_element("Force y", contactSensorCovariance_(1,1)),
+            mc_state_observation::gui::make_input_element("Force z", contactSensorCovariance_(2,2)),
+            mc_state_observation::gui::make_input_element("Torque x", contactSensorCovariance_(3,3)),
+            mc_state_observation::gui::make_input_element("Torque y", contactSensorCovariance_(4,4)),
+            mc_state_observation::gui::make_input_element("Torque z", contactSensorCovariance_(5,5)));
+  
+
 
   if(odometryType_ != measurements::OdometryType::None)
   {
