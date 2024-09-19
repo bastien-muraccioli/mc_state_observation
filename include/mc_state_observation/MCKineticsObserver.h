@@ -154,6 +154,8 @@ protected:
   /// @param logger Logger
   void updateContacts(const mc_control::MCController & ctl, mc_rtc::Logger & logger);
 
+  void updateContactRestPosProcess();
+
   /// @brief Computes the kinematics of the contact attached to the robot in the world frame.
   /// @details Also updates the wrench measured at the contact if required.
   /// @param contact Contact of which we want to compute the kinematics
@@ -344,9 +346,9 @@ private:
   // mass of the robot
   double mass_; // [kg]
   // maximum amount of contacts that we want to use with the Kinetics Observer.
-  int maxContacts_ = 4;
+  unsigned maxContacts_ = 4;
   // maximum amount of IMUs that we want to use with the Kinetics Observer.
-  int maxIMUs_ = 2;
+  unsigned maxIMUs_ = 2;
 
   // linear stiffness of contacts
   stateObservation::Matrix3 linStiffness_;
@@ -426,6 +428,8 @@ private:
   /* Contacts manager variables */
   using KoContactsManager = measurements::ContactsManager<KoContactWithSensor>;
   KoContactsManager contactsManager_;
+  unsigned prevContactsNumber_ = 0;
+  unsigned currentContactsNumber_ = 0;
 
   // list of the force sensors that cannot be used with contacts but we want to use their measurements as inputs to the
   // Kinetics Observer
@@ -461,6 +465,12 @@ private:
   int invincibilityFrame_ = 0;
   // iterations ellapsed within the invincibility frame
   int invincibilityIter_;
+
+  // contains the M matrices for each possible number of contacts. The M matrix allows to associate a process covariance
+  // to the contact rest position while ensuring that their average position is associated with a zero covariance. In a
+  // simpler way, it allows the contacts rest position to move slightly over time, but we don't allow their average to
+  // move, thus preventing drift.
+  std::vector<Eigen::MatrixXd> covMv_matrices_;
 
   // Buffer containing the estimated pose of the floating base in the world over the whole backup interval.
   boost::circular_buffer<stateObservation::kine::Kinematics> koBackupFbKinematics_;
