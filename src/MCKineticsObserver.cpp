@@ -11,7 +11,7 @@ namespace so = stateObservation;
 namespace mc_state_observation
 {
 MCKineticsObserver::MCKineticsObserver(const std::string & type, double dt)
-: mc_observers::Observer(type, dt), observer_(maxContacts_, maxIMUs_),
+: mc_observers::Observer(type, dt), maxContacts_(3), maxIMUs_(1), observer_(maxContacts_, maxIMUs_),
   tiltObserver_(type, dt, true, "KoBackup_TiltObserver")
 {
   observer_.setSamplingTime(dt);
@@ -341,26 +341,6 @@ void MCKineticsObserver::reset(const mc_control::MCController & ctl)
   X_0_fb_ = realRobot.posW().translation();
 
   initObserverStateVector(ctl, realRobot);
-
-  for(unsigned nbContacts = 2; nbContacts < maxContacts_; nbContacts++)
-  {
-    Eigen::MatrixXd cov_v(nbContacts * 3, nbContacts * 3);
-    Eigen::MatrixXd one_t(3, nbContacts * 3);
-
-    for(unsigned i = 0; i < nbContacts; i++)
-    {
-      cov_v.block(i * 3, i * 3, 3, 3) = contactProcessCovariance_.block<3, 3>(0, 0);
-      one_t.block(0, i * 3, 3, 3) = Eigen::Matrix3d::Identity();
-    }
-
-    Eigen::MatrixXd one_t_pinv = (1.0 / nbContacts) * one_t.transpose();
-
-    Eigen::MatrixXd M = Eigen::MatrixXd::Identity(nbContacts * 3, nbContacts * 3) - one_t_pinv * one_t;
-
-    // cov(Mv) = M cov(v) M'. But here M is symmetric
-    Eigen::MatrixXd covMv = M * contactProcessCovariance_ * M;
-    covMv_matrices_.push_back(covMv);
-  }
 }
 
 void MCKineticsObserver::addSensorsAsInputs(const mc_rbdyn::Robot & inputRobot,
@@ -1043,18 +1023,10 @@ void MCKineticsObserver::updateContact(const mc_control::MCController & ctl, KoC
 
 void MCKineticsObserver::updateContacts(const mc_control::MCController & ctl, mc_rtc::Logger & logger)
 {
-  prevContactsNumber_ = currentContactsNumber_;
-  currentContactsNumber_ = 0;
   auto onNewContact = [this, &ctl, &logger](KoContactWithSensor & newContact)
-  {
-    setNewContact(ctl, newContact, logger);
-    currentContactsNumber_++;
-  };
+  { setNewContact(ctl, newContact, logger); };
   auto onMaintainedContact = [this, &ctl](KoContactWithSensor & maintainedContact)
-  {
-    updateContact(ctl, maintainedContact);
-    currentContactsNumber_++;
-  };
+  { updateContact(ctl, maintainedContact); };
   auto onRemovedContact = [this, &logger](KoContactWithSensor & removedContact)
   {
     observer_.removeContact(removedContact.id());
@@ -1072,34 +1044,6 @@ void MCKineticsObserver::updateContacts(const mc_control::MCController & ctl, mc
   { addContactToGui(ctl, addedContact, logger); };
 
   contactsManager_.updateContacts(ctl, robot_, onNewContact, onMaintainedContact, onRemovedContact, onAddedContact);
-}
-
-void MCKineticsObserver::updateContactRestPosProcess()
-{
-  // if the number of contacts hasn't changed, we don't need to change the process covariance. Same if we have less than
-  // two contacts.
-  if(currentContactsNumber_ == prevContactsNumber_ || currentContactsNumber_ < 2) { return; }
-  Eigen::MatrixXd & covMv = covMv_matrices_.at(currentContactsNumber_ - 2);
-
-  int i = 0;
-  for(auto & contactPair1 : contactsManager_.contacts())
-  {
-    const KoContactWithSensor & contact1 = contactPair1.second;
-    if(contact1.isSet())
-    {
-      int j = 0;
-      for(auto & contactPair2 : contactsManager_.contacts())
-      {
-        const KoContactWithSensor & contact2 = contactPair2.second;
-        if(contact2.isSet())
-        {
-          observer_.updateContactPosProcessCovariance(contact1.id(), contact2.id(), covMv.block(i * 3, j * 3, 3, 3));
-        }
-      }
-      j++;
-    }
-    i++;
-  }
 }
 
 void MCKineticsObserver::mass(double mass)
