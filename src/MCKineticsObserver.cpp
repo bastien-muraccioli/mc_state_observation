@@ -130,6 +130,7 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   }
 
   observer_.setWithAccelerationEstimation(config("withAccelerationEstimation"));
+  observer_.setWithDampingInMatrixA(config("withDampingInMatrixA"));
 
   linStiffness_ = (config("linStiffness").operator so::Vector3()).matrix().asDiagonal();
   angStiffness_ = (config("angStiffness").operator so::Vector3()).matrix().asDiagonal();
