@@ -21,6 +21,9 @@ TiltObserver::TiltObserver(const std::string & type, double dt, bool asBackup, c
 
 void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc::Configuration & config)
 {
+  auto contactsConfig = config("contacts");
+  auto leggedOdomConfig = config("leggedOdometry");
+
   robot_ = config("robot", ctl.robot().name());
 
   imuSensor_ = config("imuSensor", ctl.robot().bodySensor().name());
@@ -47,7 +50,7 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
     }
   }
 
-  std::string odometryTypeStr = static_cast<std::string>(config("odometryType"));
+  std::string odometryTypeStr = static_cast<std::string>(leggedOdomConfig("odometryType"));
   // we set the odometry type now because it will be necessary for the next check
   setOdometryType(measurements::stringToOdometryType(odometryTypeStr, observerName_));
 
@@ -57,12 +60,13 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
     bool verbose = config("verbose", true);
     bool withYawEstimation = config("withYawEstimation", true);
 
+    double contactDetectionPropThreshold = contactsConfig("contactDetectionPropThreshold", 0.11);
     // surfaces used for the contact detection. If the desired detection method doesn't use surfaces, we make sure this
     // list is not filled in the configuration file to avoid the use of an undesired method.
     std::vector<std::string> surfacesForContactDetection;
-    config("surfacesForContactDetection", surfacesForContactDetection);
+    contactsConfig("surfacesForContactDetection", surfacesForContactDetection);
 
-    std::string contactsDetectionString = static_cast<std::string>(config("contactsDetection"));
+    std::string contactsDetectionString = static_cast<std::string>(contactsConfig("contactsDetection"));
     LoContactsManager::ContactsDetection contactsDetectionMethod =
         odometryManager_.contactsManager().stringToContactsDetection(contactsDetectionString, observerName_);
 
@@ -74,8 +78,6 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
                                                        "surfacesForContactDetection variable");
     }
 
-    double contactDetectionPropThreshold = config("contactDetectionPropThreshold", 0.11);
-
     odometry::LeggedOdometryManager::Configuration odomConfig(robot_, observerName_, odometryManager_.odometryType_);
     odomConfig.velocityUpdate(odometry::LeggedOdometryManager::VelocityUpdate::NoUpdate)
         .withYawEstimation(withYawEstimation);
@@ -83,25 +85,25 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
 
     if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Surfaces)
     {
-      measurements::ContactsManagerSurfacesConfiguration contactsConfig(observerName_, surfacesForContactDetection);
-      contactsConfig.contactDetectionPropThreshold(contactDetectionPropThreshold).verbose(verbose);
-      odometryManager_.init(ctl, odomConfig, contactsConfig);
+      measurements::ContactsManagerSurfacesConfiguration contactsConf(observerName_, surfacesForContactDetection);
+      contactsConf.contactDetectionPropThreshold(contactDetectionPropThreshold).verbose(verbose);
+      odometryManager_.init(ctl, odomConfig, contactsConf);
     }
     if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Sensors)
     {
       std::vector<std::string> forceSensorsToOmit = config("forceSensorsToOmit", std::vector<std::string>());
 
-      measurements::ContactsManagerSensorsConfiguration contactsConfig(observerName_);
-      contactsConfig.contactDetectionPropThreshold(contactDetectionPropThreshold)
+      measurements::ContactsManagerSensorsConfiguration contactsConf(observerName_);
+      contactsConf.contactDetectionPropThreshold(contactDetectionPropThreshold)
           .verbose(verbose)
           .forceSensorsToOmit(forceSensorsToOmit);
-      odometryManager_.init(ctl, odomConfig, contactsConfig);
+      odometryManager_.init(ctl, odomConfig, contactsConf);
     }
     if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Solver)
     {
-      measurements::ContactsManagerSolverConfiguration contactsConfig(observerName_);
-      contactsConfig.contactDetectionPropThreshold(contactDetectionPropThreshold).verbose(verbose);
-      odometryManager_.init(ctl, odomConfig, contactsConfig);
+      measurements::ContactsManagerSolverConfiguration contactsConf(observerName_);
+      contactsConf.contactDetectionPropThreshold(contactDetectionPropThreshold).verbose(verbose);
+      odometryManager_.init(ctl, odomConfig, contactsConf);
     }
   }
 }

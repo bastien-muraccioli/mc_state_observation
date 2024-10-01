@@ -39,7 +39,8 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   config("verbose", verbose_);
 
   // we set the desired type of odometry
-  std::string typeOfOdometry = static_cast<std::string>(config("odometryType"));
+  auto leggedOdomConfig = config("leggedOdometry");
+  std::string typeOfOdometry = static_cast<std::string>(leggedOdomConfig("odometryType"));
   odometryType_ = measurements::stringToOdometryType(typeOfOdometry, observerName_);
 
   config("withDebugLogs", withDebugLogs_);

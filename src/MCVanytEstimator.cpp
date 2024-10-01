@@ -111,25 +111,25 @@ void MCVanytEstimator::configure(const mc_control::MCController & ctl, const mc_
       mc_rtc::log::error_and_throw<std::runtime_error>("The list of surfaces for the contact detection is empty.");
     }
 
-    measurements::ContactsManagerSurfacesConfiguration contactsConfig(observerName_, surfacesForContactDetection);
-    contactsConfig.contactDetectionPropThreshold(contactDetectionPropThreshold).verbose(verbose);
-    odometryManager_.init(ctl, odometryConfig, contactsConfig);
+    measurements::ContactsManagerSurfacesConfiguration contactsConf(observerName_, surfacesForContactDetection);
+    contactsConf.contactDetectionPropThreshold(contactDetectionPropThreshold).verbose(verbose);
+    odometryManager_.init(ctl, odometryConfig, contactsConf);
   }
   if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Sensors)
   {
     std::vector<std::string> forceSensorsToOmit = odomConfig("forceSensorsToOmit", std::vector<std::string>());
 
-    measurements::ContactsManagerSensorsConfiguration contactsConfig(observerName_);
-    contactsConfig.contactDetectionPropThreshold(contactDetectionPropThreshold)
+    measurements::ContactsManagerSensorsConfiguration contactsConf(observerName_);
+    contactsConf.contactDetectionPropThreshold(contactDetectionPropThreshold)
         .verbose(verbose)
         .forceSensorsToOmit(forceSensorsToOmit);
-    odometryManager_.init(ctl, odometryConfig, contactsConfig);
+    odometryManager_.init(ctl, odometryConfig, contactsConf);
   }
   if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Solver)
   {
-    measurements::ContactsManagerSolverConfiguration contactsConfig(observerName_);
-    contactsConfig.contactDetectionPropThreshold(contactDetectionPropThreshold).verbose(verbose);
-    odometryManager_.init(ctl, odometryConfig, contactsConfig);
+    measurements::ContactsManagerSolverConfiguration contactsConf(observerName_);
+    contactsConf.contactDetectionPropThreshold(contactDetectionPropThreshold).verbose(verbose);
+    odometryManager_.init(ctl, odometryConfig, contactsConf);
   }
 }
 
