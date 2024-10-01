@@ -1833,6 +1833,33 @@ void MCKineticsObserver::addContactLogEntries(const mc_control::MCController & c
 
 void MCKineticsObserver::addContactMeasurementsLogEntries(mc_rtc::Logger & logger, const KoContactWithSensor & contact)
 {
+  // Innovation
+  logger.addLogEntry(observerName_ + "_innovation_contacts_" + contact.name() + "_position", &contact,
+                     [this, &contact]() -> Eigen::Vector3d
+                     {
+                       return observer_.getEKF().getInnovation().segment(observer_.contactPosIndexTangent(contact.id()),
+                                                                         observer_.sizePosTangent);
+                     });
+  logger.addLogEntry(observerName_ + "_innovation_contacts_" + contact.name() + "_orientation", &contact,
+                     [this, &contact]() -> Eigen::Vector3d
+                     {
+                       return observer_.getEKF().getInnovation().segment(observer_.contactOriIndexTangent(contact.id()),
+                                                                         observer_.sizeOriTangent);
+                     });
+  logger.addLogEntry(observerName_ + "_innovation_contacts_" + contact.name() + "_force", &contact,
+                     [this, &contact]() -> Eigen::Vector3d
+                     {
+                       return observer_.getEKF().getInnovation().segment(
+                           observer_.contactForceIndexTangent(contact.id()), observer_.sizeForceTangent);
+                     });
+  logger.addLogEntry(observerName_ + "_innovation_contacts_" + contact.name() + "_torque", &contact,
+                     [this, &contact]() -> Eigen::Vector3d
+                     {
+                       return observer_.getEKF().getInnovation().segment(
+                           observer_.contactTorqueIndexTangent(contact.id()), observer_.sizeTorqueTangent);
+                     });
+
+  // Measurements
   logger.addLogEntry(observerName_ + "_measurements_contacts_force_" + contact.name() + "_measured", &contact,
                      [this, &contact]() -> Eigen::Vector3d
                      {
@@ -1881,6 +1908,12 @@ void MCKineticsObserver::removeContactLogEntries(mc_rtc::Logger & logger, const 
 void MCKineticsObserver::removeContactMeasurementsLogEntries(mc_rtc::Logger & logger,
                                                              const KoContactWithSensor & contact)
 {
+  // Innovation
+  logger.removeLogEntry(observerName_ + "_innovation_contacts_" + contact.name() + "_position");
+  logger.removeLogEntry(observerName_ + "_innovation_contacts_" + contact.name() + "_orientation");
+  logger.removeLogEntry(observerName_ + "_innovation_contacts_" + contact.name() + "_force");
+  logger.removeLogEntry(observerName_ + "_innovation_contacts_" + contact.name() + "_torque");
+
   logger.removeLogEntry(observerName_ + "_measurements_contacts_force_" + contact.name() + "_measured");
   logger.removeLogEntry(observerName_ + "_measurements_contacts_force_" + contact.name() + "_predicted");
   logger.removeLogEntry(observerName_ + "_measurements_contacts_force_" + contact.name() + "_corrected");
