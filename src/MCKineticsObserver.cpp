@@ -1784,11 +1784,23 @@ void MCKineticsObserver::addContactLogEntries(const mc_control::MCController & c
                      { return observer_.getCentroidContactWrench(contact.id()).segment(3, observer_.sizeTorque); });
 
   logger.addLogEntry(
-      observerName_ + "_debug_contactPose_" + contact.name() + "_inputCentroidContactKine_position", &contact,
-      [this, &contact]() -> Eigen::Vector3d { return observer_.getCentroidContactInputPose(contact.id()).position(); });
+      observerName_ + "_debug_contactKine_" + contact.name() + "_inputCentroidContactKine_position", &contact,
+      [this, &contact]() -> Eigen::Vector3d { return observer_.getCentroidContactInputKine(contact.id()).position(); });
+
+  logger.addLogEntry(observerName_ + "_debug_contactKine_" + contact.name() + "_inputCentroidContactKine_orientation",
+                     &contact,
+                     [this, &contact]() -> Eigen::Quaternion<double> {
+                       return observer_.getCentroidContactInputKine(contact.id()).orientation.inverse().toQuaternion();
+                     });
+  logger.addLogEntry(
+      observerName_ + "_debug_contactKine_" + contact.name() + "_inputCentroidContactKine_linVel", &contact,
+      [this, &contact]() -> Eigen::Vector3d { return observer_.getCentroidContactInputKine(contact.id()).linVel(); });
 
   logger.addLogEntry(
-      observerName_ + "_debug_contactPose_" + contact.name() + "_realRobot_position", &contact,
+      observerName_ + "_debug_contactKine_" + contact.name() + "_inputCentroidContactKine_angVel", &contact,
+      [this, &contact]() -> Eigen::Vector3d { return observer_.getCentroidContactInputKine(contact.id()).angVel(); });
+  logger.addLogEntry(
+      observerName_ + "_debug_contactKine_" + contact.name() + "_realRobot_position", &contact,
       [this, &contact, &ctl]() -> Eigen::Vector3d
       {
         const auto & robot = ctl.robot(robot_);
@@ -1797,37 +1809,47 @@ void MCKineticsObserver::addContactLogEntries(const mc_control::MCController & c
       });
 
   logger.addLogEntry(
-      observerName_ + "_debug_contactPose_" + contact.name() + "_ctlRobot_position", &contact,
+      observerName_ + "_debug_contactKine_" + contact.name() + "_ctlRobot_position", &contact,
       [this, &contact, &ctl]() -> Eigen::Vector3d
       {
         const auto & robot = ctl.robot(robot_);
         return getContactWorldKinematics(contact, robot, robot.forceSensor(contact.forceSensor())).position();
       });
 
-  logger.addLogEntry(observerName_ + "_debug_contactPose_" + contact.name() + "_inputCentroidContactKine_orientation",
-                     &contact,
-                     [this, &contact]() -> Eigen::Quaternion<double> {
-                       return observer_.getCentroidContactInputPose(contact.id()).orientation.inverse().toQuaternion();
-                     });
-
-  logger.addLogEntry(observerName_ + "_debug_contactPose_" + contact.name() + "_worldContactPoseFromCentroid_position",
+  logger.addLogEntry(observerName_ + "_debug_contactKine_" + contact.name() + "_worldcontactKineFromCentroid_position",
                      &contact,
                      [this, &contact]() -> Eigen::Vector3d
-                     { return observer_.getWorldContactPoseFromCentroid(contact.id()).position(); });
+                     { return observer_.getWorldContactKineFromCentroid(contact.id()).position(); });
 
   logger.addLogEntry(
-      observerName_ + "_debug_contactPose_" + contact.name() + "_worldContactPoseFromCentroid_orientation", &contact,
+      observerName_ + "_debug_contactKine_" + contact.name() + "_worldcontactKineFromCentroid_orientation", &contact,
       [this, &contact]() -> Eigen::Quaternion<double>
-      { return observer_.getWorldContactPoseFromCentroid(contact.id()).orientation.inverse().toQuaternion(); });
+      { return observer_.getWorldContactKineFromCentroid(contact.id()).orientation.inverse().toQuaternion(); });
+
+  logger.addLogEntry(observerName_ + "_debug_contactKine_" + contact.name() + "_worldcontactKineFromCentroid_linVel",
+                     &contact,
+                     [this, &contact]() -> Eigen::Vector3d
+                     { return observer_.getWorldContactKineFromCentroid(contact.id()).linVel(); });
+
+  logger.addLogEntry(observerName_ + "_debug_contactKine_" + contact.name() + "_worldcontactKineFromCentroid_angVel",
+                     &contact,
+                     [this, &contact]() -> Eigen::Vector3d
+                     { return observer_.getWorldContactKineFromCentroid(contact.id()).angVel(); });
 
   logger.addLogEntry(
-      observerName_ + "_debug_contactPose_" + contact.name() + "_inputUserContactKine_position", &contact,
-      [this, &contact]() -> Eigen::Vector3d { return observer_.getUserContactInputPose(contact.id()).position(); });
-
-  logger.addLogEntry(observerName_ + "_debug_contactPose_" + contact.name() + "_inputUserContactKine_orientation",
+      observerName_ + "_debug_contactKine_" + contact.name() + "_inputUserContactKine_position", &contact,
+      [this, &contact]() -> Eigen::Vector3d { return observer_.getUserContactInputKine(contact.id()).position(); });
+  logger.addLogEntry(observerName_ + "_debug_contactKine_" + contact.name() + "_inputUserContactKine_orientation",
                      &contact,
                      [this, &contact]() -> Eigen::Quaternion<double>
-                     { return observer_.getUserContactInputPose(contact.id()).orientation.inverse().toQuaternion(); });
+                     { return observer_.getUserContactInputKine(contact.id()).orientation.inverse().toQuaternion(); });
+  logger.addLogEntry(observerName_ + "_debug_contactKine_" + contact.name() + "_inputUserContactKine_linVel", &contact,
+                     [this, &contact]() -> Eigen::Vector3d
+                     { return observer_.getUserContactInputKine(contact.id()).linVel(); });
+  logger.addLogEntry(observerName_ + "_debug_contactKine_" + contact.name() + "_inputUserContactKine_angVel", &contact,
+                     [this, &contact]() -> Eigen::Vector3d
+                     { return observer_.getUserContactInputKine(contact.id()).angVel(); });
+
   logger.addLogEntry(observerName_ + "_debug_contactState_isSet_" + contact.name(), &contact,
                      [&contact]() -> std::string { return contact.isSet() ? "Set" : "notSet"; });
 }
