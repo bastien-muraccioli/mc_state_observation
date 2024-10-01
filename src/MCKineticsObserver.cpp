@@ -905,6 +905,7 @@ void MCKineticsObserver::getOdometryWorldContactRest(const mc_control::MCControl
 
 void MCKineticsObserver::setNewContact(const mc_control::MCController & ctl,
                                        KoContactWithSensor & contact,
+                                       const so::Matrix12 & initCovariance,
                                        mc_rtc::Logger & logger)
 {
   /*
@@ -938,41 +939,11 @@ void MCKineticsObserver::setNewContact(const mc_control::MCController & ctl,
     worldContactKineRef = getContactWorldKinematics(contact, robot, forceSensor);
   }
 
-  if(observer_.getNumberOfSetContacts() > 0) // The initial covariance on the pose of the contact depending on
-                                             // whether another contact is already set or not
-  {
-    if(odometryType_ == measurements::OdometryType::Flat)
-    {
-      contactInitCovarianceNewContacts_flat_.diagonal() = contactInitCovarianceNewContacts_.diagonal();
-      contactInitCovarianceNewContacts_flat_(2, 2) = 0.0;
+  observer_.addContact(worldContactKineRef, initCovariance, contactProcessCovariance_, contact.id(), linStiffness_,
+                       linDamping_, angStiffness_, angDamping_);
 
-      observer_.addContact(worldContactKineRef, contactInitCovarianceNewContacts_flat_, contactProcessCovariance_,
-                           contact.id(), linStiffness_, linDamping_, angStiffness_, angDamping_);
-    }
-    else
-    {
-      observer_.addContact(worldContactKineRef, contactInitCovarianceNewContacts_, contactProcessCovariance_,
-                           contact.id(), linStiffness_, linDamping_, angStiffness_, angDamping_);
-    }
-  }
-  else
-  {
-    if(odometryType_ == measurements::OdometryType::Flat)
-    {
-      contactInitCovarianceFirstContacts_flat_.diagonal() = contactInitCovarianceFirstContacts_.diagonal();
-      contactInitCovarianceFirstContacts_flat_(2, 2) = 0.0;
-
-      observer_.addContact(worldContactKineRef, contactInitCovarianceFirstContacts_flat_, contactProcessCovariance_,
-                           contact.id(), linStiffness_, linDamping_, angStiffness_, angDamping_);
-    }
-    else
-    {
-      observer_.addContact(worldContactKineRef, contactInitCovarianceFirstContacts_, contactProcessCovariance_,
-                           contact.id(), linStiffness_, linDamping_, angStiffness_, angDamping_);
-    }
-  }
-  if(contact.sensorEnabled_) // checks if the sensor is used in the correction of the Kinetics Observer
-                             // or not
+  // checks if the sensor is used in the correction of the Kinetics Observer or not
+  if(contact.sensorEnabled_)
   {
     // we update the measurements of the sensor and the input kinematics of the contact in the user /
     // floating base's frame
@@ -1023,8 +994,35 @@ void MCKineticsObserver::updateContact(const mc_control::MCController & ctl, KoC
 
 void MCKineticsObserver::updateContacts(const mc_control::MCController & ctl, mc_rtc::Logger & logger)
 {
-  auto onNewContact = [this, &ctl, &logger](KoContactWithSensor & newContact)
-  { setNewContact(ctl, newContact, logger); };
+  const so::Matrix12 * initCovariance;
+
+  if(observer_.getNumberOfSetContacts() > 0) // The initial covariance on the pose of the contact depending on
+                                             // whether another contact is already set or not
+  {
+    if(odometryType_ == measurements::OdometryType::Flat)
+    {
+      // we compute again the following matrix as contactInitCovarianceNewContacts_ can be updated.
+      contactInitCovarianceNewContacts_flat_.diagonal() = contactInitCovarianceNewContacts_.diagonal();
+      contactInitCovarianceNewContacts_flat_(2, 2) = 0.0;
+
+      initCovariance = &contactInitCovarianceNewContacts_flat_;
+    }
+    else { initCovariance = &contactInitCovarianceNewContacts_; }
+  }
+  else
+  {
+    if(odometryType_ == measurements::OdometryType::Flat)
+    {
+      contactInitCovarianceFirstContacts_flat_.diagonal() = contactInitCovarianceFirstContacts_.diagonal();
+      contactInitCovarianceFirstContacts_flat_(2, 2) = 0.0;
+
+      initCovariance = &contactInitCovarianceFirstContacts_flat_;
+    }
+    else { initCovariance = &contactInitCovarianceFirstContacts_; }
+  }
+
+  auto onNewContact = [this, &ctl, &logger, &initCovariance](KoContactWithSensor & newContact)
+  { setNewContact(ctl, newContact, *initCovariance, logger); };
   auto onMaintainedContact = [this, &ctl](KoContactWithSensor & maintainedContact)
   { updateContact(ctl, maintainedContact); };
   auto onRemovedContact = [this, &logger](KoContactWithSensor & removedContact)

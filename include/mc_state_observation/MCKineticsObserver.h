@@ -188,8 +188,12 @@ protected:
   /// @brief Creates a new contact
   /// @param ctl Controller
   /// @param contact Contact to update
+  /// @param initCovariance The initial covariance associated with the contact.
   /// @param logger Logger
-  void setNewContact(const mc_control::MCController & ctl, KoContactWithSensor & contact, mc_rtc::Logger & logger);
+  void setNewContact(const mc_control::MCController & ctl,
+                     KoContactWithSensor & contact,
+                     const stateObservation::Matrix12 & initCovariance,
+                     mc_rtc::Logger & logger);
 
   /// @brief Updates an already set contact
   /// @param ctl Controller
