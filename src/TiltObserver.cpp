@@ -32,13 +32,14 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
   config("updateRobot", updateRobot_);
   config("updateSensor", updateSensor_);
 
-  config("initAlpha", alpha_);
-  config("initBeta", beta_);
-  config("initGamma", gamma_);
+  auto filterGainsConfig = config("filterGains");
+  filterGainsConfig("initAlpha", alpha_);
+  filterGainsConfig("initBeta", beta_);
+  filterGainsConfig("initGamma", gamma_);
 
-  config("finalAlpha", finalAlpha_);
-  config("finalBeta", finalBeta_);
-  config("finalGamma", finalGamma_);
+  filterGainsConfig("finalAlpha", finalAlpha_);
+  filterGainsConfig("finalBeta", finalBeta_);
+  filterGainsConfig("finalGamma", finalGamma_);
 
   anchorFrameFunction_ = "KinematicAnchorFrame::" + ctl.robot(robot_).name();
   // if a user-defined anchor frame function is given, we use it instead
