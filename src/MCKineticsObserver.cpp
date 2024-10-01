@@ -1093,12 +1093,12 @@ void MCKineticsObserver::addToLogger(const mc_control::MCController & ctl,
   for(auto & imu : listIMUs_)
   {
     logger.addLogEntry(observerName_ + "_globalWorldCentroidState_gyroBias_" + imu.name(),
-                       [this, imu]() -> Eigen::Vector3d {
+                       [this, &imu]() -> Eigen::Vector3d {
                          return observer_.getCurrentStateVector().segment(observer_.gyroBiasIndex(imu.id()),
                                                                           observer_.sizeGyroBias);
                        });
     logger.addLogEntry(observerName_ + "_stateCovariances_gyroBias_" + imu.name(),
-                       [this, imu]() -> Eigen::Vector3d
+                       [this, &imu]() -> Eigen::Vector3d
                        {
                          return observer_.getEKF()
                              .getStateCovariance()
@@ -1107,21 +1107,21 @@ void MCKineticsObserver::addToLogger(const mc_control::MCController & ctl,
                              .diagonal();
                        });
     logger.addLogEntry(observerName_ + "_measurements_gyro_" + imu.name() + "_measured",
-                       [this, imu]() -> Eigen::Vector3d
+                       [this, &imu]() -> Eigen::Vector3d
                        {
                          return observer_.getEKF().getLastMeasurement().segment(observer_.getIMUMeasIndexByNum(imu.id())
                                                                                     + observer_.sizeAcceleroSignal,
                                                                                 observer_.sizeGyroBias);
                        });
     logger.addLogEntry(observerName_ + "_measurements_gyro_" + imu.name() + "_predicted",
-                       [this, imu]() -> Eigen::Vector3d
+                       [this, &imu]() -> Eigen::Vector3d
                        {
                          return observer_.getEKF().getLastPredictedMeasurement().segment(
                              observer_.getIMUMeasIndexByNum(imu.id()) + observer_.sizeAcceleroSignal,
                              observer_.sizeGyroBias);
                        });
     logger.addLogEntry(observerName_ + "_measurements_gyro_" + imu.name() + "_corrected",
-                       [this, imu]() -> Eigen::Vector3d
+                       [this, &imu]() -> Eigen::Vector3d
                        {
                          return correctedMeasurements_.segment(observer_.getIMUMeasIndexByNum(imu.id())
                                                                    + observer_.sizeAcceleroSignal,
@@ -1129,36 +1129,36 @@ void MCKineticsObserver::addToLogger(const mc_control::MCController & ctl,
                        });
 
     logger.addLogEntry(observerName_ + "_measurements_accelerometer_" + imu.name() + "_measured",
-                       [this, imu]() -> Eigen::Vector3d
+                       [this, &imu]() -> Eigen::Vector3d
                        {
                          return observer_.getEKF().getLastMeasurement().segment(
                              observer_.getIMUMeasIndexByNum(imu.id()), observer_.sizeAcceleroSignal);
                        });
     logger.addLogEntry(observerName_ + "_measurements_accelerometer_" + imu.name() + "_predicted",
-                       [this, imu]() -> Eigen::Vector3d
+                       [this, &imu]() -> Eigen::Vector3d
                        {
                          return observer_.getEKF().getLastPredictedMeasurement().segment(
                              observer_.getIMUMeasIndexByNum(imu.id()), observer_.sizeAcceleroSignal);
                        });
     logger.addLogEntry(observerName_ + "_measurements_accelerometer_" + imu.name() + "_corrected",
-                       [this, imu]() -> Eigen::Vector3d {
+                       [this, &imu]() -> Eigen::Vector3d {
                          return correctedMeasurements_.segment(observer_.getIMUMeasIndexByNum(imu.id()),
                                                                observer_.sizeAcceleroSignal);
                        });
     logger.addLogEntry(observerName_ + "_innovation_gyroBias_" + imu.name(),
-                       [this, imu]() -> Eigen::Vector3d
+                       [this, &imu]() -> Eigen::Vector3d
                        {
                          return observer_.getEKF().getInnovation().segment(observer_.gyroBiasIndexTangent(imu.id()),
                                                                            observer_.sizeGyroBiasTangent);
                        });
     logger.addLogEntry(observerName_ + "_prediction_gyroBias_" + imu.name(),
-                       [this, imu]() -> Eigen::Vector3d
+                       [this, &imu]() -> Eigen::Vector3d
                        {
                          return observer_.getEKF().getLastPrediction().segment(observer_.gyroBiasIndexTangent(imu.id()),
                                                                                observer_.sizeGyroBias);
                        });
     logger.addLogEntry(observerName_ + "_debug_gyroBias_" + imu.name(),
-                       [imu]() -> Eigen::Vector3d { return imu.gyroBias; });
+                       [&imu]() -> Eigen::Vector3d { return imu.gyroBias; });
   }
   logger.addLogEntry(
       observerName_ + "_globalWorldCentroidState_extForceCentr",
