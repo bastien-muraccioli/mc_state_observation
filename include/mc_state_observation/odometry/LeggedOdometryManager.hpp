@@ -17,19 +17,31 @@ void LeggedOdometryManager::initLoop(const mc_control::MCController & ctl,
 {
   k_iter_++;
 
+  sva::PTransformd fbPose;
+  fbPose.translation() = fbKine_.position();
+  fbPose.rotation() = fbKine_.orientation.toMatrix3().transpose();
+
+  sva::MotionVecd prevVel;
+  sva::MotionVecd prevAcc;
+  if(fbKine_.linVel.isSet()) { prevVel = odometryRobot().velW(); }
+  if(fbKine_.linAcc.isSet()) { prevAcc = odometryRobot().accW(); }
+
   updateJointsConfiguration(ctl);
-  odometryRobot().posW(fbPose_);
 
-  // we set the velocity and acceleration to zero as they will be compensated anyway as we compute the
-  // successive poses in the local frame
-  sva::MotionVecd zeroMotion = sva::MotionVecd::Zero();
-
-  odometryRobot().velW(zeroMotion);
-  odometryRobot().accW(zeroMotion);
-
+  odometryRobot().posW(fbPose);
   odometryRobot().forwardKinematics();
-  odometryRobot().forwardVelocity();
-  odometryRobot().forwardAcceleration();
+
+  if(fbKine_.linVel.isSet())
+  {
+    odometryRobot().velW(prevVel);
+    odometryRobot().forwardVelocity();
+  }
+
+  if(fbKine_.linAcc.isSet())
+  {
+    odometryRobot().accW(prevAcc);
+    odometryRobot().forwardAcceleration();
+  }
 
   initContacts(ctl, logger, runParams);
 
@@ -73,8 +85,16 @@ void LeggedOdometryManager::initContacts(const mc_control::MCController & ctl,
     maintainedContact.lifeTimeIncrement(ctl.timeStep);
 
     // current estimate of the pose of the robot in the world
-    const stateObservation::kine::Kinematics worldFbPose =
-        conversions::kinematics::fromSva(odometryRobot().posW(), odometryRobot().velW());
+    stateObservation::kine::Kinematics worldFbKine;
+    if(fbKine_.linVel.isSet())
+    {
+      worldFbKine = conversions::kinematics::fromSva(odometryRobot().posW(), odometryRobot().velW());
+    }
+    else
+    {
+      worldFbKine =
+          conversions::kinematics::fromSva(odometryRobot().posW(), stateObservation::kine::Kinematics::Flags::pose);
+    }
 
     // we update the kinematics of the contact in the world obtained from the floating base and the sensor reading
     const stateObservation::kine::Kinematics & worldContactKine =
@@ -82,8 +102,7 @@ void LeggedOdometryManager::initContacts(const mc_control::MCController & ctl,
 
     sumForces_position += maintainedContact.forceNorm();
 
-    maintainedContact.contactFbKine_ = worldContactKine.getInverse() * worldFbPose;
-
+    maintainedContact.contactFbKine_ = worldContactKine.getInverse() * worldFbKine;
     maintainedContact.worldFbKineFromRef_ = maintainedContact.worldRefKine_ * maintainedContact.contactFbKine_;
 
     if constexpr(!std::is_same_v<OnMaintainedContactObserver, std::nullptr_t>)

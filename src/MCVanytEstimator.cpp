@@ -324,7 +324,8 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
 
   so::Vector3 worldFbPos = worldImuPos - R_0_fb_ * fbImuKine_.position();
 
-  odometryManager_.run(ctl, odometry::LeggedOdometryManager::KineParams(poseW_).attitude(R_0_fb_).position(worldFbPos));
+  odometryManager_.run(
+      ctl, odometry::LeggedOdometryManager::KineParams(poseW_).attitudeMeas(R_0_fb_).positionMeas(worldFbPos));
 
   updatePoseAndVel(xk_.segment(0, 3), imu.angularVelocity());
 
@@ -338,7 +339,7 @@ void MCVanytEstimator::updatePoseAndVel(const so::Vector3 & localWorldImuLinVel,
                                         const so::Vector3 & localWorldImuAngVel)
 {
   correctedWorldFbKine_.position = poseW_.translation();
-  correctedWorldFbKine_.orientation = R_0_fb_;
+  correctedWorldFbKine_.orientation = R_0_fb_; // which is equal to poseW_.rotation().transpose();
 
   // we use the newly estimated orientation and local linear velocity of the IMU to obtain the one of the floating base.
   correctedWorldImuKine_ =
@@ -356,7 +357,7 @@ void MCVanytEstimator::updatePoseAndVel(const so::Vector3 & localWorldImuLinVel,
 
   // the velocity of the odometry robot was obtained using finite differences. We give it our estimated velocity which
   // is more accurate.
-  odometryManager_.odometryRobot().velW(velW_);
+  odometryManager_.replaceRobotVelocity(velW_);
 }
 
 void MCVanytEstimator::update(mc_control::MCController & ctl)

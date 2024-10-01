@@ -408,7 +408,7 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
     // Estimated orientation of the floating base in the world (especially the tilt)
     R_0_fb_ = estimatedRotationIMU_ * fbImuKine_.orientation.toMatrix3().transpose();
 
-    odometryManager_.run(ctl, odometry::LeggedOdometryManager::KineParams(poseW_).tilt(R_0_fb_));
+    odometryManager_.run(ctl, odometry::LeggedOdometryManager::KineParams(poseW_).tiltMeas(R_0_fb_));
   }
   else
   {
@@ -458,7 +458,7 @@ void TiltObserver::updatePoseAndVel(const so::Vector3 & localWorldImuLinVel, con
   {
     // the velocity of the odometry robot was obtained using finite differences. We give it our estimated velocity which
     // is more accurate.
-    odometryManager_.odometryRobot().velW(velW_);
+    odometryManager_.replaceRobotVelocity(velW_);
   }
 }
 
@@ -555,7 +555,7 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
 {
   if(odometryManager_.odometryType_ != measurements::OdometryType::None)
   {
-    odometryManager_.addToLogger(logger, category + "_leggedOdometryManager");
+    odometryManager_.addToLogger(logger, category + "_leggedOdometryManager_");
   }
 
   logger.addLogEntry(category + "_estimatedState_x1", [this]() -> so::Vector3 { return xk_.head(3); });

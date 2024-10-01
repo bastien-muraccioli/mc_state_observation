@@ -111,25 +111,25 @@ public:
       return *this;
     }
 
-    KineParams & position(const Eigen::Vector3d & worldPos)
+    KineParams & positionMeas(const Eigen::Vector3d & worldPosMeas)
     {
-      this->worldPos = &worldPos;
+      this->worldPosMeas = &worldPosMeas;
       return *this;
     }
 
-    KineParams & tilt(const Eigen::Matrix3d & tilt)
+    KineParams & tiltMeas(const Eigen::Matrix3d & tiltMeas)
     {
-      if(tiltOrAttitude) { throw std::runtime_error("An input attitude is already set"); }
+      if(tiltOrAttitudeMeas) { throw std::runtime_error("An input attitude is already set"); }
       oriIsAttitude = false;
-      tiltOrAttitude = &tilt;
+      tiltOrAttitudeMeas = &tiltMeas;
       return *this;
     }
 
-    KineParams & attitude(const Eigen::Matrix3d & ori)
+    KineParams & attitudeMeas(const Eigen::Matrix3d & oriMeas)
     {
-      if(tiltOrAttitude) { throw std::runtime_error("An input tilt is already set"); }
+      if(tiltOrAttitudeMeas) { throw std::runtime_error("An input tilt is already set"); }
       oriIsAttitude = true;
-      tiltOrAttitude = &ori;
+      tiltOrAttitudeMeas = &oriMeas;
       return *this;
     }
 
@@ -139,11 +139,14 @@ public:
       out.vel = other.vel;
       out.acc = other.acc;
       out.oriIsAttitude = other.oriIsAttitude;
-      out.tiltOrAttitude = other.tiltOrAttitude;
+      out.tiltOrAttitudeMeas = other.tiltOrAttitudeMeas;
       return out;
     }
 
     explicit KineParams(sva::PTransformd & pose) : pose(pose) {}
+
+    /* Variables to update */
+
     // Pose of the floating base of the robot in the world that we want to update with
     // the odometry
     sva::PTransformd & pose;
@@ -155,13 +158,18 @@ public:
     // acceleration must be updated by an upstream observer. It will be corrected with the newly estimation orientation
     // of the floating base
     sva::MotionVecd * acc = nullptr;
+
+    /* Inputs */
+
+    // Input position of the floating base in the world, used to perform the
+    // legged odometry.
+    const Eigen::Vector3d * worldPosMeas = nullptr;
     // Informs if the rotation matrix RunParameters#tiltOrAttitude stored in this structure
     // is a tilt or an attitude (full orientation).
-    const Eigen::Vector3d * worldPos = nullptr;
     bool oriIsAttitude = false;
     // Input orientation of the floating base in the world, used to perform the
     // legged odometry. If only a tilt is provided, the yaw will come from the yaw of the contacts.
-    const Eigen::Matrix3d * tiltOrAttitude = nullptr;
+    const Eigen::Matrix3d * tiltOrAttitudeMeas = nullptr;
   };
 
   template<typename OnNewContactObserver = std::nullptr_t,
@@ -456,8 +464,15 @@ public:
   /// orientation if required.
   /// @param newPose New pose of the odometry robot.
   /// @param updateVel Indicates if the velocity must be updated.
-  /// @param updateVel Indicates if the acceleration must be updated.
+  /// @param updateAcc Indicates if the acceleration must be updated.
   void replaceRobotPose(const sva::PTransformd & newPose, bool updateVel = false, bool updateAcc = false);
+
+  /// @brief Replaces the current velocity of the odometry robot by the given one.
+  /// @details Can be useful to give a velocity from another source once the iteration has finished. WARNING this
+  /// function changes the value of the velocity without ensuring the coherence with the other kinematics in the
+  /// odometry. Please make sure to call it at the very end of the iteration.
+  /// @param newVelocity New velocity of the odometry robot.
+  void replaceRobotVelocity(const sva::MotionVecd & newVelocity);
 
   /// @brief Gives the kinematics (position and linear velocity) of the anchor point in the desired frame.
   /// @details If the velocity of the target frame in the world frame is given, the velocity of the anchor point in the
@@ -529,6 +544,22 @@ private:
   /// come from an upstream observer.
   void updateFbKinematicsPvt(sva::PTransformd & pose, sva::MotionVecd * vel = nullptr, sva::MotionVecd * acc = nullptr);
 
+  /**
+   * @brief Updates the floating base kinematics given as argument by the observer.
+   * @details Must be called after \ref updateFbAndContacts(const mc_control::MCController &, const KineParams &).
+   * Beware, only the pose is updated by the odometry. The 6D velocity (except if not updated by an upstream observer)
+   * is obtained using finite differences or by expressing the one given in input in the new robot frame. The
+   * acceleration can only be updated if estimated by an upstream estimator.
+   *
+   * @param ctl  Controller.
+   * @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
+   * different from noUpdate, otherwise, it will not be updated.
+   * @param acc The floating base's tilt (only the yaw is estimated).
+   */
+  void updateOdometryRobot(const mc_control::MCController & ctl,
+                           sva::MotionVecd * vel = nullptr,
+                           sva::MotionVecd * acc = nullptr);
+
   /// @brief Updates the joints configuration of the odometry robot.
   /// @param ctl Controller
   void updateJointsConfiguration(const mc_control::MCController & ctl);
@@ -548,22 +579,6 @@ private:
   /// @brief Corrects the reference pose of the contacts after the update of the floating base.
   /// @details The new reference pose is obtained by forward kinematics from the updated floating base.
   void correctContactsRef();
-
-  /**
-   * @brief Updates the floating base kinematics given as argument by the observer.
-   * @details Must be called after \ref updateFbAndContacts(const mc_control::MCController &, const KineParams &).
-   * Beware, only the pose is updated by the odometry. The 6D velocity (except if not updated by an upstream observer)
-   * is obtained using finite differences or by expressing the one given in input in the new robot frame. The
-   * acceleration can only be updated if estimated by an upstream estimator.
-   *
-   * @param ctl  Controller.
-   * @param vel The 6D velocity of the floating base in the world that we want to update. \velocityUpdate_ must be
-   * different from noUpdate, otherwise, it will not be updated.
-   * @param acc The floating base's tilt (only the yaw is estimated).
-   */
-  void updateOdometryRobot(const mc_control::MCController & ctl,
-                           sva::MotionVecd * vel = nullptr,
-                           sva::MotionVecd * acc = nullptr);
 
   /// @brief Computes the reference kinematics of the newly set contact in the world.
   /// @param contact The new contact
@@ -648,8 +663,8 @@ protected:
   LeggedOdometryContactsManager contactsManager_;
   // odometry robot that is updated by the legged odometry and can then update the real robot if required.
   std::shared_ptr<mc_rbdyn::Robots> odometryRobot_;
-  // tracked pose of the floating base
-  sva::PTransformd fbPose_ = sva::PTransformd::Identity();
+  // tracked kinematics of the floating base
+  stateObservation::kine::Kinematics fbKine_;
 
   // contacts created on the current iteration
   std::vector<LoContactWithSensor *> newContacts_;
@@ -686,7 +701,7 @@ protected:
   stateObservation::TimeIndex k_iter_ = 0;
   // time stamp, incremented once the reading of the joint encoders and the contacts are updated
   stateObservation::TimeIndex k_data_ = 0;
-  // time stamp, incremented once the iteration of the doometry is completed.
+  // time stamp, incremented once the kinematics of the odometry robot have been updated.
   stateObservation::TimeIndex k_est_ = 0;
   // time stamp, incremented once the contact references have been corrected.
   stateObservation::TimeIndex k_correct_ = 0;
