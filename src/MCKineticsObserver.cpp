@@ -46,33 +46,38 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   config("withDebugLogs", withDebugLogs_);
 
   /* configuration of the contacts manager */
-  auto contactsConf = config("contacts");
-  double contactDetectionPropThreshold = contactsConf("contactDetectionPropThreshold", 0.11);
+  auto contactsConfig = config("contacts");
 
-  std::string contactsDetectionString = static_cast<std::string>(contactsConf("contactsDetection"));
+  std::string contactsDetectionString = static_cast<std::string>(contactsConfig("contactsDetection"));
   KoContactsManager::ContactsDetection contactsDetectionMethod =
       contactsManager_.stringToContactsDetection(contactsDetectionString, observerName_);
 
-  contactsConf("forceSensorsAsInput", forceSensorsAsInput_);
+  contactsConfig("forceSensorsAsInput", forceSensorsAsInput_);
 
   if(contactsDetectionMethod == KoContactsManager::ContactsDetection::Surfaces)
   {
     std::vector<std::string> surfacesForContactDetection =
-        contactsConf("surfacesForContactDetection", std::vector<std::string>());
+        contactsConfig("surfacesForContactDetection", std::vector<std::string>());
 
-    measurements::ContactsManagerSurfacesConfiguration contactsConfig(observerName_, surfacesForContactDetection);
+    measurements::ContactsManagerSurfacesConfiguration contactsConf(observerName_, surfacesForContactDetection);
 
-    contactsConfig.contactDetectionPropThreshold(contactDetectionPropThreshold).verbose(true);
+    contactsConf.verbose(true);
+    if(contactsConfig.has("schmidtTriggerLowerPropThreshold") && contactsConfig.has("schmidtTriggerUpperPropThreshold"))
+    {
+      double schmidtTriggerLowerPropThreshold = contactsConfig("schmidtTriggerLowerPropThreshold");
+      double schmidtTriggerUpperPropThreshold = contactsConfig("schmidtTriggerUpperPropThreshold");
+      contactsConf.schmidtTriggerPropThresholds(schmidtTriggerLowerPropThreshold, schmidtTriggerUpperPropThreshold);
+    }
 
     auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
     auto onAddedContact = [this, &ctl, &logger](KoContactWithSensor & addedContact)
     { addContactToGui(ctl, addedContact, logger); };
 
-    contactsManager_.init(ctl, robot_, contactsConfig, onAddedContact);
+    contactsManager_.init(ctl, robot_, contactsConf, onAddedContact);
 
     // we set the force sensor of the desired contacts as disabled
     std::vector<std::string> contactSensorsDisabledInit =
-        contactsConf("contactSensorsDisabledInit", std::vector<std::string>());
+        contactsConfig("contactSensorsDisabledInit", std::vector<std::string>());
     for(auto const & contactSensorDisabledInit : contactSensorsDisabledInit)
     {
       auto * contact = contactsManager_.findContact(contactSensorDisabledInit);
@@ -86,15 +91,19 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   }
   if(contactsDetectionMethod == KoContactsManager::ContactsDetection::Sensors)
   {
-    measurements::ContactsManagerSensorsConfiguration contactsConfig(observerName_);
-    contactsConfig.contactDetectionPropThreshold(contactDetectionPropThreshold)
-        .verbose(true)
-        .forceSensorsToOmit(forceSensorsAsInput_);
-    contactsManager_.init(ctl, robot_, contactsConfig);
+    measurements::ContactsManagerSensorsConfiguration contactsConf(observerName_);
+    contactsConf.verbose(true).forceSensorsToOmit(forceSensorsAsInput_);
+    if(contactsConfig.has("schmidtTriggerLowerPropThreshold") && contactsConfig.has("schmidtTriggerUpperPropThreshold"))
+    {
+      double schmidtTriggerLowerPropThreshold = contactsConfig("schmidtTriggerLowerPropThreshold");
+      double schmidtTriggerUpperPropThreshold = contactsConfig("schmidtTriggerUpperPropThreshold");
+      contactsConf.schmidtTriggerPropThresholds(schmidtTriggerLowerPropThreshold, schmidtTriggerUpperPropThreshold);
+    }
+    contactsManager_.init(ctl, robot_, contactsConf);
 
     // we set the force sensor of the desired contacts as disabled
     std::vector<std::string> contactSensorsDisabledInit =
-        contactsConf("contactSensorsDisabledInit", std::vector<std::string>());
+        contactsConfig("contactSensorsDisabledInit", std::vector<std::string>());
     for(const auto & contactSensorDisabledInit : contactSensorsDisabledInit)
     {
       auto * contact = contactsManager_.findContact(contactSensorDisabledInit);
@@ -108,9 +117,15 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   }
   if(contactsDetectionMethod == KoContactsManager::ContactsDetection::Solver)
   {
-    measurements::ContactsManagerSolverConfiguration contactsConfig(observerName_);
-    contactsConfig.contactDetectionPropThreshold(contactDetectionPropThreshold).verbose(true);
-    contactsManager_.init(ctl, robot_, contactsConfig);
+    measurements::ContactsManagerSolverConfiguration contactsConf(observerName_);
+    contactsConf.verbose(true);
+    if(contactsConfig.has("schmidtTriggerLowerPropThreshold") && contactsConfig.has("schmidtTriggerUpperPropThreshold"))
+    {
+      double schmidtTriggerLowerPropThreshold = contactsConfig("schmidtTriggerLowerPropThreshold");
+      double schmidtTriggerUpperPropThreshold = contactsConfig("schmidtTriggerUpperPropThreshold");
+      contactsConf.schmidtTriggerPropThresholds(schmidtTriggerLowerPropThreshold, schmidtTriggerUpperPropThreshold);
+    }
+    contactsManager_.init(ctl, robot_, contactsConf);
   }
 
   /* Configuration of the Kinetics Observer's parameters */

@@ -1,11 +1,17 @@
 #pragma once
 #include <mc_control/MCController.h>
 #include <mc_state_observation/measurements/ContactWithSensor.h>
-
 #include <mc_state_observation/measurements/ContactsManagerConfiguration.h>
 
 namespace mc_state_observation::measurements
 {
+
+struct SchmidtTrigger
+{
+  double lowerThreshold;
+  double upperThreshold;
+};
+
 /// @brief Structure that implements all the necessary functions to manage the map of contacts. Handles their detection
 /// and updates the list of the detected contacts, newly removed contacts, etc., to apply the appropriate functions on
 /// them.
@@ -227,7 +233,8 @@ protected:
   // method used to detect the contacts
   ContactsDetection contactsDetectionMethod_ = Undefined;
   // threshold for the contacts detection
-  double contactDetectionThreshold_;
+  // double contactDetectionThreshold_;
+  SchmidtTrigger schmidtTrigger_;
 
   // list of surfaces used for contacts detection if @contactsDetection_ is
   // set to "Surfaces"

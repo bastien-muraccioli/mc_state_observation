@@ -52,12 +52,16 @@ void NaiveOdometry::configure(const mc_control::MCController & ctl, const mc_rtc
         "the variable surfacesForContactDetection");
   }
 
-  double contactDetectionPropThreshold = config("contactDetectionPropThreshold", 0.11);
-
   if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Surfaces)
   {
     measurements::ContactsManagerSurfacesConfiguration contactsConfig(category_, surfacesForContactDetection);
-    contactsConfig.contactDetectionPropThreshold(contactDetectionPropThreshold).verbose(verbose);
+    contactsConfig.verbose(verbose);
+    if(config.has("schmidtTriggerLowerPropThreshold") && config.has("schmidtTriggerUpperPropThreshold"))
+    {
+      double schmidtTriggerLowerPropThreshold = config("schmidtTriggerLowerPropThreshold");
+      double schmidtTriggerUpperPropThreshold = config("schmidtTriggerUpperPropThreshold");
+      contactsConfig.schmidtTriggerPropThresholds(schmidtTriggerLowerPropThreshold, schmidtTriggerUpperPropThreshold);
+    }
     odometryManager_.init(ctl, odomConfig, contactsConfig);
   }
   if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Sensors)
@@ -65,15 +69,25 @@ void NaiveOdometry::configure(const mc_control::MCController & ctl, const mc_rtc
     std::vector<std::string> forceSensorsToOmit = config("forceSensorsToOmit", std::vector<std::string>());
 
     measurements::ContactsManagerSensorsConfiguration contactsConfig(category_);
-    contactsConfig.contactDetectionPropThreshold(contactDetectionPropThreshold)
-        .verbose(verbose)
-        .forceSensorsToOmit(forceSensorsToOmit);
+    contactsConfig.verbose(verbose).forceSensorsToOmit(forceSensorsToOmit);
+    if(config.has("schmidtTriggerLowerPropThreshold") && config.has("schmidtTriggerUpperPropThreshold"))
+    {
+      double schmidtTriggerLowerPropThreshold = config("schmidtTriggerLowerPropThreshold");
+      double schmidtTriggerUpperPropThreshold = config("schmidtTriggerUpperPropThreshold");
+      contactsConfig.schmidtTriggerPropThresholds(schmidtTriggerLowerPropThreshold, schmidtTriggerUpperPropThreshold);
+    }
     odometryManager_.init(ctl, odomConfig, contactsConfig);
   }
   if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Solver)
   {
     measurements::ContactsManagerSolverConfiguration contactsConfig(category_);
-    contactsConfig.contactDetectionPropThreshold(contactDetectionPropThreshold).verbose(verbose);
+    contactsConfig.verbose(verbose);
+    if(config.has("schmidtTriggerLowerPropThreshold") && config.has("schmidtTriggerUpperPropThreshold"))
+    {
+      double schmidtTriggerLowerPropThreshold = config("schmidtTriggerLowerPropThreshold");
+      double schmidtTriggerUpperPropThreshold = config("schmidtTriggerUpperPropThreshold");
+      contactsConfig.schmidtTriggerPropThresholds(schmidtTriggerLowerPropThreshold, schmidtTriggerUpperPropThreshold);
+    }
     odometryManager_.init(ctl, odomConfig, contactsConfig);
   }
 }

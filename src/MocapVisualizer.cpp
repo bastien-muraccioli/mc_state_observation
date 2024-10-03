@@ -30,8 +30,6 @@ void MocapVisualizer::configure(const mc_control::MCController & ctl, const mc_r
     std::string projectName = static_cast<std::string>(config("projectName"));
     csvPath_ = "/home/arnaud/devel/src/MocapAligner/Projects/" + projectName + "/output_data/resultMocapLimbData.csv";
 
-    double contactDetectionPropThreshold = config("contactDetectionPropThreshold", 0.11);
-
     using ContactsManager = measurements::ContactsManager<MocapContact>;
 
     std::string contactsDetectionString = static_cast<std::string>(config("contactsDetection"));
@@ -45,20 +43,38 @@ void MocapVisualizer::configure(const mc_control::MCController & ctl, const mc_r
 
       measurements::ContactsManagerSurfacesConfiguration contactsConfig(observerName_, surfacesForContactDetection);
 
-      contactsConfig.contactDetectionPropThreshold(contactDetectionPropThreshold).verbose(true);
+      contactsConfig.verbose(true);
+      if(config.has("schmidtTriggerLowerPropThreshold") && config.has("schmidtTriggerUpperPropThreshold"))
+      {
+        double schmidtTriggerLowerPropThreshold = config("schmidtTriggerLowerPropThreshold");
+        double schmidtTriggerUpperPropThreshold = config("schmidtTriggerUpperPropThreshold");
+        contactsConfig.schmidtTriggerPropThresholds(schmidtTriggerLowerPropThreshold, schmidtTriggerUpperPropThreshold);
+      }
 
       contactsManager_.init(ctl, robot_, contactsConfig);
     }
     if(contactsDetectionMethod == ContactsManager::ContactsDetection::Sensors)
     {
       measurements::ContactsManagerSensorsConfiguration contactsConfig(observerName_);
-      contactsConfig.contactDetectionPropThreshold(contactDetectionPropThreshold).verbose(true);
+      contactsConfig.verbose(true);
+      if(config.has("schmidtTriggerLowerPropThreshold") && config.has("schmidtTriggerUpperPropThreshold"))
+      {
+        double schmidtTriggerLowerPropThreshold = config("schmidtTriggerLowerPropThreshold");
+        double schmidtTriggerUpperPropThreshold = config("schmidtTriggerUpperPropThreshold");
+        contactsConfig.schmidtTriggerPropThresholds(schmidtTriggerLowerPropThreshold, schmidtTriggerUpperPropThreshold);
+      }
       contactsManager_.init(ctl, robot_, contactsConfig);
     }
     if(contactsDetectionMethod == ContactsManager::ContactsDetection::Solver)
     {
       measurements::ContactsManagerSolverConfiguration contactsConfig(observerName_);
-      contactsConfig.contactDetectionPropThreshold(contactDetectionPropThreshold).verbose(true);
+      contactsConfig.verbose(true);
+      if(config.has("schmidtTriggerLowerPropThreshold") && config.has("schmidtTriggerUpperPropThreshold"))
+      {
+        double schmidtTriggerLowerPropThreshold = config("schmidtTriggerLowerPropThreshold");
+        double schmidtTriggerUpperPropThreshold = config("schmidtTriggerUpperPropThreshold");
+        contactsConfig.schmidtTriggerPropThresholds(schmidtTriggerLowerPropThreshold, schmidtTriggerUpperPropThreshold);
+      }
       contactsManager_.init(ctl, robot_, contactsConfig);
     }
   }
