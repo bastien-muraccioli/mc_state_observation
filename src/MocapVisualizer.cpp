@@ -44,11 +44,11 @@ void MocapVisualizer::configure(const mc_control::MCController & ctl, const mc_r
       measurements::ContactsManagerSurfacesConfiguration contactsConfig(observerName_, surfacesForContactDetection);
 
       contactsConfig.verbose(true);
-      if(config.has("schmidtTriggerLowerPropThreshold") && config.has("schmidtTriggerUpperPropThreshold"))
+      if(config.has("schmittTriggerLowerPropThreshold") && config.has("schmittTriggerUpperPropThreshold"))
       {
-        double schmidtTriggerLowerPropThreshold = config("schmidtTriggerLowerPropThreshold");
-        double schmidtTriggerUpperPropThreshold = config("schmidtTriggerUpperPropThreshold");
-        contactsConfig.schmidtTriggerPropThresholds(schmidtTriggerLowerPropThreshold, schmidtTriggerUpperPropThreshold);
+        double schmittTriggerLowerPropThreshold = config("schmittTriggerLowerPropThreshold");
+        double schmittTriggerUpperPropThreshold = config("schmittTriggerUpperPropThreshold");
+        contactsConfig.schmittTriggerPropThresholds(schmittTriggerLowerPropThreshold, schmittTriggerUpperPropThreshold);
       }
 
       contactsManager_.init(ctl, robot_, contactsConfig);
@@ -57,11 +57,11 @@ void MocapVisualizer::configure(const mc_control::MCController & ctl, const mc_r
     {
       measurements::ContactsManagerSensorsConfiguration contactsConfig(observerName_);
       contactsConfig.verbose(true);
-      if(config.has("schmidtTriggerLowerPropThreshold") && config.has("schmidtTriggerUpperPropThreshold"))
+      if(config.has("schmittTriggerLowerPropThreshold") && config.has("schmittTriggerUpperPropThreshold"))
       {
-        double schmidtTriggerLowerPropThreshold = config("schmidtTriggerLowerPropThreshold");
-        double schmidtTriggerUpperPropThreshold = config("schmidtTriggerUpperPropThreshold");
-        contactsConfig.schmidtTriggerPropThresholds(schmidtTriggerLowerPropThreshold, schmidtTriggerUpperPropThreshold);
+        double schmittTriggerLowerPropThreshold = config("schmittTriggerLowerPropThreshold");
+        double schmittTriggerUpperPropThreshold = config("schmittTriggerUpperPropThreshold");
+        contactsConfig.schmittTriggerPropThresholds(schmittTriggerLowerPropThreshold, schmittTriggerUpperPropThreshold);
       }
       contactsManager_.init(ctl, robot_, contactsConfig);
     }
@@ -69,11 +69,11 @@ void MocapVisualizer::configure(const mc_control::MCController & ctl, const mc_r
     {
       measurements::ContactsManagerSolverConfiguration contactsConfig(observerName_);
       contactsConfig.verbose(true);
-      if(config.has("schmidtTriggerLowerPropThreshold") && config.has("schmidtTriggerUpperPropThreshold"))
+      if(config.has("schmittTriggerLowerPropThreshold") && config.has("schmittTriggerUpperPropThreshold"))
       {
-        double schmidtTriggerLowerPropThreshold = config("schmidtTriggerLowerPropThreshold");
-        double schmidtTriggerUpperPropThreshold = config("schmidtTriggerUpperPropThreshold");
-        contactsConfig.schmidtTriggerPropThresholds(schmidtTriggerLowerPropThreshold, schmidtTriggerUpperPropThreshold);
+        double schmittTriggerLowerPropThreshold = config("schmittTriggerLowerPropThreshold");
+        double schmittTriggerUpperPropThreshold = config("schmittTriggerUpperPropThreshold");
+        contactsConfig.schmittTriggerPropThresholds(schmittTriggerLowerPropThreshold, schmittTriggerUpperPropThreshold);
       }
       contactsManager_.init(ctl, robot_, contactsConfig);
     }

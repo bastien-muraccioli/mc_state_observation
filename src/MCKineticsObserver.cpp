@@ -62,11 +62,11 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
     measurements::ContactsManagerSurfacesConfiguration contactsConf(observerName_, surfacesForContactDetection);
 
     contactsConf.verbose(true);
-    if(contactsConfig.has("schmidtTriggerLowerPropThreshold") && contactsConfig.has("schmidtTriggerUpperPropThreshold"))
+    if(contactsConfig.has("schmittTriggerLowerPropThreshold") && contactsConfig.has("schmittTriggerUpperPropThreshold"))
     {
-      double schmidtTriggerLowerPropThreshold = contactsConfig("schmidtTriggerLowerPropThreshold");
-      double schmidtTriggerUpperPropThreshold = contactsConfig("schmidtTriggerUpperPropThreshold");
-      contactsConf.schmidtTriggerPropThresholds(schmidtTriggerLowerPropThreshold, schmidtTriggerUpperPropThreshold);
+      double schmittTriggerLowerPropThreshold = contactsConfig("schmittTriggerLowerPropThreshold");
+      double schmittTriggerUpperPropThreshold = contactsConfig("schmittTriggerUpperPropThreshold");
+      contactsConf.schmittTriggerPropThresholds(schmittTriggerLowerPropThreshold, schmittTriggerUpperPropThreshold);
     }
 
     auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
@@ -93,11 +93,11 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   {
     measurements::ContactsManagerSensorsConfiguration contactsConf(observerName_);
     contactsConf.verbose(true).forceSensorsToOmit(forceSensorsAsInput_);
-    if(contactsConfig.has("schmidtTriggerLowerPropThreshold") && contactsConfig.has("schmidtTriggerUpperPropThreshold"))
+    if(contactsConfig.has("schmittTriggerLowerPropThreshold") && contactsConfig.has("schmittTriggerUpperPropThreshold"))
     {
-      double schmidtTriggerLowerPropThreshold = contactsConfig("schmidtTriggerLowerPropThreshold");
-      double schmidtTriggerUpperPropThreshold = contactsConfig("schmidtTriggerUpperPropThreshold");
-      contactsConf.schmidtTriggerPropThresholds(schmidtTriggerLowerPropThreshold, schmidtTriggerUpperPropThreshold);
+      double schmittTriggerLowerPropThreshold = contactsConfig("schmittTriggerLowerPropThreshold");
+      double schmittTriggerUpperPropThreshold = contactsConfig("schmittTriggerUpperPropThreshold");
+      contactsConf.schmittTriggerPropThresholds(schmittTriggerLowerPropThreshold, schmittTriggerUpperPropThreshold);
     }
     contactsManager_.init(ctl, robot_, contactsConf);
 
@@ -119,11 +119,11 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   {
     measurements::ContactsManagerSolverConfiguration contactsConf(observerName_);
     contactsConf.verbose(true);
-    if(contactsConfig.has("schmidtTriggerLowerPropThreshold") && contactsConfig.has("schmidtTriggerUpperPropThreshold"))
+    if(contactsConfig.has("schmittTriggerLowerPropThreshold") && contactsConfig.has("schmittTriggerUpperPropThreshold"))
     {
-      double schmidtTriggerLowerPropThreshold = contactsConfig("schmidtTriggerLowerPropThreshold");
-      double schmidtTriggerUpperPropThreshold = contactsConfig("schmidtTriggerUpperPropThreshold");
-      contactsConf.schmidtTriggerPropThresholds(schmidtTriggerLowerPropThreshold, schmidtTriggerUpperPropThreshold);
+      double schmittTriggerLowerPropThreshold = contactsConfig("schmittTriggerLowerPropThreshold");
+      double schmittTriggerUpperPropThreshold = contactsConfig("schmittTriggerUpperPropThreshold");
+      contactsConf.schmittTriggerPropThresholds(schmittTriggerLowerPropThreshold, schmittTriggerUpperPropThreshold);
     }
     contactsManager_.init(ctl, robot_, contactsConf);
   }

@@ -87,12 +87,12 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
     {
       measurements::ContactsManagerSurfacesConfiguration contactsConf(observerName_, surfacesForContactDetection);
       contactsConf.verbose(verbose);
-      if(contactsConfig.has("schmidtTriggerLowerPropThreshold")
-         && contactsConfig.has("schmidtTriggerUpperPropThreshold"))
+      if(contactsConfig.has("schmittTriggerLowerPropThreshold")
+         && contactsConfig.has("schmittTriggerUpperPropThreshold"))
       {
-        double schmidtTriggerLowerPropThreshold = contactsConfig("schmidtTriggerLowerPropThreshold");
-        double schmidtTriggerUpperPropThreshold = contactsConfig("schmidtTriggerUpperPropThreshold");
-        contactsConf.schmidtTriggerPropThresholds(schmidtTriggerLowerPropThreshold, schmidtTriggerUpperPropThreshold);
+        double schmittTriggerLowerPropThreshold = contactsConfig("schmittTriggerLowerPropThreshold");
+        double schmittTriggerUpperPropThreshold = contactsConfig("schmittTriggerUpperPropThreshold");
+        contactsConf.schmittTriggerPropThresholds(schmittTriggerLowerPropThreshold, schmittTriggerUpperPropThreshold);
       }
       odometryManager_.init(ctl, odomConfig, contactsConf);
     }
@@ -102,12 +102,12 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
 
       measurements::ContactsManagerSensorsConfiguration contactsConf(observerName_);
       contactsConf.verbose(verbose).forceSensorsToOmit(forceSensorsToOmit);
-      if(contactsConfig.has("schmidtTriggerLowerPropThreshold")
-         && contactsConfig.has("schmidtTriggerUpperPropThreshold"))
+      if(contactsConfig.has("schmittTriggerLowerPropThreshold")
+         && contactsConfig.has("schmittTriggerUpperPropThreshold"))
       {
-        double schmidtTriggerLowerPropThreshold = contactsConfig("schmidtTriggerLowerPropThreshold");
-        double schmidtTriggerUpperPropThreshold = contactsConfig("schmidtTriggerUpperPropThreshold");
-        contactsConf.schmidtTriggerPropThresholds(schmidtTriggerLowerPropThreshold, schmidtTriggerUpperPropThreshold);
+        double schmittTriggerLowerPropThreshold = contactsConfig("schmittTriggerLowerPropThreshold");
+        double schmittTriggerUpperPropThreshold = contactsConfig("schmittTriggerUpperPropThreshold");
+        contactsConf.schmittTriggerPropThresholds(schmittTriggerLowerPropThreshold, schmittTriggerUpperPropThreshold);
       }
       odometryManager_.init(ctl, odomConfig, contactsConf);
     }
@@ -115,12 +115,12 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
     {
       measurements::ContactsManagerSolverConfiguration contactsConf(observerName_);
       contactsConf.verbose(verbose);
-      if(contactsConfig.has("schmidtTriggerLowerPropThreshold")
-         && contactsConfig.has("schmidtTriggerUpperPropThreshold"))
+      if(contactsConfig.has("schmittTriggerLowerPropThreshold")
+         && contactsConfig.has("schmittTriggerUpperPropThreshold"))
       {
-        double schmidtTriggerLowerPropThreshold = contactsConfig("schmidtTriggerLowerPropThreshold");
-        double schmidtTriggerUpperPropThreshold = contactsConfig("schmidtTriggerUpperPropThreshold");
-        contactsConf.schmidtTriggerPropThresholds(schmidtTriggerLowerPropThreshold, schmidtTriggerUpperPropThreshold);
+        double schmittTriggerLowerPropThreshold = contactsConfig("schmittTriggerLowerPropThreshold");
+        double schmittTriggerUpperPropThreshold = contactsConfig("schmittTriggerUpperPropThreshold");
+        contactsConf.schmittTriggerPropThresholds(schmittTriggerLowerPropThreshold, schmittTriggerUpperPropThreshold);
       }
       odometryManager_.init(ctl, odomConfig, contactsConf);
     }

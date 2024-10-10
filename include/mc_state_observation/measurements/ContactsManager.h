@@ -6,7 +6,7 @@
 namespace mc_state_observation::measurements
 {
 
-struct SchmidtTrigger
+struct SchmittTrigger
 {
   double lowerThreshold;
   double upperThreshold;
@@ -234,7 +234,7 @@ protected:
   ContactsDetection contactsDetectionMethod_ = Undefined;
   // threshold for the contacts detection
   // double contactDetectionThreshold_;
-  SchmidtTrigger schmidtTrigger_;
+  SchmittTrigger schmittTrigger_;
 
   // list of surfaces used for contacts detection if @contactsDetection_ is
   // set to "Surfaces"

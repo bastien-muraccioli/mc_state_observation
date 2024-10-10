@@ -22,21 +22,21 @@ void ContactsManager<ContactT>::init(const mc_control::MCController & ctl,
         observerName_ = c.observerName_;
         verbose_ = c.verbose_;
 
-        if(c.schmidtLowerPropThreshold_ && c.schmidtUpperPropThreshold_)
+        if(c.schmittLowerPropThreshold_ && c.schmittUpperPropThreshold_)
         {
           const auto & robot = ctl.robot(robotName);
 
-          schmidtTrigger_.lowerThreshold =
-              c.schmidtLowerPropThreshold_ * robot.mass() * stateObservation::cst::gravityConstant;
-          schmidtTrigger_.upperThreshold =
-              c.schmidtUpperPropThreshold_ * robot.mass() * stateObservation::cst::gravityConstant;
+          schmittTrigger_.lowerThreshold =
+              c.schmittLowerPropThreshold_ * robot.mass() * stateObservation::cst::gravityConstant;
+          schmittTrigger_.upperThreshold =
+              c.schmittUpperPropThreshold_ * robot.mass() * stateObservation::cst::gravityConstant;
         }
 
         auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
-        logger.addLogEntry(c.observerName_ + "_ContactsDetection_schmidtTrigger_lowerThreshold",
-                           [this]() -> double { return schmidtTrigger_.lowerThreshold; });
-        logger.addLogEntry(c.observerName_ + "_ContactsDetection_schmidtTrigger_upperThreshold",
-                           [this]() -> double { return schmidtTrigger_.upperThreshold; });
+        logger.addLogEntry(c.observerName_ + "_ContactsDetection_schmittTrigger_lowerThreshold",
+                           [this]() -> double { return schmittTrigger_.lowerThreshold; });
+        logger.addLogEntry(c.observerName_ + "_ContactsDetection_schmittTrigger_upperThreshold",
+                           [this]() -> double { return schmittTrigger_.upperThreshold; });
 
         init_manager(ctl, robotName, c, onAddedContact);
       },
@@ -209,7 +209,7 @@ void ContactsManager<ContactT>::findContactsFromSolver(const mc_control::MCContr
     ContactT & contactWS =
         addContactToManager(measRobot.frame(surfaceName).forceSensor().name(), surfaceName, onAddedContact);
     contactWS.forceNorm(measRobot.frame(surfaceName).wrench().force().norm());
-    if(contactWS.forceNorm() > schmidtTrigger_.lowerThreshold)
+    if(contactWS.forceNorm() > schmittTrigger_.lowerThreshold)
     {
       if(contactWS.wasAlreadySet())
       {
@@ -217,7 +217,7 @@ void ContactsManager<ContactT>::findContactsFromSolver(const mc_control::MCContr
         contactWS.isSet(true);
         onMaintainedContact(contactWS);
       }
-      else if(contactWS.forceNorm() > schmidtTrigger_.upperThreshold)
+      else if(contactWS.forceNorm() > schmittTrigger_.upperThreshold)
       {
         contactsDetected_ = true;
         contactWS.isSet(true);
@@ -269,7 +269,7 @@ void ContactsManager<ContactT>::findContactsFromSurfaces(const mc_control::MCCon
     const std::string & fsName = contact.forceSensor();
     const mc_rbdyn::ForceSensor & forceSensor = measRobot.forceSensor(fsName);
     contact.forceNorm(forceSensor.wrenchWithoutGravity(measRobot).force().norm());
-    if(contact.forceNorm() > schmidtTrigger_.lowerThreshold)
+    if(contact.forceNorm() > schmittTrigger_.lowerThreshold)
     {
       if(contact.wasAlreadySet())
       {
@@ -277,7 +277,7 @@ void ContactsManager<ContactT>::findContactsFromSurfaces(const mc_control::MCCon
         contact.isSet(true);
         onMaintainedContact(contact);
       }
-      else if(contact.forceNorm() > schmidtTrigger_.upperThreshold)
+      else if(contact.forceNorm() > schmittTrigger_.upperThreshold)
       {
         contactsDetected_ = true;
         contact.isSet(true);

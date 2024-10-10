@@ -56,11 +56,11 @@ void NaiveOdometry::configure(const mc_control::MCController & ctl, const mc_rtc
   {
     measurements::ContactsManagerSurfacesConfiguration contactsConfig(category_, surfacesForContactDetection);
     contactsConfig.verbose(verbose);
-    if(config.has("schmidtTriggerLowerPropThreshold") && config.has("schmidtTriggerUpperPropThreshold"))
+    if(config.has("schmittTriggerLowerPropThreshold") && config.has("schmittTriggerUpperPropThreshold"))
     {
-      double schmidtTriggerLowerPropThreshold = config("schmidtTriggerLowerPropThreshold");
-      double schmidtTriggerUpperPropThreshold = config("schmidtTriggerUpperPropThreshold");
-      contactsConfig.schmidtTriggerPropThresholds(schmidtTriggerLowerPropThreshold, schmidtTriggerUpperPropThreshold);
+      double schmittTriggerLowerPropThreshold = config("schmittTriggerLowerPropThreshold");
+      double schmittTriggerUpperPropThreshold = config("schmittTriggerUpperPropThreshold");
+      contactsConfig.schmittTriggerPropThresholds(schmittTriggerLowerPropThreshold, schmittTriggerUpperPropThreshold);
     }
     odometryManager_.init(ctl, odomConfig, contactsConfig);
   }
@@ -70,11 +70,11 @@ void NaiveOdometry::configure(const mc_control::MCController & ctl, const mc_rtc
 
     measurements::ContactsManagerSensorsConfiguration contactsConfig(category_);
     contactsConfig.verbose(verbose).forceSensorsToOmit(forceSensorsToOmit);
-    if(config.has("schmidtTriggerLowerPropThreshold") && config.has("schmidtTriggerUpperPropThreshold"))
+    if(config.has("schmittTriggerLowerPropThreshold") && config.has("schmittTriggerUpperPropThreshold"))
     {
-      double schmidtTriggerLowerPropThreshold = config("schmidtTriggerLowerPropThreshold");
-      double schmidtTriggerUpperPropThreshold = config("schmidtTriggerUpperPropThreshold");
-      contactsConfig.schmidtTriggerPropThresholds(schmidtTriggerLowerPropThreshold, schmidtTriggerUpperPropThreshold);
+      double schmittTriggerLowerPropThreshold = config("schmittTriggerLowerPropThreshold");
+      double schmittTriggerUpperPropThreshold = config("schmittTriggerUpperPropThreshold");
+      contactsConfig.schmittTriggerPropThresholds(schmittTriggerLowerPropThreshold, schmittTriggerUpperPropThreshold);
     }
     odometryManager_.init(ctl, odomConfig, contactsConfig);
   }
@@ -82,11 +82,11 @@ void NaiveOdometry::configure(const mc_control::MCController & ctl, const mc_rtc
   {
     measurements::ContactsManagerSolverConfiguration contactsConfig(category_);
     contactsConfig.verbose(verbose);
-    if(config.has("schmidtTriggerLowerPropThreshold") && config.has("schmidtTriggerUpperPropThreshold"))
+    if(config.has("schmittTriggerLowerPropThreshold") && config.has("schmittTriggerUpperPropThreshold"))
     {
-      double schmidtTriggerLowerPropThreshold = config("schmidtTriggerLowerPropThreshold");
-      double schmidtTriggerUpperPropThreshold = config("schmidtTriggerUpperPropThreshold");
-      contactsConfig.schmidtTriggerPropThresholds(schmidtTriggerLowerPropThreshold, schmidtTriggerUpperPropThreshold);
+      double schmittTriggerLowerPropThreshold = config("schmittTriggerLowerPropThreshold");
+      double schmittTriggerUpperPropThreshold = config("schmittTriggerUpperPropThreshold");
+      contactsConfig.schmittTriggerPropThresholds(schmittTriggerLowerPropThreshold, schmittTriggerUpperPropThreshold);
     }
     odometryManager_.init(ctl, odomConfig, contactsConfig);
   }

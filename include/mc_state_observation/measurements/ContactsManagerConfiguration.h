@@ -17,14 +17,14 @@ struct ContactsManagerConfigurationPrvt
 {
   inline ContactsManagerConfigurationPrvt(const std::string & observerName) noexcept : observerName_(observerName)
   {
-    schmidtLowerPropThreshold_ = 0.12;
-    schmidtUpperPropThreshold_ = 0.15;
+    schmittLowerPropThreshold_ = 0.12;
+    schmittUpperPropThreshold_ = 0.15;
   }
 
-  inline ConfigurationType & schmidtTriggerPropThresholds(double lowerPropThreshold, double upperPropThreshold) noexcept
+  inline ConfigurationType & schmittTriggerPropThresholds(double lowerPropThreshold, double upperPropThreshold) noexcept
   {
-    schmidtLowerPropThreshold_ = lowerPropThreshold;
-    schmidtUpperPropThreshold_ = upperPropThreshold;
+    schmittLowerPropThreshold_ = lowerPropThreshold;
+    schmittUpperPropThreshold_ = upperPropThreshold;
     return static_cast<ConfigurationType &>(*this);
   }
   inline ConfigurationType & verbose(bool verbose) noexcept
@@ -35,8 +35,8 @@ struct ContactsManagerConfigurationPrvt
 
   std::string observerName_;
 
-  double schmidtLowerPropThreshold_;
-  double schmidtUpperPropThreshold_;
+  double schmittLowerPropThreshold_;
+  double schmittUpperPropThreshold_;
   bool verbose_ = true;
 };
 } // namespace internal
