@@ -1123,6 +1123,11 @@ void MCKineticsObserver::addToLogger(const mc_control::MCController & ctl,
                                     observer_.sizeGyroBiasTangent, observer_.sizeGyroBiasTangent)
                              .diagonal();
                        });
+    logger.addLogEntry(
+        observerName_ + "_measurements_predError",
+        [this]() -> double {
+          return (observer_.getEKF().getLastMeasurement() - observer_.getEKF().getLastPredictedMeasurement()).norm();
+        });
     logger.addLogEntry(observerName_ + "_measurements_gyro_" + imu.name() + "_measured",
                        [this, &imu]() -> Eigen::Vector3d
                        {
