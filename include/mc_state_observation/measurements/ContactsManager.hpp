@@ -32,12 +32,6 @@ void ContactsManager<ContactT>::init(const mc_control::MCController & ctl,
               c.schmittUpperPropThreshold_ * robot.mass() * stateObservation::cst::gravityConstant;
         }
 
-        auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
-        logger.addLogEntry(c.observerName_ + "_ContactsDetection_schmittTrigger_lowerThreshold",
-                           [this]() -> double { return schmittTrigger_.lowerThreshold; });
-        logger.addLogEntry(c.observerName_ + "_ContactsDetection_schmittTrigger_upperThreshold",
-                           [this]() -> double { return schmittTrigger_.upperThreshold; });
-
         init_manager(ctl, robotName, c, onAddedContact);
       },
       conf);
@@ -304,6 +298,15 @@ void ContactsManager<ContactT>::findContactsFromSensors(const mc_control::MCCont
                                                         OnMaintainedContact & onMaintainedContact)
 {
   findContactsFromSurfaces(ctl, robotName, onNewContact, onMaintainedContact);
+}
+
+template<typename ContactT>
+void ContactsManager<ContactT>::addToLogger(mc_rtc::Logger & logger, const std::string & category)
+{
+  logger.addLogEntry(category + "_ContactsDetection_schmittTrigger_lowerThreshold",
+                     [this]() -> double { return schmittTrigger_.lowerThreshold; });
+  logger.addLogEntry(category + "_ContactsDetection_schmittTrigger_upperThreshold",
+                     [this]() -> double { return schmittTrigger_.upperThreshold; });
 }
 
 } // namespace mc_state_observation::measurements

@@ -611,39 +611,36 @@ void LeggedOdometryManager::addContactLogEntries(const mc_control::MCController 
   const std::string & contactName = contact.name();
 
   conversions::kinematics::addToLogger(logger, contact.worldRefKine_,
-                                       odometryName_ + "_leggedOdometryManager_" + contactName + "_refPose");
+                                       category_ + "_contacts_" + contactName + "_refPose");
   conversions::kinematics::addToLogger(logger, contact.worldFbKineFromRef_,
-                                       odometryName_ + "_leggedOdometryManager_" + contactName + "_worldFbKineFromRef");
+                                       category_ + "_contacts_" + contactName + "_worldFbKineFromRef");
   conversions::kinematics::addToLogger(logger, contact.currentWorldKine_,
-                                       odometryName_ + "_leggedOdometryManager_" + contactName
-                                           + "_currentWorldContactKine");
+                                       category_ + "_contacts_" + contactName + "_currentWorldContactKine");
   conversions::kinematics::addToLogger(logger, contact.contactFbKine_,
-                                       odometryName_ + "_leggedOdometryManager_" + contactName + "_contactFbKine_");
+                                       category_ + "_contacts_" + contactName + "_contactFbKine_");
   conversions::kinematics::addToLogger(logger, contact.worldRefKineBeforeCorrection_,
-                                       odometryName_ + "_leggedOdometryManager_" + contactName
-                                           + "_refPoseBeforeCorrection");
+                                       category_ + "_contacts_" + contactName + "_refPoseBeforeCorrection");
   conversions::kinematics::addToLogger(logger, contact.newIncomingWorldRefKine_,
-                                       odometryName_ + "_leggedOdometryManager_" + contactName
-                                           + "_newIncomingWorldRefKine");
+                                       category_ + "_contacts_" + contactName + "_newIncomingWorldRefKine");
 
-  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_" + contactName + "_realRobot_pos", &contact,
+  logger.addLogEntry(category_ + "_contacts_" + contactName + "_realRobot_pos", &contact,
                      [&ctl, &contact, this]()
                      { return ctl.realRobot(robotName_).surfacePose(contact.surface()).translation(); });
-  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_" + contactName + "_realRobot_ori", &contact,
+  logger.addLogEntry(category_ + "_contacts_" + contactName + "_realRobot_ori", &contact,
                      [&ctl, &contact, this]() {
                        return Eigen::Quaterniond(ctl.realRobot(robotName_).surfacePose(contact.surface()).rotation());
                      });
 
-  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_" + contactName + "_isSet", &contact,
+  logger.addLogEntry(category_ + "_contacts_" + contactName + "_isSet", &contact,
                      [&contact]() -> std::string { return contact.isSet() ? "Set" : "notSet"; });
 
-  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_" + contactName + "_lambda", &contact,
+  logger.addLogEntry(category_ + "_contacts_" + contactName + "_lambda", &contact,
                      [&contact]() -> double { return contact.lambda(); });
-  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_" + contactName + "_forceNorm", &contact,
+  logger.addLogEntry(category_ + "_contacts_" + contactName + "_forceNorm", &contact,
                      [&contact]() -> double { return contact.forceNorm(); });
-  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_" + contactName + "_lifeTime", &contact,
+  logger.addLogEntry(category_ + "_contacts_" + contactName + "_lifeTime", &contact,
                      [&contact]() -> double { return contact.lifeTime(); });
-  logger.addLogEntry(odometryName_ + "_leggedOdometryManager_" + contactName + "_weightingCoeff", &contact,
+  logger.addLogEntry(category_ + "_contacts_" + contactName + "_weightingCoeff", &contact,
                      [&contact]() -> double { return contact.weightingCoeff(); });
 }
 
@@ -831,19 +828,22 @@ void LeggedOdometryManager::setOdometryType(OdometryType newOdometryType)
 
 void LeggedOdometryManager::addToLogger(mc_rtc::Logger & logger, const std::string & leggedOdomCategory)
 {
-  logger.addLogEntry(leggedOdomCategory + "fbAnchorPos_", [this]() -> so::Vector3 & { return fbAnchorPos_; });
-  logger.addLogEntry(leggedOdomCategory + "worldAnchorPos", [this]() { return worldAnchorPos_; });
-  logger.addLogEntry(leggedOdomCategory + "odometryRobot_posW",
+  category_ = leggedOdomCategory;
+  logger.addLogEntry(leggedOdomCategory + "_fbAnchorPos_", [this]() -> so::Vector3 & { return fbAnchorPos_; });
+  logger.addLogEntry(leggedOdomCategory + "_worldAnchorPos", [this]() { return worldAnchorPos_; });
+  logger.addLogEntry(leggedOdomCategory + "_odometryRobot_posW",
                      [this]() -> const sva::PTransformd & { return odometryRobot().posW(); });
-  logger.addLogEntry(leggedOdomCategory + "odometryRobot_velW",
+  logger.addLogEntry(leggedOdomCategory + "_odometryRobot_velW",
                      [this]() -> const sva::MotionVecd & { return odometryRobot().velW(); });
-  logger.addLogEntry(leggedOdomCategory + "odometryRobot_accW", [this]() { return odometryRobot().accW(); });
+  logger.addLogEntry(leggedOdomCategory + "_odometryRobot_accW", [this]() { return odometryRobot().accW(); });
 
-  logger.addLogEntry(leggedOdomCategory + "kappa", [this]() { return kappa_; });
-  logger.addLogEntry(leggedOdomCategory + "lambdaInf", [this]() { return lambdaInf_; });
+  logger.addLogEntry(leggedOdomCategory + "_kappa", [this]() { return kappa_; });
+  logger.addLogEntry(leggedOdomCategory + "_lambdaInf", [this]() { return lambdaInf_; });
 
-  logger.addLogEntry(leggedOdomCategory + "OdometryType",
+  logger.addLogEntry(leggedOdomCategory + "_OdometryType",
                      [this]() -> std::string { return measurements::odometryTypeToSstring(odometryType_); });
+
+  contactsManager_.addToLogger(logger, leggedOdomCategory + "_contactsManager");
 }
 
 } // namespace mc_state_observation::odometry

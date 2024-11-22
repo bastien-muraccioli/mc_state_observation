@@ -17,7 +17,7 @@ struct ContactsManagerConfigurationPrvt
 {
   inline ContactsManagerConfigurationPrvt(const std::string & observerName) noexcept : observerName_(observerName)
   {
-    schmittLowerPropThreshold_ = 0.12;
+    schmittLowerPropThreshold_ = 0.10;
     schmittUpperPropThreshold_ = 0.15;
   }
 

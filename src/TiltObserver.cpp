@@ -12,11 +12,10 @@ namespace so = stateObservation;
 using OdometryType = measurements::OdometryType;
 using LoContactsManager = odometry::LeggedOdometryManager::ContactsManager;
 
-TiltObserver::TiltObserver(const std::string & type, double dt, bool asBackup, const std::string & observerName)
-: mc_observers::Observer(type, dt), estimator_(alpha_, beta_, gamma_, dt), odometryManager_(observerName, dt)
+TiltObserver::TiltObserver(const std::string & type, double dt, bool asBackup)
+: mc_observers::Observer(type, dt), estimator_(alpha_, beta_, gamma_, dt), odometryManager_(dt)
 {
   asBackup_ = asBackup;
-  observerName_ = observerName;
 }
 
 void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc::Configuration & config)
@@ -53,7 +52,7 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
 
   std::string odometryTypeStr = static_cast<std::string>(leggedOdomConfig("odometryType"));
   // we set the odometry type now because it will be necessary for the next check
-  setOdometryType(measurements::stringToOdometryType(odometryTypeStr, observerName_));
+  setOdometryType(measurements::stringToOdometryType(odometryTypeStr, name()));
 
   // specific configurations for the use of odometry.
   if(odometryManager_.odometryType_ != measurements::OdometryType::None)
@@ -68,7 +67,7 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
 
     std::string contactsDetectionString = static_cast<std::string>(contactsConfig("contactsDetection"));
     LoContactsManager::ContactsDetection contactsDetectionMethod =
-        odometryManager_.contactsManager().stringToContactsDetection(contactsDetectionString, observerName_);
+        odometryManager_.contactsManager().stringToContactsDetection(contactsDetectionString, name());
 
     if(surfacesForContactDetection.size() > 0
        && contactsDetectionMethod != LoContactsManager::ContactsDetection::Surfaces)
@@ -78,14 +77,14 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
                                                        "surfacesForContactDetection variable");
     }
 
-    odometry::LeggedOdometryManager::Configuration odomConfig(robot_, observerName_, odometryManager_.odometryType_);
+    odometry::LeggedOdometryManager::Configuration odomConfig(robot_, name(), odometryManager_.odometryType_);
     odomConfig.velocityUpdate(odometry::LeggedOdometryManager::VelocityUpdate::NoUpdate)
         .withYawEstimation(withYawEstimation);
     if(asBackup_) { odomConfig.withModeSwitchInGui(false); }
 
     if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Surfaces)
     {
-      measurements::ContactsManagerSurfacesConfiguration contactsConf(observerName_, surfacesForContactDetection);
+      measurements::ContactsManagerSurfacesConfiguration contactsConf(name(), surfacesForContactDetection);
       contactsConf.verbose(verbose);
       if(contactsConfig.has("schmittTriggerLowerPropThreshold")
          && contactsConfig.has("schmittTriggerUpperPropThreshold"))
@@ -100,7 +99,7 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
     {
       std::vector<std::string> forceSensorsToOmit = config("forceSensorsToOmit", std::vector<std::string>());
 
-      measurements::ContactsManagerSensorsConfiguration contactsConf(observerName_);
+      measurements::ContactsManagerSensorsConfiguration contactsConf(name());
       contactsConf.verbose(verbose).forceSensorsToOmit(forceSensorsToOmit);
       if(contactsConfig.has("schmittTriggerLowerPropThreshold")
          && contactsConfig.has("schmittTriggerUpperPropThreshold"))
@@ -113,7 +112,7 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
     }
     if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Solver)
     {
-      measurements::ContactsManagerSolverConfiguration contactsConf(observerName_);
+      measurements::ContactsManagerSolverConfiguration contactsConf(name());
       contactsConf.verbose(verbose);
       if(contactsConfig.has("schmittTriggerLowerPropThreshold")
          && contactsConfig.has("schmittTriggerUpperPropThreshold"))
@@ -139,8 +138,7 @@ void TiltObserver::reset(const mc_control::MCController & ctl)
   // to get more accurate local Kinematics.
   my_robots_->robotCopy(robot, "updatedRobot");
   ctl.gui()->addElement(
-      {"Robots"},
-      mc_rtc::gui::Robot(observerName_, [this]() -> const mc_rbdyn::Robot & { return my_robots_->robot(); }));
+      {"Robots"}, mc_rtc::gui::Robot(name(), [this]() -> const mc_rbdyn::Robot & { return my_robots_->robot(); }));
 
   const auto & imu = robot.bodySensor(imuSensor_);
 
@@ -572,9 +570,10 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
                                mc_rtc::Logger & logger,
                                const std::string & category)
 {
+  category_ = category;
   if(odometryManager_.odometryType_ != measurements::OdometryType::None)
   {
-    odometryManager_.addToLogger(logger, category + "_leggedOdometryManager_");
+    odometryManager_.addToLogger(logger, category + "_leggedOdometryManager");
   }
 
   logger.addLogEntry(category + "_estimatedState_x1", [this]() -> so::Vector3 { return xk_.head(3); });

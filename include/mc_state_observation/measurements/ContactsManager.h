@@ -185,6 +185,12 @@ public:
     return nullptr;
   }
 
+  /*! \brief Add the contacts manager to the logger
+   *
+   * @param category Category in which to log the contacts manager
+   */
+  void addToLogger(mc_rtc::Logger &, const std::string & category);
+
 private:
   /// @brief Initializer for a contacts detection based on contact surfaces
   /// @param ctl The controller

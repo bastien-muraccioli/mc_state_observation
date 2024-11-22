@@ -98,7 +98,9 @@ public:
   inline const sva::PTransformd & posW() const { return X_0_fb_; }
 
 private:
-  std::string category_ = "NaiveOdometry";
+  // category to plot the estimator in
+  std::string category_;
+
   /* custom list of robots to display */
   std::shared_ptr<mc_rbdyn::Robots> my_robots_;
 

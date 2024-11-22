@@ -11,7 +11,7 @@ namespace so = stateObservation;
 namespace mc_state_observation
 {
 NaiveOdometry::NaiveOdometry(const std::string & type, double dt)
-: mc_observers::Observer(type, dt), odometryManager_(category_, dt)
+: mc_observers::Observer(type, dt), odometryManager_(dt)
 {
 }
 
@@ -30,7 +30,7 @@ void NaiveOdometry::configure(const mc_control::MCController & ctl, const mc_rtc
   std::string velocityUpdate = "NoUpdate";
   config("velocityUpdate", velocityUpdate);
 
-  odometry::LeggedOdometryManager::Configuration odomConfig(robot_, category_, odometryTypeStr);
+  odometry::LeggedOdometryManager::Configuration odomConfig(robot_, name(), odometryTypeStr);
   odomConfig.velocityUpdate(velocityUpdate).withYawEstimation(true);
 
   /* Configuration of the contacts detection */
@@ -42,7 +42,7 @@ void NaiveOdometry::configure(const mc_control::MCController & ctl, const mc_rtc
 
   std::string contactsDetectionString = static_cast<std::string>(config("contactsDetection"));
   LoContactsManager::ContactsDetection contactsDetectionMethod =
-      odometryManager_.contactsManager().stringToContactsDetection(contactsDetectionString, category_);
+      odometryManager_.contactsManager().stringToContactsDetection(contactsDetectionString, name());
 
   if(surfacesForContactDetection.size() > 0
      && contactsDetectionMethod != LoContactsManager::ContactsDetection::Surfaces)
@@ -54,7 +54,7 @@ void NaiveOdometry::configure(const mc_control::MCController & ctl, const mc_rtc
 
   if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Surfaces)
   {
-    measurements::ContactsManagerSurfacesConfiguration contactsConfig(category_, surfacesForContactDetection);
+    measurements::ContactsManagerSurfacesConfiguration contactsConfig(name(), surfacesForContactDetection);
     contactsConfig.verbose(verbose);
     if(config.has("schmittTriggerLowerPropThreshold") && config.has("schmittTriggerUpperPropThreshold"))
     {
@@ -68,7 +68,7 @@ void NaiveOdometry::configure(const mc_control::MCController & ctl, const mc_rtc
   {
     std::vector<std::string> forceSensorsToOmit = config("forceSensorsToOmit", std::vector<std::string>());
 
-    measurements::ContactsManagerSensorsConfiguration contactsConfig(category_);
+    measurements::ContactsManagerSensorsConfiguration contactsConfig(name());
     contactsConfig.verbose(verbose).forceSensorsToOmit(forceSensorsToOmit);
     if(config.has("schmittTriggerLowerPropThreshold") && config.has("schmittTriggerUpperPropThreshold"))
     {
@@ -80,7 +80,7 @@ void NaiveOdometry::configure(const mc_control::MCController & ctl, const mc_rtc
   }
   if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Solver)
   {
-    measurements::ContactsManagerSolverConfiguration contactsConfig(category_);
+    measurements::ContactsManagerSolverConfiguration contactsConfig(name());
     contactsConfig.verbose(verbose);
     if(config.has("schmittTriggerLowerPropThreshold") && config.has("schmittTriggerUpperPropThreshold"))
     {
@@ -127,7 +127,7 @@ void NaiveOdometry::reset(const mc_control::MCController & ctl)
   my_robots_ = mc_rbdyn::Robots::make();
   my_robots_->robotCopy(robot, robot.name());
   ctl.gui()->addElement(
-      {"Robots"}, mc_rtc::gui::Robot(category_, [this]() -> const mc_rbdyn::Robot & { return my_robots_->robot(); }));
+      {"Robots"}, mc_rtc::gui::Robot(name(), [this]() -> const mc_rbdyn::Robot & { return my_robots_->robot(); }));
 
   X_0_fb_.translation() = realRobot.posW().translation();
   X_0_fb_.rotation() = realRobot.posW().rotation();
@@ -186,8 +186,8 @@ void NaiveOdometry::mass(double mass)
 
 void NaiveOdometry::addToLogger(const mc_control::MCController &, mc_rtc::Logger & logger, const std::string & category)
 {
+  category_ = category;
   logger.addLogEntry(category + "_naive_fb_posW", [this]() -> const sva::PTransformd & { return X_0_fb_; });
-
   logger.addLogEntry(category + "_naive_fb_yaw",
                      [this]() -> double { return -so::kine::rotationMatrixToYawAxisAgnostic(X_0_fb_.rotation()); });
 }

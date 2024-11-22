@@ -403,11 +403,7 @@ public:
 
   using ContactsManagerConfiguration = ContactsManager::Configuration;
 
-  inline LeggedOdometryManager(const std::string & odometryName, double dt_)
-  {
-    odometryName_ = odometryName;
-    ctl_dt_ = dt_;
-  }
+  inline LeggedOdometryManager(double dt_) { ctl_dt_ = dt_; }
   /**
    * @brief  Returns a list of pointers to the contacts maintained during the current iteration.
    *
@@ -655,6 +651,9 @@ private:
   }
 
 protected:
+  // category to plot the odometry in
+  std::string category_;
+
   // Name of the odometry, used in logs and in the gui.
   std::string odometryName_;
   // Name of the robot

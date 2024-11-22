@@ -14,11 +14,10 @@ namespace so = stateObservation;
 using OdometryType = measurements::OdometryType;
 using LoContactsManager = odometry::LeggedOdometryManager::ContactsManager;
 
-MCVanytEstimator::MCVanytEstimator(const std::string & type, double dt, bool asBackup, const std::string & observerName)
-: mc_observers::Observer(type, dt), estimator_(alpha_, beta_, 1 / (2 * M_PI), dt), odometryManager_(observerName, dt)
+MCVanytEstimator::MCVanytEstimator(const std::string & type, double dt, bool asBackup)
+: mc_observers::Observer(type, dt), estimator_(alpha_, beta_, 1 / (2 * M_PI), dt), odometryManager_(dt)
 {
   asBackup_ = asBackup;
-  observerName_ = observerName;
 }
 
 void MCVanytEstimator::configure(const mc_control::MCController & ctl, const mc_rtc::Configuration & config)
@@ -63,7 +62,7 @@ void MCVanytEstimator::configure(const mc_control::MCController & ctl, const mc_
 
   std::string odometryTypeStr = static_cast<std::string>(odomConfig("odometryType"));
   // we set the odometry type now because it will be necessary for the next check
-  setOdometryType(measurements::stringToOdometryType(odometryTypeStr, observerName_));
+  setOdometryType(measurements::stringToOdometryType(odometryTypeStr, name()));
 
   // specific configurations for the use of odometry.
   bool verbose = config("verbose", true);
@@ -77,7 +76,7 @@ void MCVanytEstimator::configure(const mc_control::MCController & ctl, const mc_
 
   std::string contactsDetectionString = static_cast<std::string>(contactsConfig("contactsDetection"));
   LoContactsManager::ContactsDetection contactsDetectionMethod =
-      odometryManager_.contactsManager().stringToContactsDetection(contactsDetectionString, observerName_);
+      odometryManager_.contactsManager().stringToContactsDetection(contactsDetectionString, name());
 
   if(surfacesForContactDetection.size() > 0
      && contactsDetectionMethod != LoContactsManager::ContactsDetection::Surfaces)
@@ -87,7 +86,7 @@ void MCVanytEstimator::configure(const mc_control::MCController & ctl, const mc_
                                                      "surfacesForContactDetection variable");
   }
 
-  odometry::LeggedOdometryManager::Configuration odometryConfig(robot_, observerName_, odometryManager_.odometryType_);
+  odometry::LeggedOdometryManager::Configuration odometryConfig(robot_, name(), odometryManager_.odometryType_);
   odometryConfig.velocityUpdate(odometry::LeggedOdometryManager::VelocityUpdate::NoUpdate)
       .withYawEstimation(withYawEstimation)
       .correctContacts(correctContacts);
@@ -109,7 +108,7 @@ void MCVanytEstimator::configure(const mc_control::MCController & ctl, const mc_
       mc_rtc::log::error_and_throw<std::runtime_error>("The list of surfaces for the contact detection is empty.");
     }
 
-    measurements::ContactsManagerSurfacesConfiguration contactsConf(observerName_, surfacesForContactDetection);
+    measurements::ContactsManagerSurfacesConfiguration contactsConf(name(), surfacesForContactDetection);
     contactsConf.verbose(verbose);
 
     if(contactsConfig.has("schmittTriggerLowerPropThreshold") && contactsConfig.has("schmittTriggerUpperPropThreshold"))
@@ -125,7 +124,7 @@ void MCVanytEstimator::configure(const mc_control::MCController & ctl, const mc_
   {
     std::vector<std::string> forceSensorsToOmit = odomConfig("forceSensorsToOmit", std::vector<std::string>());
 
-    measurements::ContactsManagerSensorsConfiguration contactsConf(observerName_);
+    measurements::ContactsManagerSensorsConfiguration contactsConf(name());
     contactsConf.verbose(verbose).forceSensorsToOmit(forceSensorsToOmit);
     if(contactsConfig.has("schmittTriggerLowerPropThreshold") && contactsConfig.has("schmittTriggerUpperPropThreshold"))
     {
@@ -138,7 +137,7 @@ void MCVanytEstimator::configure(const mc_control::MCController & ctl, const mc_
   }
   if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Solver)
   {
-    measurements::ContactsManagerSolverConfiguration contactsConf(observerName_);
+    measurements::ContactsManagerSolverConfiguration contactsConf(name());
     contactsConf.verbose(verbose);
     if(contactsConfig.has("schmittTriggerLowerPropThreshold") && contactsConfig.has("schmittTriggerUpperPropThreshold"))
     {
@@ -161,8 +160,7 @@ void MCVanytEstimator::reset(const mc_control::MCController & ctl)
   // the updated robot has the same floating base's pose than the control robot, but its encoders are updated. We use it
   // to get more accurate local Kinematics.
   ctl.gui()->addElement(
-      {"Robots"},
-      mc_rtc::gui::Robot(observerName_, [this]() -> const mc_rbdyn::Robot & { return my_robots_->robot(); }));
+      {"Robots"}, mc_rtc::gui::Robot(name(), [this]() -> const mc_rbdyn::Robot & { return my_robots_->robot(); }));
 
   const auto & imu = robot.bodySensor(imuSensor_);
 
@@ -480,7 +478,7 @@ void MCVanytEstimator::delayedOriMeasurementHandler(const mc_control::MCControll
 
   auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
   delayedOriMeas_.updatedPoseWithMeas_ = iterationsBuffer.at(delay - 1).updatedPose_;
-  addDelayedOriMeasLogs(logger, observerName_);
+  addDelayedOriMeasLogs(logger, name());
 }
 
 void MCVanytEstimator::setOdometryType(OdometryType newOdometryType)
@@ -520,7 +518,9 @@ void MCVanytEstimator::addToLogger(const mc_control::MCController & ctl,
                                    mc_rtc::Logger & logger,
                                    const std::string & category)
 {
-  odometryManager_.addToLogger(logger, category + "_leggedOdometryManager_");
+  category_ = category;
+
+  odometryManager_.addToLogger(logger, category + "_leggedOdometryManager");
   logger.addLogEntry(category + "_estimatedState_p", [this]() -> so::Vector3 { return xk_.segment(6, 3); });
 
   logger.addLogEntry(category + "_estimatedState_x1", [this]() -> so::Vector3 { return xk_.segment(0, 3); });

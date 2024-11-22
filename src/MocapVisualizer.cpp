@@ -34,14 +34,14 @@ void MocapVisualizer::configure(const mc_control::MCController & ctl, const mc_r
 
     std::string contactsDetectionString = static_cast<std::string>(config("contactsDetection"));
     ContactsManager::ContactsDetection contactsDetectionMethod =
-        contactsManager_.stringToContactsDetection(contactsDetectionString, observerName_);
+        contactsManager_.stringToContactsDetection(contactsDetectionString, name());
 
     if(contactsDetectionMethod == ContactsManager::ContactsDetection::Surfaces)
     {
       std::vector<std::string> surfacesForContactDetection =
           config("surfacesForContactDetection", std::vector<std::string>());
 
-      measurements::ContactsManagerSurfacesConfiguration contactsConfig(observerName_, surfacesForContactDetection);
+      measurements::ContactsManagerSurfacesConfiguration contactsConfig(name(), surfacesForContactDetection);
 
       contactsConfig.verbose(true);
       if(config.has("schmittTriggerLowerPropThreshold") && config.has("schmittTriggerUpperPropThreshold"))
@@ -55,7 +55,7 @@ void MocapVisualizer::configure(const mc_control::MCController & ctl, const mc_r
     }
     if(contactsDetectionMethod == ContactsManager::ContactsDetection::Sensors)
     {
-      measurements::ContactsManagerSensorsConfiguration contactsConfig(observerName_);
+      measurements::ContactsManagerSensorsConfiguration contactsConfig(name());
       contactsConfig.verbose(true);
       if(config.has("schmittTriggerLowerPropThreshold") && config.has("schmittTriggerUpperPropThreshold"))
       {
@@ -67,7 +67,7 @@ void MocapVisualizer::configure(const mc_control::MCController & ctl, const mc_r
     }
     if(contactsDetectionMethod == ContactsManager::ContactsDetection::Solver)
     {
-      measurements::ContactsManagerSolverConfiguration contactsConfig(observerName_);
+      measurements::ContactsManagerSolverConfiguration contactsConfig(name());
       contactsConfig.verbose(true);
       if(config.has("schmittTriggerLowerPropThreshold") && config.has("schmittTriggerUpperPropThreshold"))
       {

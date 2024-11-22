@@ -108,8 +108,7 @@ private:
   double currentMocapDataTime_ = 0.0;
   int currentIter_ = 0;
   bool mocapFinished = false;
-  std::string observerName_ = "MocapVisualizer";
-  std::string category_ = "Observer_MocapVisualizer";
+
   /* custom list of robots to display */
   std::shared_ptr<mc_rbdyn::Robots> my_robots_;
 

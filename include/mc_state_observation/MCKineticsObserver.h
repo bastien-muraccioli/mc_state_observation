@@ -40,6 +40,8 @@ public:
   Eigen::Matrix<double, 6, 1> contactWrenchVector_;
   // contact wrench expressed in the centroid frame. Used for logs.
   Eigen::Matrix<double, 6, 1> wrenchInCentroid_ = Eigen::Matrix<double, 6, 1>::Zero();
+  // for debug only
+  stateObservation::Vector6 viscoElasticWrenchAfterCorrection_;
 
   // the sensor measurement has to be used by the observer
   bool sensorEnabled_ = true;
@@ -326,14 +328,16 @@ private:
   // (recovery frame after an error)
   EstimationState estimationState_;
 
-  // name of the estimator
-  std::string observerName_ = "MCKineticsObserver";
+  // category to plot the estimator in
+  std::string category_;
   // name of the robot
   std::string robot_ = "";
   /* custom list of robots to display */
   std::shared_ptr<mc_rbdyn::Robots> my_robots_;
   // std::string imuSensor_ = "";
   std::vector<std::string> imuNames_; ///< list of IMUs
+  // contacts maintained during the current iteration
+  std::vector<KoContactWithSensor *> maintainedContacts_;
 
   /* Estimation parameters */
   bool debug_ = false;
@@ -364,6 +368,7 @@ private:
 
   // indicates if the debug logs have to be added.
   bool withDebugLogs_ = false;
+  stateObservation::Matrix3 contactsPosAverageStateCov_;
 
   // indicates if we want to perform odometry, and if yes, flat or 6d odometry
   measurements::OdometryType odometryType_;
