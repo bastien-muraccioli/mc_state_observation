@@ -135,6 +135,7 @@ bool MocapObserver::calibrateMarkerToBody(const mc_control::MCController & ctl)
   // before this operation.
   // If this is not the case, set X_0_mocap_ appropriately manually
   X_marker_body_ = X_0_body * X_0_mocap_.inv() * X_m_marker_.inv();
+
   mc_rtc::log::success("[{}] calibrated.", name());
   mc_rtc::log::info("[{}] Transformation between mocap marker and body {} \ntranslation: {}\nrotation: {}", name(),
                     body_, X_marker_body_.translation().transpose(),
@@ -149,6 +150,7 @@ bool MocapObserver::initializeOrigin(const mc_control::MCController & ctl)
 
   auto X_0_body = robot(ctl).bodyPosW(body_);
   X_0_mocap_ = X_m_marker_.inv() * X_marker_body_.inv() * X_0_body;
+
   mc_rtc::log::success("[{}] World to mocap transformation.\ntranslation: {}\nrotation: {}", name(),
                        X_0_mocap_.translation().transpose(), mc_rbdyn::rpyFromMat(X_0_mocap_.rotation()).transpose());
   return true;

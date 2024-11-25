@@ -337,7 +337,7 @@ void MCKineticsObserver::reset(const mc_control::MCController & ctl)
   inertiaWaist_ = mergeMbg.nodeByName(realRobotModule.mb.body(0).name())->body.inertia();
   mass(ctl.realRobot(robot_).mass());
 
-  if(debug_) { mc_rtc::log::info("inertiaWaist = {}", inertiaWaist_); }
+  // if(debug_) { mc_rtc::log::info("inertiaWaist = {}", inertiaWaist_); }
 
   /* Initialization of variables */
   X_0_fb_ = sva::PTransformd::Identity();
