@@ -24,7 +24,7 @@ jobs:
       latest-cmake: true
       matrix: |
         {
-          "dist": ["focal", "jammy"],
+          "dist": ["jammy"],
           "arch": ["amd64"]
         }
       main-branch: main
