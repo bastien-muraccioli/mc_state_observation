@@ -168,6 +168,10 @@ protected:
                                                                      const mc_rbdyn::Robot & robot,
                                                                      bool withVel);
 
+  const stateObservation::kine::Kinematics getCtlContactWorldKinematics(const mc_control::MCController & ctl,
+                                                                        KoContactWithSensor & contact,
+                                                                        bool withVel);
+
   const stateObservation::kine::Kinematics getFsWorldKinematics(const mc_control::MCController & ctl,
                                                                 const mc_rbdyn::Robot & robot,
                                                                 const std::string & fsName);
@@ -199,7 +203,6 @@ protected:
   /// @param worldRestPose Rest pose of the contact, updated in the function
   /// @return The contact rest pose.
   stateObservation::kine::Kinematics getOdometryWorldContactRest(
-      const mc_control::MCController & ctl,
       KoContactWithSensor & contact,
       const stateObservation::kine::Kinematics & worldContactKine);
 

@@ -81,7 +81,7 @@ private:
                                      const mc_rbdyn::Robot & updatedRobot) override;
 
   /// @brief updates the pose and the velcoity of the floating base in the world frame using our estimation results
-  void updatePoseAndVel();
+  void updatePoseAndVel(const mc_control::MCController & ctl);
 
   /// @brief Sets the type of the odometry
   /// @param newOdometryType The new type of odometry to use.
@@ -92,6 +92,9 @@ public:
   stateObservation::kine::Kinematics estimatedWorldImuKine_;
   // estimated kinematics of the floating base in the world
   stateObservation::kine::Kinematics estimatedWorldFbKine_;
+
+  stateObservation::Vector3 ctlWorldAnchorPos_;
+  stateObservation::Vector3 fbAnchorPos_;
 
 private:
   using ContactsDetector = measurements::ContactsDetector<stateObservation::odometry::LoContact>;

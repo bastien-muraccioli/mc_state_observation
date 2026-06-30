@@ -141,7 +141,6 @@ void MCValinor::reset(const mc_control::MCController & ctl)
 
   // pose of the IMU in the world frame for the odometry robot
   so ::kine::Kinematics initWorldImuKine = initWorldParentKine * initParentImuKine;
-  const Eigen::Matrix3d cOri = (imu.X_b_s() * realRobot.bodyPosW(imu.parentBody())).rotation();
   so::Vector3 initX2 = initWorldImuKine.orientation.toMatrix3().transpose() * so::Vector3::UnitZ();
 
   initX_ = Eigen::RowVectorXd(9);
@@ -213,25 +212,29 @@ bool MCValinor::run(const mc_control::MCController & ctl)
     if(withDebugLogs_)
     {
       conversions::kinematics::addToLogger(logger, newContact.worldRefKine_,
-                                           "Waiko_contacts_" + newContact.surfaceName() + "_refPose");
+                                           category_ + "_contacts_" + newContact.surfaceName() + "_refPose");
       conversions::kinematics::addToLogger(logger, newContact.worldBodyKineFromRef_,
-                                           "Waiko_contacts_" + newContact.surfaceName() + "_worldImuKineFromRef");
+                                           category_ + "_contacts_" + newContact.surfaceName()
+                                               + "_worldImuKineFromRef");
       conversions::kinematics::addToLogger(logger, newContact.currentWorldKine_,
-                                           "Waiko_contacts_" + newContact.surfaceName() + "_currentWorldContactKine");
+                                           category_ + "_contacts_" + newContact.surfaceName()
+                                               + "_currentWorldContactKine");
       conversions::kinematics::addToLogger(logger, newContact.bodyContactKine_,
-                                           "Waiko_contacts_" + newContact.surfaceName() + "_bodyContactKine_");
+                                           category_ + "_contacts_" + newContact.surfaceName() + "_bodyContactKine_");
       conversions::kinematics::addToLogger(logger, newContact.worldRefKineBeforeCorrection_,
-                                           "Waiko_contacts_" + newContact.surfaceName() + "_refPoseBeforeCorrection");
+                                           category_ + "_contacts_" + newContact.surfaceName()
+                                               + "_refPoseBeforeCorrection");
       conversions::kinematics::addToLogger(logger, newContact.newIncomingWorldRefKine_,
-                                           "Waiko_contacts_" + newContact.surfaceName() + "_newIncomingWorldRefKine");
+                                           category_ + "_contacts_" + newContact.surfaceName()
+                                               + "_newIncomingWorldRefKine");
 
-      logger.addLogEntry("Waiko_contacts_" + newContact.surfaceName() + "_isSet", &newContact,
+      logger.addLogEntry(category_ + "_contacts_" + newContact.surfaceName() + "_isSet", &newContact,
                          [&newContact]() -> std::string { return newContact.isSet() ? "Set" : "notSet"; });
-      logger.addLogEntry("Waiko_contacts_" + newContact.surfaceName() + "_lambda", &newContact,
+      logger.addLogEntry(category_ + "_contacts_" + newContact.surfaceName() + "_lambda", &newContact,
                          [&newContact]() -> double { return newContact.lambda(); });
-      logger.addLogEntry("Waiko_contacts_" + newContact.surfaceName() + "_lifeTime", &newContact,
+      logger.addLogEntry(category_ + "_contacts_" + newContact.surfaceName() + "_lifeTime", &newContact,
                          [&newContact]() -> double { return newContact.lifeTime(); });
-      logger.addLogEntry("Waiko_contacts_" + newContact.surfaceName() + "_correctionWeightingCoeff", &newContact,
+      logger.addLogEntry(category_ + "_contacts_" + newContact.surfaceName() + "_correctionWeightingCoeff", &newContact,
                          [&newContact]() -> double { return newContact.correctionWeightingCoeff(); });
     }
   };
@@ -325,12 +328,15 @@ bool MCValinor::run(const mc_control::MCController & ctl)
   estimatedWorldImuKine_.linVel = estimatedWorldImuKine_.orientation.toMatrix3() * estimator_.getEstimatedLocLinVel();
   estimatedWorldImuKine_.angVel = estimatedWorldImuKine_.orientation.toMatrix3() * imu.angularVelocity();
 
-  updatePoseAndVel();
+  updatePoseAndVel(ctl);
 
   /* Backups */
 
   // for the Kinetics Observer
-  if(asBackup_) { backupFbKinematics_.push_back(correctedWorldFbKine_); }
+  if(asBackup_)
+  {
+    backupFbKinematics_.push_back(conversions::kinematics::fromSva(poseW_, so::kine::Kinematics::Flags::pose));
+  }
 
   iter_++;
 
@@ -353,7 +359,7 @@ const so::kine::Kinematics MCValinor::backupFb(boost::circular_buffer<so::kine::
 
   // we apply the transformation from the initial pose to the intermediates pose estimated by the tilt estimator to the
   // new starting pose of the Kinetics Observer
-  for(int i = 0; i < koBackupFbKinematics->size(); i++)
+  for(size_t i = 0; i < koBackupFbKinematics->size(); i++)
   {
     // Intermediary pose of the floating base estimated by the tilt estimator
     so::kine::Kinematics worldFbIntermBackup = backupFbKinematics_.at(i);
@@ -421,15 +427,63 @@ void MCValinor::updateNecessaryFrames(const mc_control::MCController & ctl, cons
   fbImuKine_ = worldFbKine_.getInverse() * worldImuKine_;
 }
 
-void MCValinor::updatePoseAndVel()
+void MCValinor::updatePoseAndVel(const mc_control::MCController & ctl)
 {
   estimatedWorldFbKine_ = estimatedWorldImuKine_ * fbImuKine_.getInverse();
 
-  poseW_.translation() = estimatedWorldFbKine_.position();
-  poseW_.rotation() = estimatedWorldFbKine_.orientation.toMatrix3().transpose();
+  if(odometryManager_.odometryType_ != OdometryType::None)
+  {
+    poseW_.translation() = estimatedWorldFbKine_.position();
+    poseW_.rotation() = estimatedWorldFbKine_.orientation.toMatrix3().transpose();
 
-  velW_.linear() = estimatedWorldFbKine_.linVel();
-  velW_.angular() = estimatedWorldFbKine_.angVel();
+    velW_.linear() = estimatedWorldFbKine_.linVel();
+    velW_.angular() = estimatedWorldFbKine_.angVel();
+  }
+  else
+  {
+    if(odometryManager_.maintainedContacts().size() > 0)
+    {
+      ctlWorldAnchorPos_.setZero();
+      fbAnchorPos_.setZero();
+
+      for(auto contact : odometryManager_.maintainedContacts())
+      {
+        const auto & robot = ctl.robot(robot_);
+        const std::string & surfaceName = contact->surfaceName();
+        const sva::PTransformd & ctlSurfaceXbs = robot.surface(surfaceName).X_b_s();
+        so::kine::Kinematics ctlParentSurfaceKine =
+            conversions::kinematics::fromSva(ctlSurfaceXbs, so::kine::Kinematics::Flags::pose);
+        const sva::PTransformd & ctlParentPoseW = robot.bodyPosW(robot.surface(surfaceName).bodyName());
+        so::kine::Kinematics ctlWorldParentKine =
+            conversions::kinematics::fromSva(ctlParentPoseW, so::kine::Kinematics::Flags::pose);
+
+        const sva::PTransformd & ctlPosW = robot.posW();
+        so::kine::Kinematics ctlWorldFbKine =
+            conversions::kinematics::fromSva(ctlPosW, so::kine::Kinematics::Flags::pose);
+
+        stateObservation::kine::Kinematics ctlWorldContactKine = ctlWorldParentKine * ctlParentSurfaceKine;
+        // stateObservation::kine::Kinematics ctlFbContactPos_ = ctlWorldFbKine.getInverse() * ctlWorldContactKine;
+
+        ctlWorldAnchorPos_ += ctlWorldContactKine.position() * contact->lambda_;
+        stateObservation::kine::Kinematics imuFbKine = fbImuKine_.getInverse();
+        fbAnchorPos_ = odometryManager_.getAnchorKineIn(imuFbKine).position();
+      }
+    }
+
+    worldFbKine_.position = ctlWorldAnchorPos_ - worldFbKine_.orientation.toMatrix3() * fbAnchorPos_;
+
+    so::Matrix3 ctlYawWithEstimatedTiltOri = so::kine::mergeRoll1Pitch1WithYaw2AxisAgnostic(
+        estimatedWorldFbKine_.orientation.toMatrix3(), ctl.robot().posW().rotation().transpose());
+    // orientation matrix that converts the estimated kinematics in the world frame back to the local frame, then
+    // express the kinematics in the frame of the control robot
+    so::Matrix3 ctlRealOri = ctlYawWithEstimatedTiltOri * estimatedWorldFbKine_.orientation.toMatrix3().transpose();
+
+    poseW_.rotation() = ctlYawWithEstimatedTiltOri.transpose();
+    poseW_.translation() = ctlWorldAnchorPos_ - ctlYawWithEstimatedTiltOri * fbAnchorPos_;
+
+    velW_.angular() = ctlRealOri * worldFbKine_.angVel();
+    velW_.linear() = ctlRealOri * estimatedWorldFbKine_.linVel();
+  }
 }
 
 void MCValinor::update(mc_control::MCController & ctl)
@@ -703,7 +757,6 @@ void MCValinor::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger
     conversions::kinematics::addToLogger(logger, fbImuKine_, category + "_debug_fbImuKine_");
 
     conversions::kinematics::addToLogger(logger, worldFbKine_, category + "_debug_worldFbKine_");
-    conversions::kinematics::addToLogger(logger, estimatedWorldImuKine_, category + "_debug_correctedWorldImuKine_");
   }
 }
 

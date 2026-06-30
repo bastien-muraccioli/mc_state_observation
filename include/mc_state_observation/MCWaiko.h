@@ -39,7 +39,7 @@ public:
   void updateNecessaryFramesOdom(const mc_control::MCController & ctl, const mc_rbdyn::Robot & odomRobot);
 
   /// @brief updates the pose and the velcoity of the floating base in the world frame using our estimation results
-  void updatePoseAndVel();
+  void updatePoseAndVel(const mc_control::MCController & ctl);
 
   /// @brief Updates the real robot and/or the IMU signal using our estimation results
   /// @param ctl Controller
@@ -183,6 +183,9 @@ protected:
   stateObservation::kine::Kinematics imuAnchorKine_;
   // kinematics of the IMU in the world after the encoders update
   stateObservation::kine::Kinematics worldImuKine_;
+
+  stateObservation::Vector3 ctlWorldAnchorPos_;
+  stateObservation::Vector3 fbAnchorPos_;
 
   /* Estimation results */
 
