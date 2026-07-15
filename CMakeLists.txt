@@ -70,9 +70,3 @@ if(WITH_ROS_OBSERVERS)
 endif()
 
 add_subdirectory(src)
-
-add_subdirectory(etc)
-
-if(BUILD_TESTING)
-  add_subdirectory(tests)
-endif()
