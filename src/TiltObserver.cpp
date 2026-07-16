@@ -179,31 +179,64 @@ void TiltObserver::updateAnchorFrame(const mc_control::MCController & ctl, const
 
   if(!ctl.datastore().has(anchorFrameFunction_))
   {
-    double leftFootRatio =
-        robot.indirectSurfaceForceSensor("LeftFootCenter").wrenchWithoutGravity(ctl.realRobot()).force().z()
-        / (robot.indirectSurfaceForceSensor("LeftFootCenter").wrenchWithoutGravity(ctl.realRobot()).force().z()
-           + robot.indirectSurfaceForceSensor("RightFootCenter").wrenchWithoutGravity(ctl.realRobot()).force().z());
+    double fz_left_ctl =
+        robot.indirectSurfaceForceSensor("LeftFootCenter").wrenchWithoutGravity(ctl.realRobot()).force().z();
+    double fz_right_ctl =
+        robot.indirectSurfaceForceSensor("RightFootCenter").wrenchWithoutGravity(ctl.realRobot()).force().z();
+    double leftFootRatio = fz_left_ctl / (fz_left_ctl + fz_right_ctl);
 
     X_0_C_ctl_ =
         sva::interpolate(robot.surfacePose("RightFootCenter"), robot.surfacePose("LeftFootCenter"), leftFootRatio);
     X_0_C_ = sva::interpolate(updatedRobot.surfacePose("RightFootCenter"), updatedRobot.surfacePose("LeftFootCenter"),
                               leftFootRatio);
 
-    // new pose of the anchor frame in the world.
-    newWorldAnchorKine_ctl_ = conversions::kinematics::fromSva(X_0_C_ctl_, so::kine::Kinematics::Flags::pose);
-    newWorldAnchorKine_ = conversions::kinematics::fromSva(X_0_C_, so::kine::Kinematics::Flags::pose);
+    const std::string & rightFootBody = robot.surface("RightFootCenter").bodyName();
+    const std::string & leftFootBody = robot.surface("LeftFootCenter").bodyName();
 
-    // the velocities of the anchor frames are computed by finite differences
-    worldAnchorKine_ctl_.update(newWorldAnchorKine_ctl_, ctl.timeStep,
-                                so::kine::Kinematics::Flags::position | so::kine::Kinematics::Flags::linVel);
-    worldAnchorKine_.update(newWorldAnchorKine_, ctl.timeStep,
-                            so::kine::Kinematics::Flags::position | so::kine::Kinematics::Flags::linVel);
+    // ---- analytic velocity of the anchor frame, control robot ----
+    const sva::MotionVecd & v_rf_ctl = robot.mbc().bodyVelW[robot.bodyIndexByName(rightFootBody)];
+    const sva::MotionVecd & v_lf_ctl = robot.mbc().bodyVelW[robot.bodyIndexByName(leftFootBody)];
+
+    Eigen::Vector3d p_rf_ctl = robot.surfacePose("RightFootCenter").translation();
+    Eigen::Vector3d p_lf_ctl = robot.surfacePose("LeftFootCenter").translation();
+    Eigen::Vector3d p_rBody_ctl = robot.bodyPosW(rightFootBody).translation();
+    Eigen::Vector3d p_lBody_ctl = robot.bodyPosW(leftFootBody).translation();
+
+    Eigen::Vector3d v_rf_point_ctl = v_rf_ctl.linear() + v_rf_ctl.angular().cross(p_rf_ctl - p_rBody_ctl);
+    Eigen::Vector3d v_lf_point_ctl = v_lf_ctl.linear() + v_lf_ctl.angular().cross(p_lf_ctl - p_lBody_ctl);
+
+    Eigen::Vector3d anchor_vel_ctl = (1 - leftFootRatio) * v_rf_point_ctl + leftFootRatio * v_lf_point_ctl;
+
+    // ---- analytic velocity of the anchor frame, updated (encoders) robot ----
+    const sva::MotionVecd & v_rf = updatedRobot.mbc().bodyVelW[updatedRobot.bodyIndexByName(rightFootBody)];
+    const sva::MotionVecd & v_lf = updatedRobot.mbc().bodyVelW[updatedRobot.bodyIndexByName(leftFootBody)];
+
+    Eigen::Vector3d p_rf = updatedRobot.surfacePose("RightFootCenter").translation();
+    Eigen::Vector3d p_lf = updatedRobot.surfacePose("LeftFootCenter").translation();
+    Eigen::Vector3d p_rBody = updatedRobot.bodyPosW(rightFootBody).translation();
+    Eigen::Vector3d p_lBody = updatedRobot.bodyPosW(leftFootBody).translation();
+
+    Eigen::Vector3d v_rf_point = v_rf.linear() + v_rf.angular().cross(p_rf - p_rBody);
+    Eigen::Vector3d v_lf_point = v_lf.linear() + v_lf.angular().cross(p_lf - p_lBody);
+
+    Eigen::Vector3d anchor_vel = (1 - leftFootRatio) * v_rf_point + leftFootRatio * v_lf_point;
+
+    // new pose + velocity of the anchor frame in the world (analytic, no finite differences)
+    newWorldAnchorKine_ctl_.reset();
+    newWorldAnchorKine_ctl_.position = X_0_C_ctl_.translation();
+    newWorldAnchorKine_ctl_.orientation = so::Matrix3(X_0_C_ctl_.rotation().transpose());
+    newWorldAnchorKine_ctl_.linVel = anchor_vel_ctl;
+
+    newWorldAnchorKine_.reset();
+    newWorldAnchorKine_.position = X_0_C_.translation();
+    newWorldAnchorKine_.orientation = so::Matrix3(X_0_C_.rotation().transpose());
+    newWorldAnchorKine_.linVel = anchor_vel;
+
+    worldAnchorKine_ctl_ = newWorldAnchorKine_ctl_;
+    worldAnchorKine_ = newWorldAnchorKine_;
   }
   else
   {
-    //   X_0_C_ctl_ = ctl.datastore().call<sva::PTransformd>(anchorFrameFunction_, robot);
-    //   X_0_C_ = ctl.datastore().call<sva::PTransformd>(anchorFrameFunction_, updatedRobot);
-    // }
     auto [X_0_C_ctl_temp, anchor_vel_ctl_] =
         ctl.datastore().call<std::pair<sva::PTransformd, Eigen::Vector3d>>(anchorFrameFunction_, robot);
     auto [X_0_C_temp, anchor_vel] =
@@ -215,15 +248,14 @@ void TiltObserver::updateAnchorFrame(const mc_control::MCController & ctl, const
     // new pose of the anchor frame in the world.
     newWorldAnchorKine_ctl_.reset();
     newWorldAnchorKine_ctl_.position = X_0_C_ctl_.translation();
-    newWorldAnchorKine_ctl_.orientation = stateObservation::Matrix3(X_0_C_ctl_.rotation().transpose());
+    newWorldAnchorKine_ctl_.orientation = so::Matrix3(X_0_C_ctl_.rotation().transpose());
     newWorldAnchorKine_ctl_.linVel = anchor_vel_ctl_;
 
     newWorldAnchorKine_.reset();
     newWorldAnchorKine_.position = X_0_C_.translation();
-    newWorldAnchorKine_.orientation = stateObservation::Matrix3(X_0_C_.rotation().transpose());
+    newWorldAnchorKine_.orientation = so::Matrix3(X_0_C_.rotation().transpose());
     newWorldAnchorKine_.linVel = anchor_vel;
 
-    // the velocities of the anchor frames are computed by finite differences
     worldAnchorKine_ctl_ = newWorldAnchorKine_ctl_;
     worldAnchorKine_ = newWorldAnchorKine_;
   }
